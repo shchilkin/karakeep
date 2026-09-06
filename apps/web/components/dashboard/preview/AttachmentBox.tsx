@@ -37,9 +37,11 @@ import {
 export default function AttachmentBox({
   bookmark,
   readOnly = false,
+  defaultOpen = true,
 }: {
   bookmark: ZBookmark;
   readOnly?: boolean;
+  defaultOpen?: boolean;
 }) {
   const { t } = useTranslation();
   const { mutate: attachAsset, isPending: isAttaching } =
@@ -96,12 +98,14 @@ export default function AttachmentBox({
     },
   });
 
-  bookmark.assets.sort((a, b) => a.assetType.localeCompare(b.assetType));
+  const assets = [...bookmark.assets].sort((a, b) =>
+    a.assetType.localeCompare(b.assetType),
+  );
 
   const hasAssets = bookmark.assets.length > 0;
 
   return (
-    <Collapsible defaultOpen={true}>
+    <Collapsible defaultOpen={defaultOpen}>
       <div className="flex w-full items-center justify-between gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
         {t("common.attachments")}
         <div className="flex items-center gap-1">
@@ -169,22 +173,25 @@ export default function AttachmentBox({
         </div>
       </div>
       <CollapsibleContent className="flex flex-col gap-1 py-3 text-sm">
-        {bookmark.assets.map((asset) => (
-          <div key={asset.id} className="flex items-center justify-between">
+        {assets.map((asset) => (
+          <div
+            key={asset.id}
+            className="flex min-w-0 items-center justify-between gap-2"
+          >
             <Link
               target="_blank"
               href={getAssetUrl(asset.id)}
-              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+              className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
               prefetch={false}
             >
               {ASSET_TYPE_TO_ICON[asset.assetType]}
-              <p>
+              <p className="break-all">
                 {asset.assetType === "userUploaded" && asset.fileName
                   ? asset.fileName
                   : humanFriendlyNameForAssertType(asset.assetType)}
               </p>
             </Link>
-            <div className="flex gap-1 text-muted-foreground">
+            <div className="flex shrink-0 gap-1 text-muted-foreground">
               <Link
                 title="Download"
                 target="_blank"

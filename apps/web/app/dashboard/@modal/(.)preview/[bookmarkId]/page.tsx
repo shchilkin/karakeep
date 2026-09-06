@@ -28,16 +28,16 @@ export default function BookmarkPreviewPage(props: {
 
   return (
     <Dialog open={open} onOpenChange={setOpenWithRouter}>
-      <VisuallyHidden>
-        <DialogHeader>
-          <DialogTitle>Preview</DialogTitle>
-        </DialogHeader>
-      </VisuallyHidden>
       <DialogContent
         className="h-[90%] max-w-[90%] overflow-hidden rounded-xl p-0"
         hideCloseBtn={true}
-        onOpenAutoFocus={(e) => e.preventDefault()}
+        aria-describedby={undefined}
       >
+        <VisuallyHidden>
+          <DialogHeader>
+            <DialogTitle>Preview</DialogTitle>
+          </DialogHeader>
+        </VisuallyHidden>
         <BookmarkPreview
           bookmarkId={params.bookmarkId}
           onClose={() => setOpenWithRouter(false)}

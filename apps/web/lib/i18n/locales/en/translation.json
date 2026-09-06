@@ -993,6 +993,22 @@
     "tabs": {
       "content": "Content",
       "details": "Details"
+    },
+    "gallery": {
+      "add_tag": "+ Add tag",
+      "saved_photos": "Saved photos",
+      "image_label": "{{title}} — photo {{current}} of {{total}}",
+      "loading": "Loading photo…",
+      "load_error": "This photo could not be loaded. Try downloading the original or choose another photo.",
+      "enlarge": "Enlarge photo",
+      "previous": "Previous photo",
+      "next": "Next photo",
+      "download": "Download original photo",
+      "choose_photo": "Choose a photo",
+      "go_to": "Show photo {{current}}",
+      "photo_count_one": "{{count}} saved photo",
+      "photo_count_other": "{{count}} saved photos",
+      "note_placeholder": "Add a thought, a detail, a reminder…"
     }
   },
   "editor": {

@@ -1005,7 +1005,25 @@
     "crawling_in_progress": "Получаю содержимое страницы…",
     "continue_reading": "Продолжить с места, где остановились",
     "continue_reading_percent": "Продолжить с места, где остановились ({{percent}}%)",
-    "continue_button": "Продолжить"
+    "continue_button": "Продолжить",
+    "gallery": {
+      "add_tag": "+ Добавить тег",
+      "saved_photos": "Сохранённые фото",
+      "image_label": "{{title}} — фото {{current}} из {{total}}",
+      "loading": "Загрузка фото…",
+      "load_error": "Не удалось загрузить фото. Попробуй скачать оригинал или выбрать другое фото.",
+      "enlarge": "Увеличить фото",
+      "previous": "Предыдущее фото",
+      "next": "Следующее фото",
+      "download": "Скачать оригинал фото",
+      "choose_photo": "Выбрать фото",
+      "go_to": "Показать фото {{current}}",
+      "photo_count_one": "{{count}} сохранённое фото",
+      "photo_count_few": "{{count}} сохранённых фото",
+      "photo_count_many": "{{count}} сохранённых фото",
+      "photo_count_other": "{{count}} сохранённого фото",
+      "note_placeholder": "Добавь мысль, деталь, напоминание…"
+    }
   },
   "toasts": {
     "bookmarks": {

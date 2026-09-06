@@ -29,6 +29,7 @@ export function TagsEditor({
   disabled,
   allowCreation = true,
   placeholder,
+  variant = "default",
 }: {
   tags: ZBookmarkTags[];
   onAttach: (tag: { tagName: string; tagId?: string }) => void;
@@ -36,6 +37,7 @@ export function TagsEditor({
   disabled?: boolean;
   allowCreation?: boolean;
   placeholder?: string;
+  variant?: "default" | "pills";
 }) {
   const api = useTRPC();
   const { t } = useTranslation();
@@ -292,7 +294,11 @@ export function TagsEditor({
           defaultValue: "Search tags...",
         }));
   const visiblePlaceholder =
-    optimisticTags.length === 0 ? inputPlaceholder : undefined;
+    variant === "pills"
+      ? t("preview.gallery.add_tag")
+      : optimisticTags.length === 0
+        ? inputPlaceholder
+        : undefined;
   const inputWidth = Math.max(
     inputValue.length > 0
       ? inputValue.length
@@ -308,6 +314,7 @@ export function TagsEditor({
             <div
               className={cn(
                 "relative flex min-h-10 w-full flex-wrap items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2",
+                variant === "pills" && "border-0 bg-transparent px-0 py-1",
                 isDisabled && "cursor-not-allowed opacity-50",
               )}
             >
@@ -321,13 +328,17 @@ export function TagsEditor({
                         tag.attachedBy == "ai"
                           ? "bg-purple-500 text-white"
                           : "bg-accent",
+                        variant === "pills" &&
+                          "min-h-9 max-w-full rounded-full bg-muted px-3 text-foreground",
                       )}
                     >
-                      <div className="m-auto flex gap-2">
+                      <div className="m-auto flex min-w-0 items-center gap-2">
                         {tag.attachedBy === "ai" && (
                           <Sparkles className="m-auto size-4" />
                         )}
-                        {tag.name}
+                        <span className="break-words [overflow-wrap:anywhere]">
+                          {tag.name}
+                        </span>
                         {!isDisabled && (
                           <button
                             type="button"
@@ -356,8 +367,14 @@ export function TagsEditor({
                 onKeyDown={handleKeyDown}
                 onValueChange={(v) => setInputValue(v)}
                 placeholder={visiblePlaceholder}
-                className="bg-transparent outline-none placeholder:text-muted-foreground"
-                style={{ width: `${inputWidth}ch` }}
+                aria-label={inputPlaceholder}
+                className={cn(
+                  "max-w-full bg-transparent outline-none placeholder:text-muted-foreground",
+                  variant === "pills" && "min-h-9 rounded-full bg-muted px-3",
+                )}
+                style={{
+                  width: `${inputWidth + (variant === "pills" ? 4 : 0)}ch`,
+                }}
                 disabled={isDisabled}
               />
               {isExistingTagsLoading && (
