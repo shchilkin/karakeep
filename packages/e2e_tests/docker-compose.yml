@@ -9,6 +9,7 @@ services:
       - "${KARAKEEP_PORT:-3000}:3000"
     environment:
       DATA_DIR: /tmp
+      DB_WAL_MODE: "true"
       NEXTAUTH_SECRET: secret
       NEXTAUTH_URL: http://localhost:${KARAKEEP_PORT:-3000}
       MEILI_MASTER_KEY: dummy
@@ -21,7 +22,7 @@ services:
       CRAWLER_VIDEO_DOWNLOAD_MAX_SIZE: -1
       OPENAI_API_KEY: aimock-test-key
       OPENAI_BASE_URL: http://aimock:4010/v1
-      EMBEDDING_DIMENSIONS: 96
+      EMBEDDING_DIMENSIONS: 384
       EMBEDDING_ENABLE_AUTO_INDEXING: "true"
       INFERENCE_ENABLE_AUTO_SUMMARIZATION: "true"
   meilisearch:

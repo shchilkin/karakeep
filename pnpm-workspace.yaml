@@ -8,15 +8,15 @@ packages:
 nodeLinker: hoisted
 
 allowBuilds:
-  '@sentry/cli': true
-  '@swc/core': true
+  "@sentry/cli": true
+  "@swc/core": true
   better-sqlite3: true
   esbuild: true
   re2: true
   sharp: true
   tesseract.js: true
   # These install scripts are informational or unnecessary for our installs.
-  '@parcel/watcher': false
+  "@parcel/watcher": false
   core-js: false
   core-js-pure: false
   postman-code-generators: false
@@ -28,8 +28,6 @@ patchedDependencies:
   playwright-extra@4.3.6: "patches/playwright-extra@4.3.6.patch"
   # Swift 6.2 / Xcode 26 rejects `weak let`; rewrite to `nonisolated(unsafe) weak var`.
   expo-modules-jsi@56.0.12: patches/expo-modules-jsi@56.0.12.patch
-  # RN 0.85's Appearance.setColorScheme is non-null; pass "unspecified" (not null) for system theme.
-  react-native-css-interop@0.2.1: patches/react-native-css-interop@0.2.1.patch
   # Disables React 19.2's dev "component performance track" prop serialization,
   # which crashes when a changed prop is a tRPC proxy (RN 0.85 + new arch).
   react-native@0.85.3: patches/react-native@0.85.3.patch
@@ -38,20 +36,20 @@ patchedDependencies:
 allowUnusedPatches: true
 
 minimumReleaseAgeExclude:
-  - '@restatedev/restate-sdk-clients@1.15.1'
-  - '@restatedev/restate-sdk-core@1.15.1'
-  - '@restatedev/restate-sdk@1.15.1'
-  - '@next/bundle-analyzer@16.2.12'
-  - '@next/env@16.2.12'
-  - '@next/swc-darwin-arm64@16.2.12'
-  - '@next/swc-darwin-x64@16.2.12'
-  - '@next/swc-linux-arm64-gnu@16.2.12'
-  - '@next/swc-linux-arm64-musl@16.2.12'
-  - '@next/swc-linux-x64-gnu@16.2.12'
-  - '@next/swc-linux-x64-musl@16.2.12'
-  - '@next/swc-win32-arm64-msvc@16.2.12'
-  - '@next/swc-win32-x64-msvc@16.2.12'
-  - next@16.2.12
+  [
+    "@next/bundle-analyzer@16.3.3",
+    "@next/env@16.3.3",
+    "@next/swc-darwin-arm64@16.3.3",
+    "@next/swc-darwin-x64@16.3.3",
+    "@next/swc-linux-arm64-gnu@16.3.3",
+    "@next/swc-linux-arm64-musl@16.3.3",
+    "@next/swc-linux-x64-gnu@16.3.3",
+    "@next/swc-linux-x64-musl@16.3.3",
+    "@next/swc-win32-arm64-msvc@16.3.3",
+    "@next/swc-win32-x64-msvc@16.3.3",
+    next@16.3.3,
+    liteque@0.9.1,
+  ]
 
 # Pin vite so adding vitest as a direct devDep to apps/mcp doesn't hoist
 # vite 7.3.x, which surfaces a nested-vite peer mismatch inside
