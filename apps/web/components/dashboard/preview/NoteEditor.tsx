@@ -1,6 +1,8 @@
 import { toast } from "@/components/ui/sonner";
 import { Textarea } from "@/components/ui/textarea";
 import { useClientConfig } from "@/lib/clientConfig";
+import { useTranslation } from "@/lib/i18n/client";
+import { cn } from "@/lib/utils";
 
 import type { ZBookmark } from "@karakeep/shared/types/bookmarks";
 import { useUpdateBookmark } from "@karakeep/shared-react/hooks/bookmarks";
@@ -8,10 +10,13 @@ import { useUpdateBookmark } from "@karakeep/shared-react/hooks/bookmarks";
 export function NoteEditor({
   bookmark,
   disabled,
+  className,
 }: {
   bookmark: ZBookmark;
   disabled?: boolean;
+  className?: string;
 }) {
+  const { t } = useTranslation();
   const demoMode = !!useClientConfig().demoMode;
 
   const updateBookmarkMutator = useUpdateBookmark({
@@ -30,10 +35,14 @@ export function NoteEditor({
 
   return (
     <Textarea
-      className="min-h-[5rem] w-full resize-y overflow-auto rounded-md bg-background p-2.5 text-sm text-foreground placeholder:text-muted-foreground"
+      className={cn(
+        "min-h-[5rem] w-full resize-y overflow-auto rounded-md bg-background p-2.5 text-sm text-foreground placeholder:text-muted-foreground",
+        className,
+      )}
+      aria-label={t("common.note")}
       defaultValue={bookmark.note ?? ""}
       disabled={demoMode || disabled}
-      placeholder="Write some notes ..."
+      placeholder={t("preview.gallery.note_placeholder")}
       onBlur={(e) => {
         if (e.currentTarget.value == bookmark.note) {
           return;

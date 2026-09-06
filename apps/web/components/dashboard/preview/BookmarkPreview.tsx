@@ -13,6 +13,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useSession } from "@/lib/auth/client";
+import { getBookmarkImages } from "@/lib/bookmarkImages";
 import useRelativeTime from "@/lib/hooks/relative-time";
 import { useTranslation } from "@/lib/i18n/client";
 import { useQuery } from "@tanstack/react-query";
@@ -41,6 +42,7 @@ import { AssetContentSection } from "./AssetContentSection";
 import AttachmentBox from "./AttachmentBox";
 import HighlightsBox from "./HighlightsBox";
 import LinkContentSection from "./LinkContentSection";
+import MediaBookmarkPreview from "./MediaBookmarkPreview";
 import { NoteEditor } from "./NoteEditor";
 import { TextContentSection } from "./TextContentSection";
 
@@ -127,6 +129,7 @@ function PublishedDate({ datePublished }: { datePublished: Date }) {
 export default function BookmarkPreview({
   bookmarkId,
   initialData,
+  onClose,
 }: {
   bookmarkId: string;
   initialData?: ZBookmark;
@@ -162,6 +165,20 @@ export default function BookmarkPreview({
 
   // Check if the current user owns this bookmark
   const isOwner = session?.user?.id === bookmark.userId;
+
+  if (
+    bookmark.content.type === BookmarkTypes.LINK &&
+    getBookmarkImages(bookmark).length > 0
+  ) {
+    return (
+      <MediaBookmarkPreview
+        bookmark={{ ...bookmark, content: bookmark.content }}
+        readOnly={!isOwner}
+        metadata={<BookmarkMetadata bookmark={bookmark} />}
+        onClose={onClose}
+      />
+    );
+  }
 
   let content;
   switch (bookmark.content.type) {

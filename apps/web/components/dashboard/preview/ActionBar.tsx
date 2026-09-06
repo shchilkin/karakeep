@@ -63,6 +63,7 @@ export default function ActionBar({ bookmark }: { bookmark: ZBookmark }) {
             variant="ghost"
             size="none"
             className="size-8 rounded-md"
+            aria-label={t("actions.edit")}
             onClick={() => {
               setEditBookmarkDialogOpen(true);
             }}
@@ -79,6 +80,11 @@ export default function ActionBar({ bookmark }: { bookmark: ZBookmark }) {
             size="none"
             className="size-8 rounded-md"
             loading={pendingFav}
+            aria-label={
+              bookmark.favourited
+                ? t("actions.unfavorite")
+                : t("actions.favorite")
+            }
             onClick={() => {
               favBookmark({
                 bookmarkId: bookmark.id,
@@ -105,6 +111,9 @@ export default function ActionBar({ bookmark }: { bookmark: ZBookmark }) {
             variant="ghost"
             size="none"
             loading={pendingArchive}
+            aria-label={
+              bookmark.archived ? t("actions.unarchive") : t("actions.archive")
+            }
             className="size-8 rounded-md"
             onClick={() => {
               archiveBookmark({
@@ -136,6 +145,7 @@ export default function ActionBar({ bookmark }: { bookmark: ZBookmark }) {
             variant="ghost"
             size="none"
             onClick={() => setDeleteBookmarkDialogOpen(true)}
+            aria-label={t("actions.delete")}
           >
             <Trash2 size={18} strokeWidth={1.5} />
           </Button>

@@ -16,8 +16,10 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useSession } from "@/lib/auth/client";
+import { getBookmarkImages } from "@/lib/bookmarkImages";
 import { Trans, useTranslation } from "@/lib/i18n/client";
 import { useReaderSettings } from "@/lib/readerSettings";
+import { cn } from "@/lib/utils";
 import {
   AlertTriangle,
   Archive,
@@ -25,6 +27,7 @@ import {
   Camera,
   ExpandIcon,
   FileText,
+  Images,
   Info,
   LayoutPanelTop,
   Video,
@@ -38,10 +41,12 @@ import {
   ZBookmarkedLink,
 } from "@karakeep/shared/types/bookmarks";
 import { READER_FONT_FAMILIES } from "@karakeep/shared/types/readers";
+import { getBookmarkTitle } from "@karakeep/shared/utils/bookmarkUtils";
 
 import { contentRendererRegistry } from "./content-renderers";
 import ReaderSettingsPopover from "./ReaderSettingsPopover";
 import ReaderView from "./ReaderView";
+import SavedImageGallery from "./SavedImageGallery";
 import SavedPageOverview from "./SavedPageOverview";
 
 function CustomRendererErrorFallback({ error }: { error: Error }) {
@@ -125,8 +130,11 @@ export default function LinkContentSection({
   const { t } = useTranslation();
   const { settings } = useReaderSettings();
   const availableRenderers = contentRendererRegistry.getRenderers(bookmark);
-  let defaultSection = availableRenderers[0]?.id ?? "cached";
+  const images = getBookmarkImages(bookmark);
+  let defaultSection =
+    images.length > 0 ? "photos" : (availableRenderers[0]?.id ?? "cached");
   if (
+    images.length === 0 &&
     availableRenderers.length === 0 &&
     bookmark.content.type === BookmarkTypes.LINK
   ) {
@@ -136,9 +144,22 @@ export default function LinkContentSection({
       defaultSection = "overview";
     }
   }
-  const [section, setSection] = useQueryState("section", {
+  const [requestedSection, setSection] = useQueryState("section", {
     defaultValue: defaultSection,
   });
+  const availableSections = [
+    "overview",
+    "cached",
+    "archive",
+    "video",
+    "pdf",
+    "screenshot",
+    ...availableRenderers.map((renderer) => renderer.id),
+    ...(images.length ? ["photos"] : []),
+  ];
+  const section = availableSections.includes(requestedSection)
+    ? requestedSection
+    : defaultSection;
   const { data: session } = useSession();
   const isOwner = session?.user?.id === bookmark.userId;
 
@@ -150,7 +171,15 @@ export default function LinkContentSection({
 
   // Check if current section is a custom renderer
   const customRenderer = availableRenderers.find((r) => r.id === section);
-  if (customRenderer) {
+  if (section === "photos") {
+    content = (
+      <SavedImageGallery
+        key={bookmark.id}
+        images={images}
+        title={getBookmarkTitle(bookmark) ?? bookmark.content.url}
+      />
+    );
+  } else if (customRenderer) {
     const RendererComponent = customRenderer.component;
     content = (
       <ErrorBoundary FallbackComponent={CustomRendererErrorFallback}>
@@ -188,7 +217,12 @@ export default function LinkContentSection({
 
   return (
     <div className="flex h-full w-full min-w-0 flex-col items-center overflow-hidden">
-      <div className="flex w-full items-center justify-center gap-2 border-b px-3 py-1.5">
+      <div
+        className={cn(
+          "flex w-full items-center justify-center gap-2 px-3 py-1.5",
+          section !== "photos" && "border-b",
+        )}
+      >
         <Select onValueChange={setSection} value={section}>
           <SelectTrigger className="w-fit">
             <span className="mr-2">
@@ -197,6 +231,14 @@ export default function LinkContentSection({
           </SelectTrigger>
           <SelectContent>
             <SelectGroup>
+              {images.length > 0 && (
+                <SelectItem value="photos">
+                  <div className="flex items-center">
+                    <Images className="mr-2 size-4" />
+                    {t("preview.gallery.saved_photos")}
+                  </div>
+                </SelectItem>
+              )}
               {/* Custom renderers first */}
               {availableRenderers.map((renderer) => {
                 const IconComponent = renderer.icon;
