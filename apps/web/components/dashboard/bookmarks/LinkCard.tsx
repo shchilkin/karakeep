@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import type { BookmarksLayoutTypes } from "@/lib/userLocalSettings/types";
 import { getBookmarkImages } from "@/lib/bookmarkImages";
 import { useTranslation } from "@/lib/i18n/client";
 import { useUserSettings } from "@/lib/userSettings";
@@ -17,6 +18,7 @@ import {
 } from "@karakeep/shared/utils/bookmarkUtils";
 
 import { BookmarkLayoutAdaptingCard } from "./BookmarkLayoutAdaptingCard";
+import BookmarkCardImage from "./BookmarkCardImage";
 import FooterLinkURL from "./FooterLinkURL";
 
 const useOnClickUrl = (bookmark: ZBookmarkTypeLink) => {
@@ -46,9 +48,11 @@ function LinkTitle({ bookmark }: { bookmark: ZBookmarkTypeLink }) {
 function LinkImage({
   bookmark,
   className,
+  layout,
 }: {
   bookmark: ZBookmarkTypeLink;
   className?: string;
+  layout: BookmarksLayoutTypes;
 }) {
   const { onClickUrl, urlTarget } = useOnClickUrl(bookmark);
   const link = bookmark.content;
@@ -66,6 +70,37 @@ function LinkImage({
   );
 
   const imageDetails = getBookmarkLinkImageUrl(link);
+  const cover = images[0] ? getAssetUrl(images[0].id) : imageDetails?.url;
+
+  if (cover && (layout === "masonry" || layout === "grid")) {
+    return (
+      <Link
+        href={onClickUrl}
+        target={urlTarget}
+        rel="noreferrer"
+        className="relative block"
+      >
+        <BookmarkCardImage
+          key={cover}
+          src={cover}
+          alt={getBookmarkTitle(bookmark) ?? new URL(link.url).host}
+          naturalSize={layout === "masonry"}
+          className={className}
+        />
+        {images.length > 1 && (
+          <span
+            className="absolute bottom-3 left-3 flex items-center gap-1.5 rounded-md bg-black/80 px-2 py-1 text-xs tabular-nums text-white"
+            aria-label={t("preview.gallery.photo_count", {
+              count: images.length,
+            })}
+          >
+            <Images className="size-3.5" aria-hidden="true" />
+            {images.length}
+          </span>
+        )}
+      </Link>
+    );
+  }
 
   let img: React.ReactNode;
   if (images[0]) {
@@ -117,15 +152,29 @@ export default function LinkCard({
   className?: string;
   bookmarkIndex?: number;
 }) {
+  const hasCover = !!(
+    getBookmarkImages(bookmarkLink).length ||
+    getBookmarkLinkImageUrl(bookmarkLink.content)
+  );
   return (
     <BookmarkLayoutAdaptingCard
       title={<LinkTitle bookmark={bookmarkLink} />}
       footer={<FooterLinkURL url={getSourceUrl(bookmarkLink)} />}
       bookmark={bookmarkLink}
+      imageFirst={hasCover}
+      fitHeight={!hasCover}
       wrapTags={false}
-      image={(_layout, className) => (
-        <LinkImage className={className} bookmark={bookmarkLink} />
-      )}
+      image={(layout, className) =>
+        !hasCover &&
+        !isBookmarkStillCrawling(bookmarkLink) &&
+        (layout === "masonry" || layout === "grid") ? null : (
+          <LinkImage
+            layout={layout}
+            className={className}
+            bookmark={bookmarkLink}
+          />
+        )
+      }
       className={className}
       bookmarkIndex={bookmarkIndex}
     />

@@ -654,6 +654,7 @@
     }
   },
   "actions": {
+    "open_preview": "Открыть карточку",
     "remove_from_list": "Удалить из списка",
     "refresh": "Обновить",
     "unarchive": "Вернуть из архива",

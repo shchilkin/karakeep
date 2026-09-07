@@ -10,6 +10,7 @@ import { getAssetUrl } from "@karakeep/shared/utils/assetUtils";
 import { getSourceUrl } from "@karakeep/shared/utils/bookmarkUtils";
 
 import { BookmarkLayoutAdaptingCard } from "./BookmarkLayoutAdaptingCard";
+import BookmarkCardImage from "./BookmarkCardImage";
 import FooterLinkURL from "./FooterLinkURL";
 
 function AssetImage({
@@ -78,21 +79,44 @@ export default function AssetCard({
 }) {
   return (
     <BookmarkLayoutAdaptingCard
-      title={bookmarkedAsset.title ?? bookmarkedAsset.content.fileName}
+      title={
+        <Link href={`/dashboard/preview/${bookmarkedAsset.id}`}>
+          {bookmarkedAsset.title ?? bookmarkedAsset.content.fileName}
+        </Link>
+      }
       footer={
         getSourceUrl(bookmarkedAsset) && (
           <FooterLinkURL url={getSourceUrl(bookmarkedAsset)} />
         )
       }
       bookmark={bookmarkedAsset}
+      imageFirst={bookmarkedAsset.content.assetType === "image"}
       className={className}
       bookmarkIndex={bookmarkIndex}
       wrapTags={true}
-      image={(_layout, className) => (
-        <div className="relative size-full flex-1">
-          <AssetImage bookmark={bookmarkedAsset} className={className} />
-        </div>
-      )}
+      image={(layout, className) =>
+        bookmarkedAsset.content.assetType === "image" &&
+        (layout === "masonry" || layout === "grid") ? (
+          <Link
+            href={`/dashboard/preview/${bookmarkedAsset.id}`}
+            className="block"
+          >
+            <BookmarkCardImage
+              key={bookmarkedAsset.content.assetId}
+              src={getAssetUrl(bookmarkedAsset.content.assetId)}
+              alt={
+                bookmarkedAsset.title ?? bookmarkedAsset.content.fileName ?? ""
+              }
+              naturalSize={layout === "masonry"}
+              className={className}
+            />
+          </Link>
+        ) : (
+          <div className="relative size-full flex-1">
+            <AssetImage bookmark={bookmarkedAsset} className={className} />
+          </div>
+        )
+      }
     />
   );
 }
