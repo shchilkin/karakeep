@@ -106,6 +106,7 @@ export default function SavePage() {
         newBookmarkRequest = {
           type: BookmarkTypes.LINK,
           title: currentTab.title,
+          titleSource: "captured",
           url: currentTab.url,
           source: "extension",
         };
@@ -230,7 +231,13 @@ export default function SavePage() {
                   value={pendingBookmark.title ?? ""}
                   onChange={(e) =>
                     setPendingBookmark((prev) =>
-                      prev ? { ...prev, title: e.target.value } : prev,
+                      prev
+                        ? {
+                            ...prev,
+                            title: e.target.value,
+                            titleSource: "manual",
+                          }
+                        : prev,
                     )
                   }
                   placeholder="Untitled"
@@ -256,7 +263,13 @@ export default function SavePage() {
                   value={pendingBookmark.title ?? ""}
                   onChange={(e) =>
                     setPendingBookmark((prev) =>
-                      prev ? { ...prev, title: e.target.value } : prev,
+                      prev
+                        ? {
+                            ...prev,
+                            title: e.target.value,
+                            titleSource: "manual",
+                          }
+                        : prev,
                     )
                   }
                   placeholder={pendingBookmark.fileName ?? "Asset"}

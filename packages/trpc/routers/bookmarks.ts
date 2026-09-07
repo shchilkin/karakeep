@@ -1,6 +1,6 @@
 import { requestMediaCatalog } from "../models/mediaCatalog";
 import { experimental_trpcMiddleware, TRPCError } from "@trpc/server";
-import { and, eq, gt, inArray, like, lt, or } from "drizzle-orm";
+import { and, eq, gt, inArray, like, lt, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import {
@@ -206,6 +206,24 @@ const highBookmarkCreationRateLimitConfig = {
   maxRequests: 30,
 } as const;
 
+// Evaluate protection in the UPDATE itself, so a concurrent manual edit made
+// after deduplication cannot be overwritten by a captured page title.
+function resavedTitle(input: z.infer<typeof zNewBookmarkRequestSchema>) {
+  if (input.title === undefined) return {};
+  if (input.titleSource === "manual") {
+    return { title: input.title, titleSource: "manual" as const };
+  }
+  // An old client may be submitting either an edit or a tab title. In
+  // particular, don't refill an empty override that already exposes an AI title.
+  if (input.titleSource !== "captured") return {};
+  const mayReplace = sql`(${bookmarks.title} IS NULL OR trim(${bookmarks.title}) = ''
+    OR ${bookmarks.titleSource} = 'captured')`;
+  return {
+    title: sql`CASE WHEN ${mayReplace} THEN ${input.title} ELSE ${bookmarks.title} END`,
+    titleSource: sql`CASE WHEN ${mayReplace} THEN 'captured' ELSE ${bookmarks.titleSource} END`,
+  };
+}
+
 // Automated bulk flows rely on the dedup path for idempotency, so hitting an
 // existing bookmark from them must stay a no-op instead of unarchiving it and
 // bumping it to the top of the list.
@@ -291,14 +309,14 @@ export const bookmarksAppRouter = router({
           const resaved = {
             createdAt: input.createdAt ?? now,
             archived: input.archived ?? false,
-            ...(input.title !== undefined ? { title: input.title } : {}),
+            ...resavedTitle(input),
             ...(input.favourited !== undefined
               ? { favourited: input.favourited }
               : {}),
             ...(input.note !== undefined ? { note: input.note } : {}),
             ...(input.summary !== undefined ? { summary: input.summary } : {}),
           };
-          await ctx.db
+          const [saved] = await ctx.db
             .update(bookmarks)
             .set({ ...resaved, modifiedAt: now })
             .where(
@@ -306,7 +324,8 @@ export const bookmarksAppRouter = router({
                 eq(bookmarks.userId, ctx.user.id),
                 eq(bookmarks.id, alreadyExists.id),
               ),
-            );
+            )
+            .returning();
           await Promise.all([
             triggerSearchReindex(alreadyExists.id, {
               groupId: ctx.user.id,
@@ -323,8 +342,7 @@ export const bookmarksAppRouter = router({
 
           return {
             ...alreadyExists,
-            ...resaved,
-            modifiedAt: now,
+            ...saved,
             alreadyExists: true,
           };
         }
@@ -365,6 +383,7 @@ export const bookmarksAppRouter = router({
             .values({
               userId: ctx.user.id,
               title: input.title,
+              titleSource: input.titleSource ?? "unknown",
               type: input.type,
               archived: input.archived,
               favourited: input.favourited,
@@ -691,6 +710,7 @@ export const bookmarksAppRouter = router({
         // Update common bookmark fields
         const commonUpdateData: Partial<{
           title: string | null;
+          titleSource: "manual" | "captured" | "unknown";
           archived: boolean;
           favourited: boolean;
           note: string | null;
@@ -702,6 +722,10 @@ export const bookmarksAppRouter = router({
         };
         if (input.title !== undefined) {
           commonUpdateData.title = input.title;
+          commonUpdateData.titleSource = input.titleSource ?? "manual";
+        }
+        if (input.titleSource !== undefined) {
+          commonUpdateData.titleSource = input.titleSource;
         }
         if (input.archived !== undefined) {
           commonUpdateData.archived = input.archived;

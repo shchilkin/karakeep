@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { assert, beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
@@ -10,6 +10,7 @@ import {
 } from "@karakeep/db/schema";
 import * as sharedServer from "@karakeep/shared-server";
 import { BookmarkTypes } from "@karakeep/shared/types/bookmarks";
+import { getBookmarkTitle } from "@karakeep/shared/utils/bookmarkUtils";
 
 import { WebhooksService } from "../models/webhooks.service";
 import type { APICallerType, CustomTestContext } from "../testUtils";
@@ -43,6 +44,212 @@ vi.mock("@karakeep/shared-server", async (original) => {
 });
 
 beforeEach<CustomTestContext>(defaultBeforeEach(true));
+
+const catalogResult = {
+  runId: "saved-analysis",
+  fingerprint: "unchanged-media",
+  model: "test",
+  status: "success" as const,
+  updatedAt: "2026-09-07T00:00:00.000Z",
+  allowPreview: false,
+  result: {
+    title: "Studio portrait",
+    summary: "A studio portrait.",
+    tags: ["portrait"],
+  },
+};
+
+describe("Bookmark title provenance", () => {
+  test<CustomTestContext>("a manual edit committed after deduplication survives a captured resave", async ({
+    apiCallers,
+    db,
+  }) => {
+    const api = apiCallers[0].bookmarks;
+    const input = {
+      type: BookmarkTypes.LINK as const,
+      url: "https://example.com/concurrent",
+      titleSource: "captured" as const,
+    };
+    const b = await api.createBookmark({ ...input, title: "Page title" });
+    const update = db.update.bind(db);
+    const spy = vi.spyOn(db, "update").mockImplementationOnce((table) => {
+      db.run(
+        sql`UPDATE bookmarks SET title = 'Concurrent manual edit', titleSource = 'manual' WHERE id = ${b.id}`,
+      );
+      return update(table);
+    });
+    try {
+      const saved = await api.createBookmark({
+        ...input,
+        title: "Refreshed page title",
+      });
+      expect(saved).toMatchObject({
+        title: "Concurrent manual edit",
+        titleSource: "manual",
+      });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test<CustomTestContext>("captured page title yields to saved AI; a note edit does not pin the title", async ({
+    apiCallers,
+    db,
+  }) => {
+    const api = apiCallers[0].bookmarks;
+    const b = await api.createBookmark({
+      type: BookmarkTypes.LINK,
+      url: "https://example.com/capture",
+      title: "Stories • Instagram",
+      titleSource: "captured",
+    });
+    await db
+      .update(bookmarks)
+      .set({ mediaAi: catalogResult })
+      .where(eq(bookmarks.id, b.id));
+    const saved = await api.updateBookmark({
+      bookmarkId: b.id,
+      note: "My note",
+    });
+    expect(saved.titleSource).toBe("captured");
+    expect(saved.title).toBe("Stories • Instagram");
+    expect(getBookmarkTitle(saved)).toBe("Studio portrait");
+  });
+
+  test<CustomTestContext>("manual and legacy titles survive captured and unmarked resaves", async ({
+    apiCallers,
+  }) => {
+    const api = apiCallers[0].bookmarks;
+    for (const titleSource of ["manual", "unknown"] as const) {
+      const url = `https://example.com/${titleSource}`;
+      const original = await api.createBookmark({
+        type: BookmarkTypes.LINK,
+        url,
+        title: "My title",
+        titleSource,
+      });
+      for (const incomingSource of ["captured", undefined] as const) {
+        const saved = await api.createBookmark({
+          type: BookmarkTypes.LINK,
+          url,
+          title: "Instagram",
+          titleSource: incomingSource,
+          source: "extension",
+        });
+        expect(saved).toMatchObject({
+          id: original.id,
+          title: "My title",
+          titleSource,
+          alreadyExists: true,
+        });
+        expect(
+          await api.getBookmark({ bookmarkId: original.id }),
+        ).toMatchObject({ title: "My title", titleSource });
+      }
+    }
+  });
+
+  test<CustomTestContext>("a captured title can refresh, but an unmarked old client cannot replace it", async ({
+    apiCallers,
+  }) => {
+    const api = apiCallers[0].bookmarks;
+    const input = {
+      type: BookmarkTypes.LINK as const,
+      url: "https://example.com/refresh",
+      titleSource: "captured" as const,
+    };
+    const original = await api.createBookmark({
+      ...input,
+      title: "Old page title",
+    });
+    const refreshed = await api.createBookmark({
+      ...input,
+      title: "New page title",
+    });
+    expect(refreshed).toMatchObject({
+      id: original.id,
+      title: "New page title",
+      titleSource: "captured",
+    });
+    const legacy = await api.createBookmark({
+      ...input,
+      titleSource: undefined,
+      title: "Unmarked title",
+    });
+    expect(legacy.title).toBe("New page title");
+  });
+
+  test<CustomTestContext>("unmarked new clients are conservative and explicit edits are manual", async ({
+    apiCallers,
+  }) => {
+    const api = apiCallers[0].bookmarks;
+    const b = await api.createBookmark({
+      type: BookmarkTypes.LINK,
+      url: "https://example.com/legacy",
+      title: "Legacy name",
+    });
+    expect(b.titleSource).toBe("unknown");
+    const edited = await api.updateBookmark({
+      bookmarkId: b.id,
+      title: "My reference",
+    });
+    expect(edited.titleSource).toBe("manual");
+  });
+
+  test<CustomTestContext>("owner can select the existing AI title without deleting the old title or rerunning analysis", async ({
+    apiCallers,
+    db,
+  }) => {
+    const api = apiCallers[0].bookmarks;
+    const b = await api.createBookmark({
+      type: BookmarkTypes.LINK,
+      url: "https://example.com/choose",
+      title: "Stories • Instagram",
+    });
+    await db
+      .update(bookmarks)
+      .set({ mediaAi: catalogResult })
+      .where(eq(bookmarks.id, b.id));
+    const saved = await api.updateBookmark({
+      bookmarkId: b.id,
+      titleSource: "captured",
+    });
+    expect(saved.title).toBe("Stories • Instagram");
+    expect(saved.mediaAi).toEqual(catalogResult);
+    expect(getBookmarkTitle(saved)).toBe("Studio portrait");
+    const edited = await api.updateBookmark({
+      bookmarkId: b.id,
+      title: "My reference",
+    });
+    expect(getBookmarkTitle(edited)).toBe("My reference");
+    const cleared = await api.updateBookmark({ bookmarkId: b.id, title: null });
+    expect(getBookmarkTitle(cleared)).toBe("Studio portrait");
+    const legacyResave = await api.createBookmark({
+      type: BookmarkTypes.LINK,
+      url: "https://example.com/choose",
+      title: "Stories • Instagram",
+      source: "extension",
+    });
+    expect(legacyResave.title).toBeNull();
+    expect(getBookmarkTitle(legacyResave)).toBe("Studio portrait");
+  });
+
+  test<CustomTestContext>("another user cannot change title provenance", async ({
+    apiCallers,
+  }) => {
+    const b = await apiCallers[0].bookmarks.createBookmark({
+      type: BookmarkTypes.LINK,
+      url: "https://example.com/private",
+      title: "Private name",
+    });
+    await expect(
+      apiCallers[1].bookmarks.updateBookmark({
+        bookmarkId: b.id,
+        titleSource: "captured",
+      }),
+    ).rejects.toThrow();
+  });
+});
 
 describe("Bookmark Routes", () => {
   async function createTestTag(api: APICallerType, tagName: string) {
@@ -920,6 +1127,7 @@ describe("Bookmark Routes", () => {
       url: "https://example.com/resave-metadata",
       type: BookmarkTypes.LINK,
       title: "New title",
+      titleSource: "manual",
       favourited: false,
     });
     expect(resaveWithMetadata).toMatchObject({

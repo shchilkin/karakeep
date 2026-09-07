@@ -1145,6 +1145,7 @@
     }
   },
   "bookmark_editor": {
+    "use_ai_title": "Use AI title",
     "title": "Edit Bookmark",
     "subtitle": "Make changes to the bookmark details. Click save when you're done.",
     "author": "Author",

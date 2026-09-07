@@ -184,6 +184,14 @@ export const zBookmarkSourceSchema = z.enum([
 ]);
 export type ZBookmarkSource = z.infer<typeof zBookmarkSourceSchema>;
 
+// Older clients and existing rows cannot reliably distinguish a page title
+// from a user edit. Keep those titles protected until the owner chooses.
+export const zBookmarkTitleSourceSchema = z.enum([
+  "manual",
+  "captured",
+  "unknown",
+]);
+
 export const zBareBookmarkSchema = z.object({
   id: z.string(),
   // This is optional for backwards compatibility
@@ -191,6 +199,7 @@ export const zBareBookmarkSchema = z.object({
   createdAt: z.date(),
   modifiedAt: z.date().nullable(),
   title: z.string().nullish(),
+  titleSource: zBookmarkTitleSourceSchema.optional(),
   mediaAi: zMediaCatalogState.nullish(),
   archived: z.boolean(),
   favourited: z.boolean(),
@@ -245,6 +254,7 @@ export type ZBookmarkTypeAsset = z.infer<typeof zBookmarkTypeAssetSchema>;
 export const zNewBookmarkRequestSchema = z.intersection(
   z.object({
     title: z.string().max(MAX_BOOKMARK_TITLE_LENGTH).nullish(),
+    titleSource: zBookmarkTitleSourceSchema.optional(),
     archived: z.boolean().optional(),
     favourited: z.boolean().optional(),
     note: z.string().optional(),
@@ -318,6 +328,7 @@ export const zUpdateBookmarksRequestSchema = z.object({
   summary: z.string().nullish(),
   note: z.string().optional(),
   title: z.string().max(MAX_BOOKMARK_TITLE_LENGTH).nullish(),
+  titleSource: zBookmarkTitleSourceSchema.optional(),
   createdAt: z.coerce
     .date()
     .optional()

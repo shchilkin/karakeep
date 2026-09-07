@@ -97,6 +97,15 @@ export function getSourceUrl(bookmark: ZBookmark) {
   return null;
 }
 
+export function getBookmarkTitleOverride(
+  bookmark: Pick<ZBookmark, "title" | "titleSource" | "mediaAi">,
+) {
+  const title = bookmark.title?.trim() ? bookmark.title : null;
+  return bookmark.titleSource === "captured"
+    ? bookmark.mediaAi?.result?.title || title
+    : title || bookmark.mediaAi?.result?.title;
+}
+
 export function getBookmarkTitle(bookmark: ZBookmark) {
   let title: string | null = null;
   switch (bookmark.content.type) {
@@ -111,5 +120,5 @@ export function getBookmarkTitle(bookmark: ZBookmark) {
       break;
   }
 
-  return bookmark.title || bookmark.mediaAi?.result?.title || title;
+  return getBookmarkTitleOverride(bookmark) || title;
 }
