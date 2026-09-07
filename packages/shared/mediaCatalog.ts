@@ -127,7 +127,7 @@ export function catalogTagKey(tag: string) {
   return tag
     .normalize("NFKC")
     .toLowerCase()
-    .replaceAll("ё", "е")
+    .replace(/ё/g, "е")
     .replace(/[\s_-]+/g, "");
 }
 
