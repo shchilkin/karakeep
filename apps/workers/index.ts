@@ -14,6 +14,7 @@ import {
   loadAllPlugins,
   LowPriorityCrawlerQueue,
   OpenAIQueue,
+  MediaCatalogQueue,
   prepareQueue,
   RuleEngineQueue,
   SearchIndexingQueue,
@@ -36,6 +37,12 @@ let feedRefreshingWorker:
   | undefined;
 
 const workerBuilders = {
+  mediaCatalog: async () => {
+    const { MediaCatalogWorker } =
+      await import("./workers/inference/mediaCatalogWorker");
+    await MediaCatalogQueue.ensureInit();
+    return MediaCatalogWorker.build();
+  },
   crawler: async () => {
     const { CrawlerWorker } = await import("./workers/crawlerWorker");
     await LinkCrawlerQueue.ensureInit();

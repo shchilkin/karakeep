@@ -473,6 +473,47 @@ registry.registerPath({
 });
 
 registry.registerPath({
+  operationId: "analyzeBookmarkMedia",
+  method: "post",
+  path: "/bookmarks/{bookmarkId}/analyze-media",
+  description:
+    "Queue AI titles, tags and descriptions for saved media. Requires bookmark write permission and enabled media AI. Failed attempts require retry=true; unchanged successful inputs are not analyzed again. Preview-only analysis requires allowPreview=true.",
+  summary: "Analyze saved bookmark media",
+  tags: ["Bookmarks"],
+  security: [{ [BearerAuth.name]: [] }],
+  request: {
+    params: z.object({ bookmarkId: BookmarkIdSchema }),
+    body: {
+      required: true,
+      content: {
+        "application/json": {
+          schema: z.object({
+            retry: z.boolean().optional(),
+            allowPreview: z.boolean().optional(),
+          }),
+        },
+      },
+    },
+  },
+  responses: {
+    202: {
+      description:
+        "Bookmark with current analysis state; results arrive asynchronously.",
+      content: { "application/json": { schema: zBareBookmarkSchema } },
+    },
+    400: {
+      description: "Media AI is disabled or there is no eligible saved media.",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+    401: UnauthorizedResponse,
+    404: {
+      description: "Bookmark not found.",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+  },
+});
+
+registry.registerPath({
   operationId: "attachTagsToBookmark",
   method: "post",
   path: "/bookmarks/{bookmarkId}/tags",

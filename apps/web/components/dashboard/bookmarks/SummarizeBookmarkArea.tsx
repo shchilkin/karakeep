@@ -13,6 +13,8 @@ import {
   useUpdateBookmark,
 } from "@karakeep/shared-react/hooks/bookmarks";
 import { BookmarkTypes, ZBookmark } from "@karakeep/shared/types/bookmarks";
+import { catalogInput } from "@karakeep/shared/mediaCatalog";
+import MediaCatalogArea from "./MediaCatalogArea";
 
 function AISummary({
   bookmarkId,
@@ -118,6 +120,12 @@ export default function SummarizeBookmarkArea({
   });
 
   const clientConfig = useClientConfig();
+  if (
+    bookmark.mediaAi ||
+    (clientConfig.mediaAi?.enabled && catalogInput(bookmark, true))
+  ) {
+    return <MediaCatalogArea bookmark={bookmark} readOnly={readOnly} />;
+  }
   if (bookmark.content.type !== BookmarkTypes.LINK) {
     return null;
   }

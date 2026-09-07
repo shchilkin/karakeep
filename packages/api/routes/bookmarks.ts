@@ -62,6 +62,24 @@ const app = new Hono()
     return c.json(bookmark, bookmark.alreadyExists ? 200 : 201);
   })
 
+  .post(
+    "/:bookmarkId/analyze-media",
+    zValidator(
+      "json",
+      z.object({
+        retry: z.boolean().optional(),
+        allowPreview: z.boolean().optional(),
+      }),
+    ),
+    async (c) => {
+      const bookmark = await c.var.api.bookmarks.analyzeMedia({
+        bookmarkId: c.req.param("bookmarkId"),
+        ...c.req.valid("json"),
+      });
+      return c.json(bookmark, 202);
+    },
+  )
+
   // GET /bookmarks/search
   .get(
     "/search",

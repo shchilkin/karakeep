@@ -74,7 +74,9 @@ jobs:
 
       - name: Workers Tests
         working-directory: apps/workers
-        run: pnpm test
+        run: |
+          sudo apt-get update && sudo apt-get install -y ffmpeg
+          pnpm test
 
       # - name: Plugins Tests
       #   working-directory: packages/plugins

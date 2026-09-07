@@ -1,5 +1,6 @@
 import {
   and,
+  sql,
   eq,
   exists,
   gt,
@@ -292,6 +293,13 @@ async function getIds(
                 comp(bookmarks.title, `%${matcher.title}%`),
               ),
               or(
+                sql`json_extract(${bookmarks.mediaAi}, '$.result.title') IS NULL`,
+                comp(
+                  sql`json_extract(${bookmarks.mediaAi}, '$.result.title')`,
+                  `%${matcher.title}%`,
+                ),
+              ),
+              or(
                 isNull(bookmarkLinks.title),
                 comp(bookmarkLinks.title, `%${matcher.title}%`),
               ),
@@ -305,7 +313,13 @@ async function getIds(
         .where(
           and(
             eq(bookmarks.userId, userId),
-            comp(bookmarks.title, `%${matcher.title}%`),
+            or(
+              comp(bookmarks.title, `%${matcher.title}%`),
+              comp(
+                sql`json_extract(${bookmarks.mediaAi}, '$.result.title')`,
+                `%${matcher.title}%`,
+              ),
+            ),
           ),
         )
         .union(

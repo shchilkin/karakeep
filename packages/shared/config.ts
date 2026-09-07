@@ -73,6 +73,12 @@ const allEnv = z.object({
   OAUTH_PROVIDER_NAME: z.string().default("Custom Provider"),
   TURNSTILE_SITE_KEY: z.string().optional(),
   TURNSTILE_SECRET_KEY: z.string().optional(),
+  MEDIA_AI_ENABLED: stringBool("false"),
+  MEDIA_AI_AUTO_NEW: stringBool("false"),
+  MEDIA_AI_API_KEY: z.string().optional(),
+  MEDIA_AI_MODEL: z.string().default("grok-4.6"),
+  MEDIA_AI_PROVIDER: z.enum(["xai", "openai"]).default("xai"),
+  MEDIA_AI_DAILY_REQUESTS: z.coerce.number().int().min(1).max(1000).default(20),
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_BASE_URL: z.string().url().optional(),
   OPENAI_PROXY_URL: z.string().url().optional(),
@@ -331,6 +337,14 @@ const serverConfigSchema = allEnv.transform((val, ctx) => {
             from: val.SMTP_FROM,
           }
         : undefined,
+    },
+    mediaAi: {
+      enabled: val.MEDIA_AI_ENABLED && !!val.MEDIA_AI_API_KEY,
+      autoNew: val.MEDIA_AI_AUTO_NEW,
+      apiKey: val.MEDIA_AI_API_KEY,
+      provider: val.MEDIA_AI_PROVIDER,
+      model: val.MEDIA_AI_MODEL,
+      dailyRequests: val.MEDIA_AI_DAILY_REQUESTS,
     },
     inference: {
       isConfigured: !!val.OPENAI_API_KEY || !!val.OLLAMA_BASE_URL,
@@ -608,6 +622,7 @@ export const clientConfig = {
           siteKey: serverConfig.auth.turnstile.siteKey,
         }
       : null,
+  mediaAi: { enabled: serverConfig.mediaAi.enabled },
   inference: {
     isConfigured: serverConfig.inference.isConfigured,
     inferredTagLang: serverConfig.inference.inferredTagLang,

@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { zMediaCatalogState } from "../mediaCatalog";
+
 import { isAllowedBookmarkUrl } from "../utils/url";
 import { zCursorV2 } from "./pagination";
 import { zAttachedByEnumSchema, zBookmarkTagSchema } from "./tags";
@@ -189,6 +191,7 @@ export const zBareBookmarkSchema = z.object({
   createdAt: z.date(),
   modifiedAt: z.date().nullable(),
   title: z.string().nullish(),
+  mediaAi: zMediaCatalogState.nullish(),
   archived: z.boolean(),
   favourited: z.boolean(),
   taggingStatus: z.enum(["success", "failure", "pending"]).nullable(),

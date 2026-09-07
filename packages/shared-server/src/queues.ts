@@ -335,3 +335,12 @@ export const BackupQueue = createDeferredQueue<ZBackupRequest>("backup_queue", {
   },
   keepFailedJobs: false,
 });
+
+export const MediaCatalogQueue = createDeferredQueue<{
+  bookmarkId: string;
+  userId: string;
+  runId: string;
+}>("media_catalog_queue", {
+  defaultJobArgs: { numRetries: 0 },
+  keepFailedJobs: false,
+});

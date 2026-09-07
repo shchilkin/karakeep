@@ -19,6 +19,7 @@ export const zClientConfigSchema = z.object({
       siteKey: z.string(),
     })
     .nullable(),
+  mediaAi: z.object({ enabled: z.boolean() }).optional(),
   inference: z.object({
     isConfigured: z.boolean(),
     inferredTagLang: z.string(),

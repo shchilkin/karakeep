@@ -141,6 +141,86 @@
             "type": "string",
             "nullable": true
           },
+          "mediaAi": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "runId": {
+                "type": "string"
+              },
+              "fingerprint": {
+                "type": "string"
+              },
+              "model": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "processing",
+                  "success",
+                  "refused",
+                  "failed",
+                  "timeout",
+                  "rate_limited",
+                  "quota_exceeded",
+                  "stale"
+                ]
+              },
+              "updatedAt": {
+                "type": "string"
+              },
+              "allowPreview": {
+                "type": "boolean"
+              },
+              "result": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 180
+                  },
+                  "summary": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1600
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 80
+                    },
+                    "minItems": 1,
+                    "maxItems": 8
+                  }
+                },
+                "required": [
+                  "title",
+                  "summary",
+                  "tags"
+                ],
+                "additionalProperties": false
+              },
+              "suppressedTags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "runId",
+              "fingerprint",
+              "model",
+              "status",
+              "updatedAt",
+              "allowPreview"
+            ]
+          },
           "archived": {
             "type": "boolean"
           },
@@ -1608,6 +1688,86 @@
                       "type": "string",
                       "nullable": true
                     },
+                    "mediaAi": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "runId": {
+                          "type": "string"
+                        },
+                        "fingerprint": {
+                          "type": "string"
+                        },
+                        "model": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "pending",
+                            "processing",
+                            "success",
+                            "refused",
+                            "failed",
+                            "timeout",
+                            "rate_limited",
+                            "quota_exceeded",
+                            "stale"
+                          ]
+                        },
+                        "updatedAt": {
+                          "type": "string"
+                        },
+                        "allowPreview": {
+                          "type": "boolean"
+                        },
+                        "result": {
+                          "type": "object",
+                          "properties": {
+                            "title": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 180
+                            },
+                            "summary": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 1600
+                            },
+                            "tags": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 80
+                              },
+                              "minItems": 1,
+                              "maxItems": 8
+                            }
+                          },
+                          "required": [
+                            "title",
+                            "summary",
+                            "tags"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "suppressedTags": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "required": [
+                        "runId",
+                        "fingerprint",
+                        "model",
+                        "status",
+                        "updatedAt",
+                        "allowPreview"
+                      ]
+                    },
                     "archived": {
                       "type": "boolean"
                     },
@@ -1866,6 +2026,86 @@
                       "type": "string",
                       "nullable": true
                     },
+                    "mediaAi": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "runId": {
+                          "type": "string"
+                        },
+                        "fingerprint": {
+                          "type": "string"
+                        },
+                        "model": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "pending",
+                            "processing",
+                            "success",
+                            "refused",
+                            "failed",
+                            "timeout",
+                            "rate_limited",
+                            "quota_exceeded",
+                            "stale"
+                          ]
+                        },
+                        "updatedAt": {
+                          "type": "string"
+                        },
+                        "allowPreview": {
+                          "type": "boolean"
+                        },
+                        "result": {
+                          "type": "object",
+                          "properties": {
+                            "title": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 180
+                            },
+                            "summary": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 1600
+                            },
+                            "tags": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 80
+                              },
+                              "minItems": 1,
+                              "maxItems": 8
+                            }
+                          },
+                          "required": [
+                            "title",
+                            "summary",
+                            "tags"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "suppressedTags": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "required": [
+                        "runId",
+                        "fingerprint",
+                        "model",
+                        "status",
+                        "updatedAt",
+                        "allowPreview"
+                      ]
+                    },
                     "archived": {
                       "type": "boolean"
                     },
@@ -1940,6 +2180,262 @@
                     "embeddingStatus",
                     "userId"
                   ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized — the Bearer token is missing, invalid, or expired.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "example": "Unauthorized"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Bookmark not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/bookmarks/{bookmarkId}/analyze-media": {
+      "post": {
+        "operationId": "analyzeBookmarkMedia",
+        "description": "Queue AI titles, tags and descriptions for saved media. Requires bookmark write permission and enabled media AI. Failed attempts require retry=true; unchanged successful inputs are not analyzed again. Preview-only analysis requires allowPreview=true.",
+        "summary": "Analyze saved bookmark media",
+        "tags": [
+          "Bookmarks"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/BookmarkId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "retry": {
+                    "type": "boolean"
+                  },
+                  "allowPreview": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Bookmark with current analysis state; results arrive asynchronously.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "firstCreatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "modifiedAt": {
+                      "type": "string",
+                      "nullable": true,
+                      "format": "date-time"
+                    },
+                    "title": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "mediaAi": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "runId": {
+                          "type": "string"
+                        },
+                        "fingerprint": {
+                          "type": "string"
+                        },
+                        "model": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "pending",
+                            "processing",
+                            "success",
+                            "refused",
+                            "failed",
+                            "timeout",
+                            "rate_limited",
+                            "quota_exceeded",
+                            "stale"
+                          ]
+                        },
+                        "updatedAt": {
+                          "type": "string"
+                        },
+                        "allowPreview": {
+                          "type": "boolean"
+                        },
+                        "result": {
+                          "type": "object",
+                          "properties": {
+                            "title": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 180
+                            },
+                            "summary": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 1600
+                            },
+                            "tags": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 80
+                              },
+                              "minItems": 1,
+                              "maxItems": 8
+                            }
+                          },
+                          "required": [
+                            "title",
+                            "summary",
+                            "tags"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "suppressedTags": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "required": [
+                        "runId",
+                        "fingerprint",
+                        "model",
+                        "status",
+                        "updatedAt",
+                        "allowPreview"
+                      ]
+                    },
+                    "archived": {
+                      "type": "boolean"
+                    },
+                    "favourited": {
+                      "type": "boolean"
+                    },
+                    "taggingStatus": {
+                      "type": "string",
+                      "nullable": true,
+                      "enum": [
+                        "success",
+                        "failure",
+                        "pending",
+                        null
+                      ]
+                    },
+                    "summarizationStatus": {
+                      "type": "string",
+                      "nullable": true,
+                      "enum": [
+                        "success",
+                        "failure",
+                        "pending",
+                        null
+                      ]
+                    },
+                    "embeddingStatus": {
+                      "type": "string",
+                      "nullable": true,
+                      "enum": [
+                        "success",
+                        "failure",
+                        "pending",
+                        null
+                      ]
+                    },
+                    "note": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "summary": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "source": {
+                      "type": "string",
+                      "nullable": true,
+                      "enum": [
+                        "api",
+                        "web",
+                        "cli",
+                        "mobile",
+                        "extension",
+                        "singlefile",
+                        "rss",
+                        "import",
+                        null
+                      ]
+                    },
+                    "userId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "createdAt",
+                    "modifiedAt",
+                    "archived",
+                    "favourited",
+                    "taggingStatus",
+                    "summarizationStatus",
+                    "embeddingStatus",
+                    "userId"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Media AI is disabled or there is no eligible saved media.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
