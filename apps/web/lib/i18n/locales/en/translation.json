@@ -1011,6 +1011,19 @@
       "photo_count_one": "{{count}} saved photo",
       "photo_count_other": "{{count}} saved photos",
       "note_placeholder": "Add a thought, a detail, a reminder…"
+    },
+    "media": {
+      "saved_photos": "Saved media",
+      "image_label": "{{title}} — item {{current}} of {{total}}",
+      "loading": "Loading media…",
+      "load_error": "This media could not be loaded. Try downloading the original.",
+      "enlarge": "Enlarge media",
+      "previous": "Previous item",
+      "next": "Next item",
+      "download": "Download original",
+      "choose_photo": "Choose media",
+      "go_to": "Show item {{current}}",
+      "photo_count": "{{count}} media items"
     }
   },
   "editor": {

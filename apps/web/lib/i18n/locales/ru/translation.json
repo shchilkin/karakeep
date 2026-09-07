@@ -1024,6 +1024,19 @@
       "photo_count_many": "{{count}} сохранённых фото",
       "photo_count_other": "{{count}} сохранённого фото",
       "note_placeholder": "Добавь мысль, деталь, напоминание…"
+    },
+    "media": {
+      "saved_photos": "Сохранённые медиа",
+      "image_label": "{{title}} — файл {{current}} из {{total}}",
+      "loading": "Загрузка медиа…",
+      "load_error": "Не удалось загрузить медиа. Попробуйте скачать оригинал.",
+      "enlarge": "Увеличить",
+      "previous": "Предыдущий файл",
+      "next": "Следующий файл",
+      "download": "Скачать оригинал",
+      "choose_photo": "Выбрать медиа",
+      "go_to": "Показать файл {{current}}",
+      "photo_count": "Медиафайлов: {{count}}"
     }
   },
   "toasts": {

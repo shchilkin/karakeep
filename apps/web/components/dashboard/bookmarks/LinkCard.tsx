@@ -3,10 +3,10 @@
 import Image from "next/image";
 import Link from "next/link";
 import type { BookmarksLayoutTypes } from "@/lib/userLocalSettings/types";
-import { getBookmarkImages } from "@/lib/bookmarkImages";
+import { getBookmarkMedia, getMediaCoverId } from "@/lib/bookmarkImages";
 import { useTranslation } from "@/lib/i18n/client";
 import { useUserSettings } from "@/lib/userSettings";
-import { Images } from "lucide-react";
+import { Images, Play } from "lucide-react";
 import { getAssetUrl } from "@karakeep/shared/utils/assetUtils";
 
 import type { ZBookmarkTypeLink } from "@karakeep/shared/types/bookmarks";
@@ -19,6 +19,7 @@ import {
 
 import { BookmarkLayoutAdaptingCard } from "./BookmarkLayoutAdaptingCard";
 import BookmarkCardImage from "./BookmarkCardImage";
+import BookmarkCardVideo from "./BookmarkCardVideo";
 import FooterLinkURL from "./FooterLinkURL";
 
 const useOnClickUrl = (bookmark: ZBookmarkTypeLink) => {
@@ -57,7 +58,7 @@ function LinkImage({
   const { onClickUrl, urlTarget } = useOnClickUrl(bookmark);
   const link = bookmark.content;
   const { t } = useTranslation();
-  const images = getBookmarkImages(bookmark);
+  const images = getBookmarkMedia(bookmark);
 
   const imgComponent = (url: string, unoptimized: boolean) => (
     <Image
@@ -70,7 +71,9 @@ function LinkImage({
   );
 
   const imageDetails = getBookmarkLinkImageUrl(link);
-  const cover = images[0] ? getAssetUrl(images[0].id) : imageDetails?.url;
+  const first = images[0];
+  const coverId = first && getMediaCoverId(first);
+  const cover = coverId ? getAssetUrl(coverId) : imageDetails?.url;
 
   if (cover && (layout === "masonry" || layout === "grid")) {
     return (
@@ -80,19 +83,43 @@ function LinkImage({
         rel="noreferrer"
         className="relative block"
       >
-        <BookmarkCardImage
-          key={cover}
-          src={cover}
-          alt={getBookmarkTitle(bookmark) ?? new URL(link.url).host}
-          naturalSize={layout === "masonry"}
-          className={className}
-        />
+        {first?.video ? (
+          <BookmarkCardVideo
+            key={first.id}
+            src={getAssetUrl(first.id)}
+            poster={cover}
+            alt={getBookmarkTitle(bookmark) ?? new URL(link.url).host}
+            naturalSize={layout === "masonry"}
+            className={className}
+          />
+        ) : (
+          <BookmarkCardImage
+            key={cover}
+            src={cover}
+            alt={getBookmarkTitle(bookmark) ?? new URL(link.url).host}
+            naturalSize={layout === "masonry"}
+            className={className}
+          />
+        )}
+        {first?.video && (
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute right-3 top-3 rounded-md bg-black/80 p-1.5 text-white"
+          >
+            <Play className="size-3.5" />
+          </span>
+        )}
         {images.length > 1 && (
           <span
             className="absolute bottom-3 left-3 flex items-center gap-1.5 rounded-md bg-black/80 px-2 py-1 text-xs tabular-nums text-white"
-            aria-label={t("preview.gallery.photo_count", {
-              count: images.length,
-            })}
+            aria-label={t(
+              images.some((image) => image.video)
+                ? "preview.media.photo_count"
+                : "preview.gallery.photo_count",
+              {
+                count: images.length,
+              },
+            )}
           >
             <Images className="size-3.5" aria-hidden="true" />
             {images.length}
@@ -103,8 +130,19 @@ function LinkImage({
   }
 
   let img: React.ReactNode;
-  if (images[0]) {
-    img = imgComponent(getAssetUrl(images[0].id), true);
+  if (first?.video && cover) {
+    img = (
+      <BookmarkCardVideo
+        key={first.id}
+        src={getAssetUrl(first.id)}
+        poster={cover}
+        alt={getBookmarkTitle(bookmark) ?? new URL(link.url).host}
+        naturalSize={false}
+        className={className}
+      />
+    );
+  } else if (coverId) {
+    img = imgComponent(getAssetUrl(coverId), true);
   } else if (isBookmarkStillCrawling(bookmark)) {
     img = imgComponent("/blur.avif", false);
   } else if (imageDetails) {
@@ -130,9 +168,14 @@ function LinkImage({
         {images.length > 1 && (
           <span
             className="absolute bottom-3 right-3 flex items-center gap-1.5 rounded-full bg-black/70 px-2.5 py-1 text-xs tabular-nums text-white"
-            aria-label={t("preview.gallery.photo_count", {
-              count: images.length,
-            })}
+            aria-label={t(
+              images.some((image) => image.video)
+                ? "preview.media.photo_count"
+                : "preview.gallery.photo_count",
+              {
+                count: images.length,
+              },
+            )}
           >
             <Images className="size-3.5" aria-hidden="true" />
             {images.length}
@@ -152,8 +195,9 @@ export default function LinkCard({
   className?: string;
   bookmarkIndex?: number;
 }) {
+  const first = getBookmarkMedia(bookmarkLink)[0];
   const hasCover = !!(
-    getBookmarkImages(bookmarkLink).length ||
+    (first && getMediaCoverId(first)) ||
     getBookmarkLinkImageUrl(bookmarkLink.content)
   );
   return (

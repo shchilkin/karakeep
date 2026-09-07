@@ -80,3 +80,34 @@ describe("saved bookmark images", () => {
     expect(getBookmarkImages(post)).toEqual([]);
   });
 });
+
+it("pairs video posters without counting them as carousel slides", async () => {
+  const { getBookmarkMedia, getMediaCoverId } =
+    await import("./bookmarkImages");
+  const post = bookmark([
+    {
+      id: "poster",
+      assetType: "userUploaded",
+      fileName: "instagram_post_001_aaaaaaaaaaaa.poster.jpg",
+    },
+    {
+      id: "photo",
+      assetType: "userUploaded",
+      fileName: "instagram_post_002_bbbbbbbbbbbb.jpg",
+    },
+    {
+      id: "video",
+      assetType: "userUploaded",
+      fileName: "instagram_post_001_aaaaaaaaaaaa.mp4",
+    },
+    {
+      id: "orphan",
+      assetType: "userUploaded",
+      fileName: "instagram_post_003_cccccccccccc.poster.jpg",
+    },
+  ]);
+  const media = getBookmarkMedia(post);
+  expect(media.map((item) => item.id)).toEqual(["video", "photo"]);
+  expect(getMediaCoverId(media[0])).toBe("poster");
+  expect(getBookmarkImages(post).map((item) => item.id)).toEqual(["photo"]);
+});

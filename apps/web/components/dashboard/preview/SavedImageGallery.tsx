@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import type { BookmarkImage } from "@/lib/bookmarkImages";
+import type { BookmarkMedia } from "@/lib/bookmarkImages";
+import { getMediaCoverId } from "@/lib/bookmarkImages";
 import { useTranslation } from "@/lib/i18n/client";
 import { cn } from "@/lib/utils";
 import {
@@ -13,12 +14,22 @@ import {
   Download,
   ImageOff,
   Maximize2,
+  Play,
 } from "lucide-react";
 
 import { getAssetUrl } from "@karakeep/shared/utils/assetUtils";
 
-function GalleryImage({ image, alt }: { image: BookmarkImage; alt: string }) {
+function GalleryImage({
+  image,
+  alt,
+  suspended = false,
+}: {
+  image: BookmarkMedia;
+  alt: string;
+  suspended?: boolean;
+}) {
   const { t } = useTranslation();
+  const labels = image.video ? "preview.media" : "preview.gallery";
   const [status, setStatus] = useState<"loading" | "ready" | "error">(
     "loading",
   );
@@ -27,20 +38,40 @@ function GalleryImage({ image, alt }: { image: BookmarkImage; alt: string }) {
     return (
       <span className="flex max-w-xs flex-col items-center gap-3 px-6 text-center text-sm text-muted-foreground">
         <ImageOff className="size-8" aria-hidden="true" />
-        {t("preview.gallery.load_error")}
+        {t(`${labels}.load_error`)}
       </span>
     );
   }
 
+  if (image.video && !suspended) {
+    return (
+      // eslint-disable-next-line jsx-a11y/media-has-caption -- Archived source videos do not supply caption tracks; retain native playback controls.
+      <video
+        key={image.id}
+        src={getAssetUrl(image.id)}
+        poster={
+          image.video.posterId ? getAssetUrl(image.video.posterId) : undefined
+        }
+        controls
+        playsInline
+        preload="none"
+        aria-label={alt}
+        onError={() => setStatus("error")}
+        className="relative z-10 max-h-full max-w-full rounded-xl bg-black object-contain"
+      />
+    );
+  }
+  const coverId = getMediaCoverId(image);
+  if (!coverId) return <Play className="size-10" aria-label={alt} />;
   return (
     <>
       {status === "loading" && (
         <span role="status" className="absolute text-sm text-muted-foreground">
-          {t("preview.gallery.loading")}
+          {t(`${labels}.loading`)}
         </span>
       )}
       <Image
-        src={getAssetUrl(image.id)}
+        src={getAssetUrl(coverId)}
         alt={alt}
         width={0}
         height={0}
@@ -62,10 +93,13 @@ export default function SavedImageGallery({
   images,
   title,
 }: {
-  images: BookmarkImage[];
+  images: BookmarkMedia[];
   title: string;
 }) {
   const { t } = useTranslation();
+  const labels = images.some((image) => image.video)
+    ? "preview.media"
+    : "preview.gallery";
   const [selectedId, setSelectedId] = useState(images[0]?.id);
   const [expanded, setExpanded] = useState(false);
   const touchStart = useRef<{ x: number; y: number } | null>(null);
@@ -98,7 +132,7 @@ export default function SavedImageGallery({
   };
   const previous = images[activeIndex - 1];
   const next = images[activeIndex + 1];
-  const imageLabel = t("preview.gallery.image_label", {
+  const imageLabel = t(`${labels}.image_label`, {
     title,
     current: activeIndex + 1,
     total: images.length,
@@ -106,11 +140,17 @@ export default function SavedImageGallery({
 
   const carousel = (fullscreen: boolean) => (
     <section
-      aria-label={t("preview.gallery.saved_photos")}
+      aria-label={t(`${labels}.saved_photos`)}
       aria-roledescription="carousel"
       className="flex h-full min-h-0 w-full flex-col rounded-xl"
       onKeyDown={(event) => {
-        if (event.altKey || event.ctrlKey || event.metaKey) return;
+        if (
+          event.target instanceof HTMLVideoElement ||
+          event.altKey ||
+          event.ctrlKey ||
+          event.metaKey
+        )
+          return;
         const index = {
           ArrowLeft: activeIndex - 1,
           ArrowRight: activeIndex + 1,
@@ -126,6 +166,7 @@ export default function SavedImageGallery({
       <div
         className="relative flex min-h-0 flex-1 touch-pan-y items-center justify-center overflow-hidden px-5 py-4 sm:px-12 sm:py-8"
         onTouchStart={(event) => {
+          if (event.target instanceof HTMLVideoElement) return;
           const touch = event.touches[0];
           touchStart.current =
             event.touches.length === 1 && touch
@@ -151,10 +192,11 @@ export default function SavedImageGallery({
         {!fullscreen &&
           [previous, next].map(
             (image, index) =>
-              image && (
+              image &&
+              getMediaCoverId(image) && (
                 <Image
                   key={image.id}
-                  src={getAssetUrl(image.id)}
+                  src={getAssetUrl(getMediaCoverId(image)!)}
                   alt=""
                   aria-hidden="true"
                   width={0}
@@ -168,14 +210,19 @@ export default function SavedImageGallery({
                 />
               ),
           )}
-        {fullscreen ? (
+        {fullscreen || active.video ? (
           <div className="relative flex h-full min-h-0 w-full items-center justify-center">
-            <GalleryImage key={active.id} image={active} alt={imageLabel} />
+            <GalleryImage
+              key={active.id}
+              image={active}
+              alt={imageLabel}
+              suspended={expanded && !fullscreen}
+            />
           </div>
         ) : (
           <button
             type="button"
-            aria-label={t("preview.gallery.enlarge")}
+            aria-label={t(`${labels}.enlarge`)}
             className="relative z-10 flex h-full min-h-0 w-full cursor-zoom-in items-center justify-center rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring sm:max-w-[78%]"
             onClick={(event) => {
               if (Date.now() - lastSwipe.current > 400) {
@@ -184,7 +231,12 @@ export default function SavedImageGallery({
               }
             }}
           >
-            <GalleryImage key={active.id} image={active} alt={imageLabel} />
+            <GalleryImage
+              key={active.id}
+              image={active}
+              alt={imageLabel}
+              suspended={expanded && !fullscreen}
+            />
           </button>
         )}
       </div>
@@ -196,7 +248,7 @@ export default function SavedImageGallery({
               variant="ghost"
               size="icon"
               className="rounded-full"
-              aria-label={t("preview.gallery.previous")}
+              aria-label={t(`${labels}.previous`)}
               disabled={!previous}
               onClick={() => select(activeIndex - 1)}
             >
@@ -215,7 +267,7 @@ export default function SavedImageGallery({
               variant="ghost"
               size="icon"
               className="rounded-full"
-              aria-label={t("preview.gallery.next")}
+              aria-label={t(`${labels}.next`)}
               disabled={!next}
               onClick={() => select(activeIndex + 1)}
             >
@@ -227,7 +279,7 @@ export default function SavedImageGallery({
               variant="ghost"
               size="icon"
               className="rounded-full"
-              aria-label={t("preview.gallery.enlarge")}
+              aria-label={t(`${labels}.enlarge`)}
               onClick={(event) => {
                 enlargeTrigger.current = event.currentTarget;
                 setExpanded(true);
@@ -239,7 +291,7 @@ export default function SavedImageGallery({
           <a
             href={getAssetUrl(active.id)}
             download={active.fileName ?? true}
-            aria-label={t("preview.gallery.download")}
+            aria-label={t(`${labels}.download`)}
             className={cn(
               buttonVariants({ variant: "ghost", size: "icon" }),
               "rounded-full",
@@ -251,7 +303,7 @@ export default function SavedImageGallery({
         {images.length > 1 && (
           <div
             ref={fullscreen === expanded ? thumbnailStrip : undefined}
-            aria-label={t("preview.gallery.choose_photo")}
+            aria-label={t(`${labels}.choose_photo`)}
             className="flex max-w-full gap-2 overflow-x-auto px-1 py-1"
           >
             {images.map((image, index) => (
@@ -263,7 +315,7 @@ export default function SavedImageGallery({
                     : undefined
                 }
                 type="button"
-                aria-label={t("preview.gallery.go_to", { current: index + 1 })}
+                aria-label={t(`${labels}.go_to`, { current: index + 1 })}
                 aria-pressed={image.id === active.id}
                 onClick={() => select(index)}
                 className={cn(
@@ -273,15 +325,23 @@ export default function SavedImageGallery({
                     : "opacity-50 hover:opacity-100",
                 )}
               >
-                <Image
-                  src={getAssetUrl(image.id)}
-                  alt=""
-                  fill
-                  unoptimized
-                  sizes="48px"
-                  loading="lazy"
-                  className="object-cover"
-                />
+                {getMediaCoverId(image) && (
+                  <Image
+                    src={getAssetUrl(getMediaCoverId(image)!)}
+                    alt=""
+                    fill
+                    unoptimized
+                    sizes="48px"
+                    loading="lazy"
+                    className="object-cover"
+                  />
+                )}
+                {image.video && (
+                  <Play
+                    className="absolute bottom-1 right-1 size-3.5 fill-white text-white"
+                    aria-hidden="true"
+                  />
+                )}
               </button>
             ))}
           </div>
