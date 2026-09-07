@@ -53,8 +53,9 @@ export async function prepareCatalogImages(
         `${index}${path.extname(item.fileName)}`,
       );
       await writeFile(file, asset, { mode: 0o600 });
+      const isVideo = /\.mp4$/i.test(file);
       let timestamps = [0];
-      if (/\.mp4$/i.test(file) && chosen.length === 1) {
+      if (isVideo && chosen.length === 1) {
         const probe = await execa(
           "ffprobe",
           [
@@ -85,8 +86,8 @@ export async function prepareCatalogImages(
             "1",
             "-protocol_whitelist",
             "file,pipe",
-            "-ss",
-            String(timestamp),
+            // Seeking can discard the only frame of a large still image.
+            ...(isVideo ? ["-ss", String(timestamp)] : []),
             "-i",
             file,
             "-frames:v",
