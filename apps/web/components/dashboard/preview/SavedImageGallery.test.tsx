@@ -159,3 +159,33 @@ describe("saved photo carousel", () => {
     await waitFor(() => expect(document.activeElement).toBe(trigger));
   });
 });
+
+it("opens a local video with controls and navigates to the next photo", () => {
+  const { container } = render(
+    <SavedImageGallery
+      title="Mixed post"
+      images={[
+        {
+          id: "video",
+          assetType: "userUploaded",
+          fileName: "clip.mp4",
+          video: { posterId: "poster" },
+        },
+        images[0],
+      ]}
+    />,
+  );
+  const video = screen.getByLabelText("Mixed post — item 1 of 2");
+  expect(video.getAttribute("src")).toBe("/api/assets/video");
+  expect(video.getAttribute("poster")).toBe("/api/assets/poster");
+  expect(video.hasAttribute("controls")).toBe(true);
+  expect(video.hasAttribute("autoplay")).toBe(false);
+  expect(video.closest("button")).toBeNull();
+  fireEvent.keyDown(video, { key: "ArrowRight" });
+  expect(container.querySelector("video")).toBe(video);
+  fireEvent.click(screen.getByRole("button", { name: "Next item" }));
+  expect(container.querySelector("video")).toBeNull();
+  expect(
+    screen.getByAltText("Mixed post — item 2 of 2").getAttribute("src"),
+  ).toBe("/api/assets/photo-1");
+});

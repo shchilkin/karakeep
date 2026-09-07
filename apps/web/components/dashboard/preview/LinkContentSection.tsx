@@ -16,7 +16,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useSession } from "@/lib/auth/client";
-import { getBookmarkImages } from "@/lib/bookmarkImages";
+import { getBookmarkMedia } from "@/lib/bookmarkImages";
 import { Trans, useTranslation } from "@/lib/i18n/client";
 import { useReaderSettings } from "@/lib/readerSettings";
 import { cn } from "@/lib/utils";
@@ -130,7 +130,7 @@ export default function LinkContentSection({
   const { t } = useTranslation();
   const { settings } = useReaderSettings();
   const availableRenderers = contentRendererRegistry.getRenderers(bookmark);
-  const images = getBookmarkImages(bookmark);
+  const images = getBookmarkMedia(bookmark);
   let defaultSection =
     images.length > 0 ? "photos" : (availableRenderers[0]?.id ?? "cached");
   if (
@@ -235,7 +235,11 @@ export default function LinkContentSection({
                 <SelectItem value="photos">
                   <div className="flex items-center">
                     <Images className="mr-2 size-4" />
-                    {t("preview.gallery.saved_photos")}
+                    {t(
+                      images.some((image) => image.video)
+                        ? "preview.media.saved_photos"
+                        : "preview.gallery.saved_photos",
+                    )}
                   </div>
                 </SelectItem>
               )}

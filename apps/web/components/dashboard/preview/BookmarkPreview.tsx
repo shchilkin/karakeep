@@ -13,7 +13,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useSession } from "@/lib/auth/client";
-import { getBookmarkImages } from "@/lib/bookmarkImages";
+import { getBookmarkMedia } from "@/lib/bookmarkImages";
 import useRelativeTime from "@/lib/hooks/relative-time";
 import { useTranslation } from "@/lib/i18n/client";
 import { useQuery } from "@tanstack/react-query";
@@ -168,7 +168,7 @@ export default function BookmarkPreview({
 
   if (
     bookmark.content.type === BookmarkTypes.LINK &&
-    getBookmarkImages(bookmark).length > 0
+    getBookmarkMedia(bookmark).length > 0
   ) {
     return (
       <MediaBookmarkPreview
