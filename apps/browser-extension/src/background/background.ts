@@ -171,6 +171,7 @@ function addLinkToKarakeep({
         url: finalUrl,
         source: "extension",
         title,
+        titleSource: "captured",
       };
     } else {
       console.warn("Invalid URL, bookmark not created:", finalUrl);

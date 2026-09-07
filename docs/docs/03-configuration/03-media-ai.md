@@ -67,7 +67,12 @@ See [xAI structured outputs](https://docs.x.ai/developers/model-capabilities/tex
 ## Stored results and failures
 
 AI metadata is stored separately in `bookmarks.mediaAi`. Manual titles take
-priority over the AI title; original source metadata is preserved. The AI summary
+priority over the AI title; captured page titles fall below it. Existing titles
+with unknown provenance keep their priority until the owner selects **Use AI
+title** in the editor. That action reuses the saved result without another model
+request. Update the saving extension to distinguish captured titles from edits
+on new bookmarks. See [bookmark title provenance](./04-bookmark-titles.md)
+for API behavior and the read-only legacy review tool. The AI summary
 is displayed only when there is no separately saved summary. Human tags are never
 replaced, and a tag removed during inference or removed from an earlier AI result
 is not reattached on a later analysis. New tags are marked `attachedBy: ai`.

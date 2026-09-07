@@ -48,7 +48,10 @@ import {
 } from "@karakeep/shared-react/hooks/bookmarks";
 import { useWhoAmI } from "@karakeep/shared-react/hooks/users";
 import { BookmarkTypes, ZBookmark } from "@karakeep/shared/types/bookmarks";
-import { isBookmarkStillTagging } from "@karakeep/shared/utils/bookmarkUtils";
+import {
+  getBookmarkTitle,
+  isBookmarkStillTagging,
+} from "@karakeep/shared/utils/bookmarkUtils";
 
 // --- Section Components ---
 
@@ -514,18 +517,7 @@ const ViewBookmarkPage = () => {
     );
   };
 
-  let title: string | null = null;
-  switch (bookmark.content.type) {
-    case BookmarkTypes.LINK:
-      title = bookmark.title ?? bookmark.content.title ?? null;
-      break;
-    case BookmarkTypes.TEXT:
-      title = bookmark.title ?? null;
-      break;
-    case BookmarkTypes.ASSET:
-      title = bookmark.title ?? bookmark.content.fileName ?? null;
-      break;
-  }
+  const title = getBookmarkTitle(bookmark);
 
   return (
     <KeyboardGestureArea interpolator="ios">

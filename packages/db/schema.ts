@@ -223,6 +223,11 @@ export const bookmarks = sqliteTable(
     createdAt: createdAtField("lastSavedAt"),
     modifiedAt: modifiedAtField(),
     title: text("title"),
+    titleSource: text("titleSource", {
+      enum: ["manual", "captured", "unknown"],
+    })
+      .notNull()
+      .default("unknown"),
     mediaAi: text("mediaAi", { mode: "json" }).$type<MediaCatalogState>(),
     archived: integer("archived", { mode: "boolean" }).notNull().default(false),
     favourited: integer("favourited", { mode: "boolean" })

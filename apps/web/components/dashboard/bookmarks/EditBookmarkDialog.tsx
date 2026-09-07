@@ -141,7 +141,13 @@ export function EditBookmarkDialog({
     // Ensure optional fields that are empty strings are sent as null/undefined if appropriate
     const payload = {
       ...values,
-      title: values.title ?? null,
+      // Editing another field must not pin the displayed AI/source title.
+      title: form.formState.dirtyFields.title
+        ? (values.title ?? null)
+        : undefined,
+      titleSource: form.formState.dirtyFields.title
+        ? ("manual" as const)
+        : undefined,
     };
     updateBookmarkMutate(payload);
   }
@@ -188,6 +194,26 @@ export function EditBookmarkDialog({
                 </FormItem>
               )}
             />
+
+            {bookmark.mediaAi?.result?.title &&
+              bookmark.title &&
+              bookmark.titleSource !== "captured" && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-auto max-w-full whitespace-normal text-left"
+                  disabled={isUpdatingBookmark || form.formState.isDirty}
+                  onClick={() =>
+                    updateBookmarkMutate({
+                      bookmarkId: bookmark.id,
+                      titleSource: "captured",
+                    })
+                  }
+                >
+                  {t("bookmark_editor.use_ai_title")}:{" "}
+                  {bookmark.mediaAi.result.title}
+                </Button>
+              )}
 
             {isLink && (
               <FormField

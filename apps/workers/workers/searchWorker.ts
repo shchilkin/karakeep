@@ -1,3 +1,4 @@
+import { getBookmarkTitleOverride } from "@karakeep/shared/utils/bookmarkUtils";
 import { eq } from "drizzle-orm";
 import { workerStatsCounter } from "metrics";
 import { withWorkerEventLog, withWorkerTracing } from "workerTracing";
@@ -113,7 +114,7 @@ async function runIndex(
     ...(bookmark.text ? { content: bookmark.text.text } : {}),
     note: bookmark.note,
     summary: bookmark.summary ?? bookmark.mediaAi?.result?.summary,
-    title: bookmark.title || bookmark.mediaAi?.result?.title,
+    title: getBookmarkTitleOverride(bookmark),
     createdAt: bookmark.createdAt.toISOString(),
     tags: bookmark.tagsOnBookmarks.map((t) => t.tag.name),
   };

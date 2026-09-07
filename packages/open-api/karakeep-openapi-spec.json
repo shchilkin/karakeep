@@ -141,6 +141,14 @@
             "type": "string",
             "nullable": true
           },
+          "titleSource": {
+            "type": "string",
+            "enum": [
+              "manual",
+              "captured",
+              "unknown"
+            ]
+          },
           "mediaAi": {
             "type": "object",
             "nullable": true,
@@ -1130,6 +1138,14 @@
                         "nullable": true,
                         "maxLength": 1000
                       },
+                      "titleSource": {
+                        "type": "string",
+                        "enum": [
+                          "manual",
+                          "captured",
+                          "unknown"
+                        ]
+                      },
                       "archived": {
                         "type": "boolean"
                       },
@@ -1621,6 +1637,14 @@
                     "nullable": true,
                     "maxLength": 1000
                   },
+                  "titleSource": {
+                    "type": "string",
+                    "enum": [
+                      "manual",
+                      "captured",
+                      "unknown"
+                    ]
+                  },
                   "createdAt": {
                     "type": "string",
                     "format": "date-time"
@@ -1691,6 +1715,14 @@
                     "title": {
                       "type": "string",
                       "nullable": true
+                    },
+                    "titleSource": {
+                      "type": "string",
+                      "enum": [
+                        "manual",
+                        "captured",
+                        "unknown"
+                      ]
                     },
                     "mediaAi": {
                       "type": "object",
@@ -2034,6 +2066,14 @@
                       "type": "string",
                       "nullable": true
                     },
+                    "titleSource": {
+                      "type": "string",
+                      "enum": [
+                        "manual",
+                        "captured",
+                        "unknown"
+                      ]
+                    },
                     "mediaAi": {
                       "type": "object",
                       "nullable": true,
@@ -2283,6 +2323,14 @@
                     "title": {
                       "type": "string",
                       "nullable": true
+                    },
+                    "titleSource": {
+                      "type": "string",
+                      "enum": [
+                        "manual",
+                        "captured",
+                        "unknown"
+                      ]
                     },
                     "mediaAi": {
                       "type": "object",
