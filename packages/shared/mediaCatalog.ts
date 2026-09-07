@@ -74,14 +74,53 @@ export function catalogInput(
     )
     .sort((a, b) => (a.fileName ?? a.id).localeCompare(b.fileName ?? b.id));
   const c = bookmark.content;
+  // An archived text-only X post has an explicit source-text attachment. Ordinary
+  // link previews and arbitrary uploaded text files do not opt into cloud analysis.
+  let archivedText = false;
+  if (
+    !originals.length &&
+    c.type === "link" &&
+    catalogSourceText(c.description, 2500)
+  ) {
+    try {
+      const url = new URL(c.url);
+      const match = url.pathname.match(
+        /^\/(?:[A-Za-z0-9_]{1,15}|i\/web)\/status\/([1-9][0-9]{0,24})(?:\/(?:photo|video)\/[1-4])?\/?$/,
+      );
+      archivedText =
+        url.protocol === "https:" &&
+        !url.username &&
+        !url.password &&
+        (!url.port || url.port === "443") &&
+        [
+          "x.com",
+          "www.x.com",
+          "twitter.com",
+          "www.twitter.com",
+          "mobile.twitter.com",
+        ].includes(url.hostname) &&
+        !!match &&
+        bookmark.assets.some(
+          (a) =>
+            a.assetType === "userUploaded" &&
+            new RegExp(`^x_${match[1]}_999_[0-9a-f]{12}\\.txt$`).test(
+              a.fileName ?? "",
+            ),
+        );
+    } catch {
+      /* Invalid source URLs are not eligible. */
+    }
+  }
   const assets = originals.length
     ? originals
-    : c.type === "asset" && c.assetType === "image"
-      ? [{ id: c.assetId, fileName: c.fileName ?? "image.jpg" }]
-      : c.type === "link" && allowPreview && c.imageAssetId
-        ? [{ id: c.imageAssetId, fileName: "preview.jpg" }]
-        : [];
-  if (!assets.length) return null;
+    : archivedText
+      ? []
+      : c.type === "asset" && c.assetType === "image"
+        ? [{ id: c.assetId, fileName: c.fileName ?? "image.jpg" }]
+        : c.type === "link" && allowPreview && c.imageAssetId
+          ? [{ id: c.imageAssetId, fileName: "preview.jpg" }]
+          : [];
+  if (!assets.length && !archivedText) return null;
   const videos = assets.filter((a) =>
     a.fileName?.toLowerCase().endsWith(".mp4"),
   ).length;
@@ -91,19 +130,22 @@ export function catalogInput(
       fileName: a.fileName ?? "image.jpg",
     })),
     media: {
-      kind:
-        videos === assets.length
+      kind: archivedText
+        ? "text"
+        : videos === assets.length
           ? "video"
           : videos
             ? "mixed"
             : assets.length > 1
               ? "carousel"
               : "image",
-      coverage: originals.length
-        ? "archived_media"
-        : c.type === "asset"
-          ? "saved_image"
-          : "preview_only",
+      coverage: archivedText
+        ? "archived_text"
+        : originals.length
+          ? "archived_media"
+          : c.type === "asset"
+            ? "saved_image"
+            : "preview_only",
       asset_count: assets.length,
     },
     source: {
