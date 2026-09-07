@@ -55,6 +55,7 @@ interface Props {
   fitHeight?: boolean;
   wrapTags: boolean;
   bookmarkIndex?: number;
+  imageFirst?: boolean;
 }
 
 function BottomRow({
@@ -242,7 +243,7 @@ function HoverActionBar({
         inline ? "shrink-0" : "absolute right-2 top-2",
         isBulkEditEnabled
           ? "pointer-events-auto flex opacity-100"
-          : "pointer-events-none hidden opacity-0 group-hover:opacity-100 [@media(pointer:fine)]:pointer-events-auto [@media(pointer:fine)]:flex",
+          : "pointer-events-none hidden opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 [@media(pointer:fine)]:pointer-events-auto [@media(pointer:fine)]:flex",
       )}
     >
       <button
@@ -362,6 +363,55 @@ function ListView({
         </div>
         <BottomRow footer={footer} bookmark={bookmark} />
       </div>
+    </div>
+  );
+}
+
+function ImageView({
+  bookmark,
+  image,
+  title,
+  className,
+  layout,
+  bookmarkIndex,
+}: Props & { layout: BookmarksLayoutTypes }) {
+  const { showTitle, showNotes, imageFit } = useBookmarkDisplaySettings();
+  const note = showNotes ? bookmark.note?.trim() : undefined;
+
+  return (
+    <div
+      className={cn(
+        "group relative rounded-xl",
+        className,
+        "border-0 bg-transparent hover:shadow-none",
+      )}
+      data-bookmark-index={bookmarkIndex}
+    >
+      <div className="relative overflow-hidden rounded-xl bg-muted [&_a:focus-visible]:outline [&_a:focus-visible]:outline-2 [&_a:focus-visible]:-outline-offset-4 [&_a:focus-visible]:outline-ring">
+        {image(
+          layout,
+          imageFit === "contain" ? "object-contain" : "object-cover",
+        )}
+        <BulkEditSelectionOverlay bookmark={bookmark} />
+        <OwnerIndicator bookmark={bookmark} />
+        <DragHandle bookmark={bookmark} className="left-2 top-2" />
+        <HoverActionBar bookmark={bookmark} />
+        <div className="absolute bottom-2 right-2 z-[60] rounded-lg bg-background text-foreground transition-opacity duration-150 focus-within:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100 motion-reduce:transition-none [&:has([data-state=open])]:opacity-100 sm:[@media(hover:hover)_and_(pointer:fine)]:pointer-events-none sm:[@media(hover:hover)_and_(pointer:fine)]:opacity-0">
+          <BookmarkActionBar bookmark={bookmark} />
+        </div>
+      </div>
+      {showTitle && title && (
+        <div className="px-1 pb-1 pt-2.5 text-center text-sm leading-5 text-muted-foreground">
+          <div className="line-clamp-2 break-words [overflow-wrap:anywhere] [&_a:focus-visible]:outline [&_a:focus-visible]:outline-2 [&_a:focus-visible]:outline-ring [&_a:hover]:text-foreground">
+            {title}
+          </div>
+        </div>
+      )}
+      {note && (
+        <div className="px-1 pt-1">
+          <NotePreview note={note} bookmarkId={bookmark.id} />
+        </div>
+      )}
     </div>
   );
 }
@@ -504,6 +554,10 @@ function CompactView({
 
 export function BookmarkLayoutAdaptingCard(props: Props) {
   const layout = useBookmarkLayout();
+
+  if (props.imageFirst && (layout === "masonry" || layout === "grid")) {
+    return <ImageView layout={layout} {...props} />;
+  }
 
   return bookmarkLayoutSwitch(layout, {
     masonry: <GridView layout={layout} {...props} />,

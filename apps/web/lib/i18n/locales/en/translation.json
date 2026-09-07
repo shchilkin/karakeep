@@ -64,6 +64,7 @@
     "image_fit_contain": "Contain (Fit)"
   },
   "actions": {
+    "open_preview": "Open bookmark preview",
     "change_layout": "Change Layout",
     "archive": "Archive",
     "unarchive": "Un-archive",
