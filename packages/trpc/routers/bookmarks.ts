@@ -1,3 +1,4 @@
+import { requestMediaCatalog } from "../models/mediaCatalog";
 import { experimental_trpcMiddleware, TRPCError } from "@trpc/server";
 import { and, eq, gt, inArray, like, lt, or } from "drizzle-orm";
 import { z } from "zod";
@@ -543,6 +544,16 @@ export const bookmarksAppRouter = router({
         }
       }
 
+      if (
+        bookmark.content.type === BookmarkTypes.ASSET &&
+        bookmark.content.assetType === "image" &&
+        input.source !== "import"
+      ) {
+        await requestMediaCatalog(ctx.db, ctx.user.id, bookmark.id, {
+          automatic: true,
+        }).catch(() => undefined);
+      }
+
       await Promise.all([
         RuleEngine.triggerOnEvent(
           bookmark.userId,
@@ -564,6 +575,27 @@ export const bookmarksAppRouter = router({
         ),
       ]);
       return bookmark;
+    }),
+
+  analyzeMedia: bookmarksProcedure
+    .input(
+      z.object({
+        bookmarkId: z.string(),
+        retry: z.boolean().optional(),
+        allowPreview: z.boolean().optional(),
+      }),
+    )
+    .use(ensureBookmarkOwnership)
+    .mutation(async ({ input, ctx }) => {
+      if (!serverConfig.mediaAi.enabled)
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Media AI is disabled",
+        });
+      await requestMediaCatalog(ctx.db, ctx.user.id, input.bookmarkId, input);
+      return (
+        await Bookmark.fromId(ctx, input.bookmarkId, false)
+      ).asZBookmark();
     }),
 
   updateBookmark: bookmarksProcedure
@@ -1401,6 +1433,12 @@ export const bookmarksAppRouter = router({
           numChanges,
         };
       });
+
+      if (attachTagsWithNames.some((t) => t.name === "social-media-archived")) {
+        await requestMediaCatalog(ctx.db, ctx.user.id, input.bookmarkId, {
+          automatic: true,
+        }).catch(() => undefined);
+      }
 
       if (res.numChanges > 0) {
         await Promise.allSettled([

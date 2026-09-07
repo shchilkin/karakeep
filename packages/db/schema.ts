@@ -13,6 +13,8 @@ import {
   unique,
 } from "drizzle-orm/sqlite-core";
 
+import type { MediaCatalogState } from "@karakeep/shared/mediaCatalog";
+
 import type { ZApiKeyScope } from "@karakeep/shared/types/apiKeys";
 import { API_KEY_FULL_ACCESS_SCOPE } from "@karakeep/shared/types/apiKeys";
 import { BookmarkTypes } from "@karakeep/shared/types/bookmarks";
@@ -221,6 +223,7 @@ export const bookmarks = sqliteTable(
     createdAt: createdAtField("lastSavedAt"),
     modifiedAt: modifiedAtField(),
     title: text("title"),
+    mediaAi: text("mediaAi", { mode: "json" }).$type<MediaCatalogState>(),
     archived: integer("archived", { mode: "boolean" }).notNull().default(false),
     favourited: integer("favourited", { mode: "boolean" })
       .notNull()
@@ -1334,4 +1337,16 @@ export const userReadingProgressRelations = relations(
       references: [users.id],
     }),
   }),
+);
+
+// A durable request reservation; deleting a bookmark does not refund the daily quota.
+export const mediaAiRequests = sqliteTable(
+  "mediaAiRequests",
+  {
+    id: text("id").primaryKey(),
+    bookmarkId: text("bookmarkId").notNull(),
+    userId: text("userId").notNull(),
+    day: text("day").notNull(),
+  },
+  (t) => [index("mediaAiRequests_day_idx").on(t.day)],
 );

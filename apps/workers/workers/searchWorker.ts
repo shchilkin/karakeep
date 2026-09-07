@@ -112,8 +112,8 @@ async function runIndex(
       : {}),
     ...(bookmark.text ? { content: bookmark.text.text } : {}),
     note: bookmark.note,
-    summary: bookmark.summary,
-    title: bookmark.title,
+    summary: bookmark.summary ?? bookmark.mediaAi?.result?.summary,
+    title: bookmark.title || bookmark.mediaAi?.result?.title,
     createdAt: bookmark.createdAt.toISOString(),
     tags: bookmark.tagsOnBookmarks.map((t) => t.tag.name),
   };

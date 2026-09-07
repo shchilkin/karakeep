@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
 
 import { getInMemoryDB } from "@karakeep/db/drizzle";
 import {
@@ -200,6 +201,43 @@ beforeEach(async () => {
 });
 
 describe("getBookmarkIdsFromMatcher", () => {
+  it("includes generated media titles in both positive and inverse searches", async () => {
+    await mockCtx.db
+      .update(bookmarks)
+      .set({
+        mediaAi: {
+          runId: "test-run",
+          fingerprint: "test-input",
+          model: "test-model",
+          status: "success",
+          updatedAt: new Date().toISOString(),
+          allowPreview: false,
+          result: {
+            title: "Watercolor landscape",
+            summary: "A landscape.",
+            tags: ["watercolor"],
+          },
+        },
+      })
+      .where(eq(bookmarks.id, "b1"));
+    expect(
+      await getBookmarkIdsFromMatcher(mockCtx, {
+        type: "title",
+        title: "Watercolor",
+        inverse: false,
+      }),
+    ).toEqual(["b1"]);
+    expect(
+      (
+        await getBookmarkIdsFromMatcher(mockCtx, {
+          type: "title",
+          title: "Watercolor",
+          inverse: true,
+        })
+      ).sort(),
+    ).toEqual(["b2", "b3", "b4", "b5", "b6"]);
+  });
+
   it("should handle tagName matcher", async () => {
     const matcher: Matcher = {
       type: "tagName",

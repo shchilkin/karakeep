@@ -1,4 +1,19 @@
 {
+  "media_ai": {
+    "details": "AI details",
+    "processing": "Analyzing saved media…",
+    "interrupted": "Analysis was interrupted. You can retry manually.",
+    "refused": "The model declined this analysis. Your saved media remains available.",
+    "quota": "Daily analysis limit reached. You can retry tomorrow.",
+    "timeout": "Analysis timed out. You can retry manually.",
+    "rate_limited": "The AI provider is temporarily limiting requests. Try again later.",
+    "stale": "The saved media changed during analysis. Analyze it again to update the details.",
+    "cancelled": "Automatic analysis was disabled. You can still analyze this item manually.",
+    "failed": "Analysis could not be completed. Your saved media remains available.",
+    "retry": "Retry analysis",
+    "analyze": "Analyze saved media with AI",
+    "analyze_preview": "Analyze saved preview with AI"
+  },
   "common": {
     "default": "Default",
     "id": "ID",

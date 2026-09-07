@@ -1,3 +1,4 @@
+import { catalogBusy } from "../mediaCatalog";
 import { BookmarkTypes, ZBookmark, ZBookmarkedLink } from "../types/bookmarks";
 import { getAssetUrl } from "./assetUtils";
 
@@ -56,6 +57,7 @@ export function isBookmarkStillLoading(bookmark: ZBookmark) {
 export function getBookmarkRefreshInterval(
   bookmark: ZBookmark,
 ): number | false {
+  if (catalogBusy(bookmark.mediaAi)) return 2000;
   if (!isBookmarkStillLoading(bookmark)) {
     return false;
   }
@@ -109,5 +111,5 @@ export function getBookmarkTitle(bookmark: ZBookmark) {
       break;
   }
 
-  return bookmark.title ? bookmark.title : title;
+  return bookmark.title || bookmark.mediaAi?.result?.title || title;
 }
