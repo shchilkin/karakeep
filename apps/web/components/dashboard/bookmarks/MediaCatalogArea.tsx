@@ -10,9 +10,11 @@ import type { ZBookmark } from "@karakeep/shared/types/bookmarks";
 export default function MediaCatalogArea({
   bookmark,
   readOnly,
+  includeManualSummary = true,
 }: {
   bookmark: ZBookmark;
   readOnly: boolean;
+  includeManualSummary?: boolean;
 }) {
   const { t } = useTranslation();
   const api = useTRPC();
@@ -32,7 +34,8 @@ export default function MediaCatalogArea({
     !!state &&
     ["pending", "processing"].includes(state.status) &&
     !catalogBusy(state);
-  const summary = bookmark.summary ?? state?.result?.summary;
+  const summary =
+    (includeManualSummary ? bookmark.summary : null) ?? state?.result?.summary;
   const canGenerate =
     config.mediaAi?.enabled &&
     !readOnly &&
@@ -45,6 +48,7 @@ export default function MediaCatalogArea({
     rate_limited: t("media_ai.rate_limited"),
     stale: t("media_ai.stale"),
     failed: t("media_ai.failed"),
+    cancelled: t("media_ai.cancelled"),
   };
   const statusMessage = generate.isError
     ? failureMessages.failed

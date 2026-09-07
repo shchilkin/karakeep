@@ -165,13 +165,17 @@
                   "timeout",
                   "rate_limited",
                   "quota_exceeded",
-                  "stale"
+                  "stale",
+                  "cancelled"
                 ]
               },
               "updatedAt": {
                 "type": "string"
               },
               "allowPreview": {
+                "type": "boolean"
+              },
+              "automatic": {
                 "type": "boolean"
               },
               "result": {
@@ -1712,13 +1716,17 @@
                             "timeout",
                             "rate_limited",
                             "quota_exceeded",
-                            "stale"
+                            "stale",
+                            "cancelled"
                           ]
                         },
                         "updatedAt": {
                           "type": "string"
                         },
                         "allowPreview": {
+                          "type": "boolean"
+                        },
+                        "automatic": {
                           "type": "boolean"
                         },
                         "result": {
@@ -2050,13 +2058,17 @@
                             "timeout",
                             "rate_limited",
                             "quota_exceeded",
-                            "stale"
+                            "stale",
+                            "cancelled"
                           ]
                         },
                         "updatedAt": {
                           "type": "string"
                         },
                         "allowPreview": {
+                          "type": "boolean"
+                        },
+                        "automatic": {
                           "type": "boolean"
                         },
                         "result": {
@@ -2296,13 +2308,17 @@
                             "timeout",
                             "rate_limited",
                             "quota_exceeded",
-                            "stale"
+                            "stale",
+                            "cancelled"
                           ]
                         },
                         "updatedAt": {
                           "type": "string"
                         },
                         "allowPreview": {
+                          "type": "boolean"
+                        },
+                        "automatic": {
                           "type": "boolean"
                         },
                         "result": {

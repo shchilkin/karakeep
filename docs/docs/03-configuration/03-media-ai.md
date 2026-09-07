@@ -33,6 +33,8 @@ do not automatically enqueue image analysis. Other formats and ordinary web
 articles keep their existing behavior.
 Disabling automatic tagging in the user's settings also disables automatic media analysis;
 explicit manual analysis remains available.
+Queued automatic jobs recheck both opt-ins before reserving an attempt and are
+cancelled if automatic analysis has since been disabled.
 
 The authenticated owner-only endpoint is
 `POST /api/v1/bookmarks/:bookmarkId/analyze-media`, with JSON
@@ -69,6 +71,7 @@ priority over the AI title; original source metadata is preserved. The AI summar
 is displayed only when there is no separately saved summary. Human tags are never
 replaced, and a tag removed during inference or removed from an earlier AI result
 is not reattached on a later analysis. New tags are marked `attachedBy: ai`.
+Newly attached tags also trigger the existing tag-added rules.
 
 Media IDs, source context, provider, model and prompt version form the input fingerprint.
 The fingerprint is checked again inside the apply transaction. If the media or

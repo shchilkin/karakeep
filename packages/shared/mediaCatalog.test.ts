@@ -42,3 +42,9 @@ test("tag normalization reuses existing names, removes duplicates and operationa
     ),
   ).toEqual(["studio_portrait"]);
 });
+
+test("a long existing display name cannot invalidate bounded catalog results", () => {
+  expect(
+    normalizeCatalogTags(["portrait"], [`Portrait${"_".repeat(90)}`]),
+  ).toEqual(["portrait"]);
+});

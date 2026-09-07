@@ -127,60 +127,64 @@ export async function requestMediaCatalog(
 ) {
   const config = serverConfig.mediaAi;
   if (!config.enabled || (options.automatic && !config.autoNew)) return null;
-  const state = db.transaction((tx) => {
-    if (
-      options.automatic &&
-      tx
-        .select({ enabled: users.autoTaggingEnabled })
-        .from(users)
-        .where(eq(users.id, userId))
-        .get()?.enabled === false
-    )
-      return null;
-    const { bookmark, input, tags } = catalogSnapshot(
-      tx,
-      userId,
-      bookmarkId,
-      options.allowPreview,
-    );
-    if (!input) {
-      if (options.automatic) return null;
-      throw new TRPCError({
-        code: "BAD_REQUEST",
-        message: "No saved media available",
-      });
-    }
-    if (
-      options.automatic &&
-      bookmark.type === BookmarkTypes.LINK &&
-      !tags.includes("social-media-archived")
-    )
-      return null;
-    const previous = bookmark.mediaAi;
-    const fingerprint = catalogFingerprint(input, config.model);
-    if (catalogBusy(previous)) return null;
-    // A successful input is never charged again. Failed inputs require a manual retry.
-    if (
-      previous?.fingerprint === fingerprint &&
-      (previous.status === "success" || !options.retry)
-    )
-      return null;
-    const next: MediaCatalogState = {
-      runId: randomUUID(),
-      fingerprint,
-      model: config.model,
-      status: "pending",
-      updatedAt: new Date().toISOString(),
-      allowPreview: options.allowPreview ?? false,
-      result: previous?.result,
-      suppressedTags: previous?.suppressedTags,
-    };
-    tx.update(bookmarks)
-      .set({ mediaAi: next })
-      .where(eq(bookmarks.id, bookmarkId))
-      .run();
-    return next;
-  });
+  const state = db.transaction(
+    (tx) => {
+      if (
+        options.automatic &&
+        tx
+          .select({ enabled: users.autoTaggingEnabled })
+          .from(users)
+          .where(eq(users.id, userId))
+          .get()?.enabled === false
+      )
+        return null;
+      const { bookmark, input, tags } = catalogSnapshot(
+        tx,
+        userId,
+        bookmarkId,
+        options.allowPreview,
+      );
+      if (!input) {
+        if (options.automatic) return null;
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "No saved media available",
+        });
+      }
+      if (
+        options.automatic &&
+        bookmark.type === BookmarkTypes.LINK &&
+        !tags.includes("social-media-archived")
+      )
+        return null;
+      const previous = bookmark.mediaAi;
+      const fingerprint = catalogFingerprint(input, config.model);
+      if (catalogBusy(previous)) return null;
+      // A successful input is never charged again. Failed inputs require a manual retry.
+      if (
+        previous?.fingerprint === fingerprint &&
+        (previous.status === "success" || !options.retry)
+      )
+        return null;
+      const next: MediaCatalogState = {
+        runId: randomUUID(),
+        fingerprint,
+        model: config.model,
+        status: "pending",
+        updatedAt: new Date().toISOString(),
+        allowPreview: options.allowPreview ?? false,
+        automatic: options.automatic ?? false,
+        result: previous?.result,
+        suppressedTags: previous?.suppressedTags,
+      };
+      tx.update(bookmarks)
+        .set({ mediaAi: next })
+        .where(eq(bookmarks.id, bookmarkId))
+        .run();
+      return next;
+    },
+    { behavior: "immediate" },
+  );
   if (!state) return null;
   const job = { bookmarkId, userId, runId: state.runId };
   try {
@@ -199,65 +203,83 @@ export async function requestMediaCatalog(
 }
 
 export function startMediaCatalog(db: DB, job: CatalogJob) {
-  return db.transaction((tx) => {
-    const state = tx
-      .select()
-      .from(bookmarks)
-      .where(
-        and(eq(bookmarks.id, job.bookmarkId), eq(bookmarks.userId, job.userId)),
-      )
-      .get()?.mediaAi;
-    if (!state || state.runId !== job.runId || state.status !== "pending")
-      return null;
-    const snapshot = catalogSnapshot(
-      tx,
-      job.userId,
-      job.bookmarkId,
-      state.allowPreview,
-    );
-    const update = (status: MediaCatalogState["status"]) =>
-      tx
-        .update(bookmarks)
-        .set({
-          mediaAi: { ...state, status, updatedAt: new Date().toISOString() },
+  return db.transaction(
+    (tx) => {
+      const state = tx
+        .select()
+        .from(bookmarks)
+        .where(
+          and(
+            eq(bookmarks.id, job.bookmarkId),
+            eq(bookmarks.userId, job.userId),
+          ),
+        )
+        .get()?.mediaAi;
+      if (!state || state.runId !== job.runId || state.status !== "pending")
+        return null;
+      const snapshot = catalogSnapshot(
+        tx,
+        job.userId,
+        job.bookmarkId,
+        state.allowPreview,
+      );
+      const update = (status: MediaCatalogState["status"]) =>
+        tx
+          .update(bookmarks)
+          .set({
+            mediaAi: { ...state, status, updatedAt: new Date().toISOString() },
+          })
+          .where(eq(bookmarks.id, job.bookmarkId))
+          .run();
+      if (
+        state.automatic &&
+        (!serverConfig.mediaAi.autoNew ||
+          tx
+            .select({ enabled: users.autoTaggingEnabled })
+            .from(users)
+            .where(eq(users.id, job.userId))
+            .get()?.enabled === false)
+      ) {
+        update("cancelled");
+        return null;
+      }
+      if (
+        !snapshot.input ||
+        catalogFingerprint(snapshot.input, state.model) !== state.fingerprint
+      ) {
+        update("stale");
+        return null;
+      }
+      const day = new Date().toISOString().slice(0, 10);
+      const used = tx
+        .select({ n: count() })
+        .from(mediaAiRequests)
+        .where(eq(mediaAiRequests.day, day))
+        .get()!.n;
+      if (used >= serverConfig.mediaAi.dailyRequests) {
+        update("quota_exceeded");
+        return null;
+      }
+      // Reservation is not refunded after a timeout or crash. No automatic replay.
+      const reserved = tx
+        .insert(mediaAiRequests)
+        .values({
+          id: job.runId,
+          bookmarkId: job.bookmarkId,
+          userId: job.userId,
+          day,
         })
-        .where(eq(bookmarks.id, job.bookmarkId))
+        .onConflictDoNothing()
         .run();
-    if (
-      !snapshot.input ||
-      catalogFingerprint(snapshot.input, state.model) !== state.fingerprint
-    ) {
-      update("stale");
-      return null;
-    }
-    const day = new Date().toISOString().slice(0, 10);
-    const used = tx
-      .select({ n: count() })
-      .from(mediaAiRequests)
-      .where(eq(mediaAiRequests.day, day))
-      .get()!.n;
-    if (used >= serverConfig.mediaAi.dailyRequests) {
-      update("quota_exceeded");
-      return null;
-    }
-    // Reservation is not refunded after a timeout or crash. No automatic replay.
-    const reserved = tx
-      .insert(mediaAiRequests)
-      .values({
-        id: job.runId,
-        bookmarkId: job.bookmarkId,
-        userId: job.userId,
-        day,
-      })
-      .onConflictDoNothing()
-      .run();
-    if (!reserved.changes) {
-      update("failed");
-      return null;
-    }
-    update("processing");
-    return { ...snapshot, input: snapshot.input, state };
-  });
+      if (!reserved.changes) {
+        update("failed");
+        return null;
+      }
+      update("processing");
+      return { input: snapshot.input, tags: snapshot.tags, state };
+    },
+    { behavior: "immediate" },
+  );
 }
 
 export function finishMediaCatalog(
@@ -267,102 +289,112 @@ export function finishMediaCatalog(
   result?: MediaCatalogResult,
   initialTags: string[] = [],
 ) {
-  return db.transaction((tx) => {
-    const current = tx
-      .select()
-      .from(bookmarks)
-      .where(
-        and(eq(bookmarks.id, job.bookmarkId), eq(bookmarks.userId, job.userId)),
-      )
-      .get();
-    if (!current?.mediaAi || current.mediaAi.runId !== job.runId) return false;
-    const state = current.mediaAi;
-    let applied = result;
-    let suppressed = state.suppressedTags ?? [];
-    if (applied) {
-      const fresh = catalogSnapshot(
-        tx,
-        job.userId,
-        job.bookmarkId,
-        state.allowPreview,
-      );
-      if (
-        !fresh.input ||
-        catalogFingerprint(fresh.input, state.model) !== state.fingerprint
-      ) {
-        status = "stale";
-        applied = undefined;
-      } else {
-        const existingKeys = new Set(fresh.tags.map(catalogTagKey));
-        suppressed = [
-          ...new Set(
-            [
-              ...suppressed,
-              ...initialTags,
-              ...(state.result?.tags ?? []),
-            ].filter((t) => !existingKeys.has(catalogTagKey(t))),
+  return db.transaction(
+    (tx) => {
+      const current = tx
+        .select()
+        .from(bookmarks)
+        .where(
+          and(
+            eq(bookmarks.id, job.bookmarkId),
+            eq(bookmarks.userId, job.userId),
           ),
-        ];
-        const blocked = new Set(suppressed.map(catalogTagKey));
-        const libraryTags = tx
-          .select({ name: bookmarkTags.name })
-          .from(bookmarkTags)
-          .where(eq(bookmarkTags.userId, job.userId))
-          .all()
-          .map((t) => t.name);
-        applied = {
-          ...applied,
-          tags: normalizeCatalogTags(applied.tags, libraryTags),
-        };
-        if (!applied.tags.length) {
-          status = "failed";
+        )
+        .get();
+      if (!current?.mediaAi || current.mediaAi.runId !== job.runId)
+        return false;
+      const state = current.mediaAi;
+      const attachedTagIds: string[] = [];
+      let applied = result;
+      let suppressed = state.suppressedTags ?? [];
+      if (applied) {
+        const fresh = catalogSnapshot(
+          tx,
+          job.userId,
+          job.bookmarkId,
+          state.allowPreview,
+        );
+        if (
+          !fresh.input ||
+          catalogFingerprint(fresh.input, state.model) !== state.fingerprint
+        ) {
+          status = "stale";
           applied = undefined;
-        }
-        for (const name of (applied?.tags ?? []).filter(
-          (t) => !blocked.has(catalogTagKey(t)),
-        )) {
-          // The database normalizes case/spacing and preserves existing human ownership.
-          const normalizedName = name.toLowerCase().replace(/[ \-_]/g, "");
-          tx.insert(bookmarkTags)
-            .values({ name, userId: job.userId })
-            .onConflictDoNothing()
-            .run();
-          const tag = tx
-            .select()
+        } else {
+          const existingKeys = new Set(fresh.tags.map(catalogTagKey));
+          suppressed = [
+            ...new Set(
+              [
+                ...suppressed,
+                ...initialTags,
+                ...(state.result?.tags ?? []),
+              ].filter((t) => !existingKeys.has(catalogTagKey(t))),
+            ),
+          ];
+          const blocked = new Set(suppressed.map(catalogTagKey));
+          const libraryTags = tx
+            .select({ id: bookmarkTags.id, name: bookmarkTags.name })
             .from(bookmarkTags)
-            .where(
-              and(
-                eq(bookmarkTags.userId, job.userId),
-                eq(bookmarkTags.normalizedName, normalizedName),
-              ),
-            )
-            .get();
-          if (tag)
-            tx.insert(tagsOnBookmarks)
-              .values({
-                tagId: tag.id,
-                bookmarkId: job.bookmarkId,
-                attachedBy: "ai",
-              })
-              .onConflictDoNothing()
-              .run();
+            .where(eq(bookmarkTags.userId, job.userId))
+            .all();
+          const libraryByKey = new Map(
+            libraryTags.map((t) => [catalogTagKey(t.name), t]),
+          );
+          applied = {
+            ...applied,
+            tags: normalizeCatalogTags(
+              applied.tags,
+              libraryTags.map((t) => t.name),
+            ),
+          };
+          if (!applied.tags.length) {
+            status = "failed";
+            applied = undefined;
+          }
+          for (const name of (applied?.tags ?? []).filter(
+            (t) => !blocked.has(catalogTagKey(t)),
+          )) {
+            // Match by id: SQLite lower() does not normalize Cyrillic case.
+            const tag =
+              libraryByKey.get(catalogTagKey(name)) ??
+              tx
+                .insert(bookmarkTags)
+                .values({ name, userId: job.userId })
+                .onConflictDoNothing()
+                .returning({ id: bookmarkTags.id })
+                .get();
+            if (tag) {
+              const attached = tx
+                .insert(tagsOnBookmarks)
+                .values({
+                  tagId: tag.id,
+                  bookmarkId: job.bookmarkId,
+                  attachedBy: "ai",
+                })
+                .onConflictDoNothing()
+                .returning({ tagId: tagsOnBookmarks.tagId })
+                .get();
+              if (attached) attachedTagIds.push(attached.tagId);
+            }
+          }
         }
       }
-    }
-    tx.update(bookmarks)
-      .set({
-        mediaAi: {
-          ...state,
-          status,
-          result: applied ?? state.result,
-          suppressedTags: suppressed,
-          updatedAt: new Date().toISOString(),
-        },
-      })
-      .where(eq(bookmarks.id, job.bookmarkId))
-      .run();
-    return true;
-  });
+      tx.update(bookmarks)
+        .set({
+          mediaAi: {
+            ...state,
+            status,
+            result: applied ?? state.result,
+            suppressedTags: suppressed,
+            updatedAt: new Date().toISOString(),
+          },
+        })
+        .where(eq(bookmarks.id, job.bookmarkId))
+        .run();
+      return { attachedTagIds };
+    },
+    { behavior: "immediate" },
+  );
 }
 
 export async function reindexMediaCatalog(bookmarkId: string, userId: string) {

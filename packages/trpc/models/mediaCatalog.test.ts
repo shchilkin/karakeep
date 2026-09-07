@@ -1,4 +1,10 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { drizzle } from "drizzle-orm/better-sqlite3";
+import { openSqliteDatabase } from "@karakeep/db/sqlite";
+import * as dbSchema from "@karakeep/db/schema";
 import { eq } from "drizzle-orm";
 import { getInMemoryDB } from "@karakeep/db/drizzle";
 import {
@@ -76,6 +82,56 @@ async function queue() {
 }
 
 describe("media catalog lifecycle", () => {
+  test("all lifecycle transactions reserve the WAL writer before taking a snapshot", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "media-catalog-wal-"));
+    const file = path.join(directory, "db.sqlite");
+    await db.$client.backup(file);
+    const connection = openSqliteDatabase(file, {
+      readOnly: false,
+      walMode: true,
+    });
+    const competing = openSqliteDatabase(file, {
+      readOnly: false,
+      walMode: true,
+    });
+    competing.pragma("busy_timeout = 0");
+    try {
+      db = drizzle(connection, { schema: dbSchema });
+      const transaction = db.transaction.bind(db);
+      let reservations = 0;
+      const spy = vi
+        .spyOn(db, "transaction")
+        .mockImplementation((run, options) =>
+          transaction((tx) => {
+            expect(() =>
+              competing
+                .prepare(
+                  "UPDATE user SET name = 'Concurrent writer' WHERE id = 'u1'",
+                )
+                .run(),
+            ).toThrow(/locked/);
+            reservations++;
+            return run(tx);
+          }, options),
+        );
+      try {
+        const job = await queue();
+        startMediaCatalog(db, job);
+        finishMediaCatalog(db, job, "success", result);
+        expect(reservations).toBe(3);
+        expect(catalogSnapshot(db, "u1", "b1").bookmark.mediaAi?.status).toBe(
+          "success",
+        );
+      } finally {
+        spy.mockRestore();
+      }
+    } finally {
+      competing.close();
+      connection.close();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   test("archive completion queues analysis, respecting the user's automatic tagging opt-out", async () => {
     await getApiCaller(db, "u1").bookmarks.updateTags({
       bookmarkId: "b1",
@@ -106,6 +162,77 @@ describe("media catalog lifecycle", () => {
     const state = catalogSnapshot(db, "u1", "b1").bookmark.mediaAi;
     expect(state?.status).toBe("failed");
     expect(state?.result).toBeUndefined();
+  });
+
+  test.each(["user", "server"])(
+    "queued automatic analysis honors a later %s opt-out without reserving an attempt",
+    async (gate) => {
+      await getApiCaller(db, "u1").bookmarks.updateTags({
+        bookmarkId: "b1",
+        attach: [{ tagName: "social-media-archived" }],
+        detach: [],
+      });
+      const state = catalogSnapshot(db, "u1", "b1").bookmark.mediaAi!;
+      if (gate === "user")
+        db.update(users)
+          .set({ autoTaggingEnabled: false })
+          .where(eq(users.id, "u1"))
+          .run();
+      else serverConfig.mediaAi.autoNew = false;
+      expect(
+        startMediaCatalog(db, {
+          bookmarkId: "b1",
+          userId: "u1",
+          runId: state.runId,
+        }),
+      ).toBeNull();
+      expect(catalogSnapshot(db, "u1", "b1").bookmark.mediaAi?.status).toBe(
+        "cancelled",
+      );
+      expect(db.select().from(mediaAiRequests).all()).toHaveLength(0);
+      const manual = await requestMediaCatalog(db, "u1", "b1", { retry: true });
+      expect(
+        startMediaCatalog(db, {
+          bookmarkId: "b1",
+          userId: "u1",
+          runId: manual!.runId,
+        }),
+      ).not.toBeNull();
+    },
+  );
+
+  test("reuses existing Cyrillic tags and reports only newly attached ids", async () => {
+    const portrait = db
+      .insert(bookmarkTags)
+      .values({ userId: "u1", name: "Портрет" })
+      .returning()
+      .get();
+    const studio = db
+      .insert(bookmarkTags)
+      .values({ userId: "u1", name: "Студия" })
+      .returning()
+      .get();
+    db.insert(tagsOnBookmarks)
+      .values({ bookmarkId: "b1", tagId: studio.id, attachedBy: "human" })
+      .run();
+    const job = await queue();
+    startMediaCatalog(db, job);
+    expect(
+      finishMediaCatalog(db, job, "success", {
+        ...result,
+        tags: ["портрет", "студия"],
+      }),
+    ).toEqual({ attachedTagIds: [portrait.id] });
+    const saved = await getApiCaller(db, "u1").bookmarks.getBookmark({
+      bookmarkId: "b1",
+    });
+    expect(saved.tags).toEqual(
+      expect.arrayContaining([
+        { id: portrait.id, name: "Портрет", attachedBy: "ai" },
+        { id: studio.id, name: "Студия", attachedBy: "human" },
+      ]),
+    );
+    expect(db.select().from(bookmarkTags).all()).toHaveLength(2);
   });
 
   test("no automatic analysis before a complete archive; no default preview upload", async () => {

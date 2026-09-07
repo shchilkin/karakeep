@@ -19,6 +19,7 @@ import {
   startMediaCatalog,
 } from "@karakeep/trpc/models/mediaCatalog";
 import type { CatalogJob } from "@karakeep/trpc/models/mediaCatalog";
+import { RuleEngine } from "@karakeep/trpc/lib/ruleEngine";
 import {
   catalogRequest,
   CatalogFailure,
@@ -126,6 +127,7 @@ export async function runMediaCatalog(job: DequeuedJob<CatalogJob>) {
   }
   const started = startMediaCatalog(db, job.data);
   if (!started) return;
+  let attachedTagIds: string[] = [];
   try {
     const images = await prepareCatalogImages(
       job.data.userId,
@@ -143,7 +145,14 @@ export async function runMediaCatalog(job: DequeuedJob<CatalogJob>) {
         started.tags,
       ),
     });
-    finishMediaCatalog(db, job.data, "success", result, started.tags);
+    const applied = finishMediaCatalog(
+      db,
+      job.data,
+      "success",
+      result,
+      started.tags,
+    );
+    if (applied) attachedTagIds = applied.attachedTagIds;
   } catch (error) {
     finishMediaCatalog(
       db,
@@ -155,10 +164,22 @@ export async function runMediaCatalog(job: DequeuedJob<CatalogJob>) {
           : "failed",
     );
   }
-  // A search failure must never trigger another paid inference request.
-  await reindexMediaCatalog(job.data.bookmarkId, job.data.userId).catch(
-    () => undefined,
-  );
+  // Downstream failures must never trigger another paid inference request.
+  await Promise.allSettled([
+    reindexMediaCatalog(job.data.bookmarkId, job.data.userId),
+    ...(attachedTagIds.length
+      ? [
+          RuleEngine.triggerOnEvent(
+            job.data.userId,
+            job.data.bookmarkId,
+            attachedTagIds.map((tagId) => ({
+              type: "tagAdded" as const,
+              tagId,
+            })),
+          ),
+        ]
+      : []),
+  ]);
 }
 
 export class MediaCatalogWorker {

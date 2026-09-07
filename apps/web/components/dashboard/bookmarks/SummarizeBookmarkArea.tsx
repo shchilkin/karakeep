@@ -120,28 +120,30 @@ export default function SummarizeBookmarkArea({
   });
 
   const clientConfig = useClientConfig();
-  if (
+  const hasSavedMedia = !!catalogInput(bookmark);
+  const mediaArea =
     bookmark.mediaAi ||
-    (clientConfig.mediaAi?.enabled && catalogInput(bookmark, true))
-  ) {
-    return <MediaCatalogArea bookmark={bookmark} readOnly={readOnly} />;
-  }
-  if (bookmark.content.type !== BookmarkTypes.LINK) {
-    return null;
-  }
+    (clientConfig.mediaAi?.enabled && catalogInput(bookmark, true)) ? (
+      <MediaCatalogArea
+        bookmark={bookmark}
+        readOnly={readOnly}
+        includeManualSummary={hasSavedMedia}
+      />
+    ) : null;
+  if (hasSavedMedia && mediaArea) return mediaArea;
+  if (bookmark.content.type !== BookmarkTypes.LINK) return mediaArea;
 
+  let textSummaryArea: React.ReactNode = null;
   if (bookmark.summary) {
-    return (
+    textSummaryArea = (
       <AISummary
         bookmarkId={bookmark.id}
         summary={bookmark.summary}
         readOnly={readOnly}
       />
     );
-  } else if (!clientConfig.inference.isConfigured || readOnly) {
-    return null;
-  } else {
-    return (
+  } else if (clientConfig.inference.isConfigured && !readOnly) {
+    textSummaryArea = (
       <div className="flex w-full items-center gap-4">
         <ActionButton
           onClick={() => mutate({ bookmarkId: bookmark.id })}
@@ -159,4 +161,12 @@ export default function SummarizeBookmarkArea({
       </div>
     );
   }
+  if (!textSummaryArea) return mediaArea;
+  if (!mediaArea) return textSummaryArea;
+  return (
+    <div className="flex flex-col gap-3">
+      {textSummaryArea}
+      {mediaArea}
+    </div>
+  );
 }

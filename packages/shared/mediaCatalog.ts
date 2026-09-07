@@ -25,9 +25,11 @@ export const zMediaCatalogState = z.object({
     "rate_limited",
     "quota_exceeded",
     "stale",
+    "cancelled",
   ]),
   updatedAt: z.string(),
   allowPreview: z.boolean(),
+  automatic: z.boolean().optional(),
   result: zMediaCatalogResult.optional(),
   suppressedTags: z.array(z.string()).optional(),
 });
@@ -130,7 +132,9 @@ export function catalogTagKey(tag: string) {
 }
 
 export function normalizeCatalogTags(tags: string[], existing: string[] = []) {
-  const names = new Map(existing.map((t) => [catalogTagKey(t), t]));
+  const names = new Map(
+    existing.filter((t) => t.length <= 80).map((t) => [catalogTagKey(t), t]),
+  );
   const seen = new Set<string>();
   return tags
     .map((t) => t.normalize("NFKC").trim().toLowerCase())
