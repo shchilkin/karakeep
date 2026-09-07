@@ -48,3 +48,71 @@ test("a long existing display name cannot invalidate bounded catalog results", (
     normalizeCatalogTags(["portrait"], [`Portrait${"_".repeat(90)}`]),
   ).toEqual(["portrait"]);
 });
+
+test("archived text-only X posts are eligible, ordinary links and mismatched copies are not", () => {
+  const bookmark = {
+    content: {
+      type: BookmarkTypes.LINK as const,
+      url: "https://x.com/author/status/12345",
+      description: "An archived post about typography.",
+    },
+    assets: [
+      {
+        id: "source-copy",
+        assetType: "userUploaded" as const,
+        fileName: "x_12345_999_abcdef123456.txt",
+      },
+    ],
+  };
+  expect(catalogInput(bookmark)).toMatchObject({
+    assets: [],
+    media: { kind: "text", coverage: "archived_text", asset_count: 0 },
+  });
+  expect(
+    catalogInput(
+      {
+        ...bookmark,
+        content: { ...bookmark.content, imageAssetId: "generic-x-logo" },
+      },
+      true,
+    )?.media.kind,
+  ).toBe("text");
+  expect(catalogInput({ ...bookmark, assets: [] })).toBeNull();
+  expect(
+    catalogInput({
+      ...bookmark,
+      content: {
+        ...bookmark.content,
+        url: "https://example.com/author/status/12345",
+      },
+    }),
+  ).toBeNull();
+  expect(
+    catalogInput({
+      ...bookmark,
+      content: {
+        ...bookmark.content,
+        url: "https://x.com/author/status/98765",
+      },
+    }),
+  ).toBeNull();
+  expect(
+    catalogInput({
+      ...bookmark,
+      content: { ...bookmark.content, description: " " },
+    }),
+  ).toBeNull();
+  expect(
+    catalogInput({
+      ...bookmark,
+      assets: [
+        ...bookmark.assets,
+        {
+          id: "photo",
+          assetType: "userUploaded",
+          fileName: "x_12345_001_abcdef123456.jpg",
+        },
+      ],
+    })?.media.kind,
+  ).toBe("image");
+});

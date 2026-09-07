@@ -164,6 +164,50 @@ describe("media catalog lifecycle", () => {
     expect(state?.result).toBeUndefined();
   });
 
+  test("a completed X text archive queues and finishes analysis without image assets", async () => {
+    db.update(bookmarkLinks)
+      .set({
+        url: "https://x.com/author/status/12345",
+        description: "A source post about typography.",
+      })
+      .run();
+    db.update(assets)
+      .set({
+        fileName: "x_12345_999_abcdef123456.txt",
+        contentType: "text/plain",
+      })
+      .run();
+    expect(
+      await requestMediaCatalog(db, "u1", "b1", { automatic: true }),
+    ).toBeNull();
+    await getApiCaller(db, "u1").bookmarks.updateTags({
+      bookmarkId: "b1",
+      attach: [{ tagName: "social-media-archived" }],
+      detach: [],
+    });
+    const pending = catalogSnapshot(db, "u1", "b1");
+    expect(pending.bookmark.mediaAi?.status).toBe("pending");
+    expect(pending.input).toMatchObject({
+      assets: [],
+      media: { kind: "text", coverage: "archived_text" },
+    });
+    const job = {
+      bookmarkId: "b1",
+      userId: "u1",
+      runId: pending.bookmark.mediaAi!.runId,
+    };
+    expect(startMediaCatalog(db, job)).not.toBeNull();
+    finishMediaCatalog(db, job, "success", {
+      title: "A note about typography",
+      summary: "The post discusses typography.",
+      tags: ["typography", "design"],
+    });
+    expect(catalogSnapshot(db, "u1", "b1").bookmark.mediaAi?.status).toBe(
+      "success",
+    );
+    expect(db.select().from(mediaAiRequests).all()).toHaveLength(1);
+  });
+
   test.each(["user", "server"])(
     "queued automatic analysis honors a later %s opt-out without reserving an attempt",
     async (gate) => {
