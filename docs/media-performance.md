@@ -10,9 +10,25 @@ Bookmark queries render inside a Suspense boundary with a responsive, image-firs
 
 The virtual feed remembers each card image's intrinsic dimensions separately from its mounted element. When a photo or video poster is revisited, its placeholder and error state reserve the same aspect ratio as the loaded image, including after a width change. Unmounting still releases the image/video elements. Each retained bookmark has at most one image-dimension record; records are removed when the bookmark leaves the result set, and a different cover URL cannot reuse stale proportions.
 
-This prevents a previously measured portrait from shrinking to a generic 4:3 placeholder and changing the virtual layout during image reload. Dimensions are scoped to the current feed rather than a global or persistent browser cache. A never-loaded image still uses a 4:3 estimate until its intrinsic size is known. Exact geometry on the first visit or after a full page reload would require stored server-side dimensions in the bookmark payload. Uniform fixed-ratio cards are another option, with cropping or letterboxing instead of the existing natural-height presentation.
+This prevents a previously measured portrait from shrinking to a generic 4:3 placeholder and changing the virtual layout during image reload. Dimensions are scoped to the current feed rather than a global or persistent browser cache. Saved images now include optional `width`/`height` in bookmark asset payloads. Cards reserve that aspect ratio before the first image request completes, including after a full page reload. Video cards use the dimensions of their poster asset. The frame keeps the source ratio even when a resized thumbnail rounds its pixel dimensions. Remote-only images and old files awaiting backfill still use a 4:3 estimate on their first visit, then the feed remembers their actual proportions.
 
 Hover starts requesting the clip after 50 ms. A small indicator appears over the poster only if playback is still waiting 350 ms later; it never delays playback. Playback success, failure, cancellation and unmount clear it. A stalled initial request releases its media source after 35 seconds and keeps the poster; full playback remains available in the gallery.
+
+## Stored dimensions and existing libraries
+
+Migration `0096_asset_dimensions` adds nullable width/height columns to assets. Normal client uploads (including Companion photos and video posters), crawler downloads/banners/screenshots, direct-video posters and PDF screenshots populate them from image headers. Reading dimensions uses the existing Sharp version, EXIF display orientation and first-frame dimensions; it does not transcode originals. Unsupported/corrupt files and inputs over 64 MiB or 40 million pixels retain unknown dimensions. Bookmark get/list/attach responses expose these optional fields through the existing authorized queries. There is no per-card filesystem lookup on feed requests and no new access route.
+
+Run the following **after database migration**, with the workers' normal `DATA_DIR` and asset-store environment. The built script is included in the worker image. Preview a batch before applying it:
+
+```sh
+# From /app/apps/workers inside the deployed container, or apps/workers after build:
+node dist/scripts/backfillAssetDimensions.js --limit 200
+node dist/scripts/backfillAssetDimensions.js --limit 200 --apply
+```
+
+The JSON summary reports scanned/measured/updated/skipped counts and `nextCursor`. If a cursor is returned, pass it as `--after '<cursor>'` to continue; repeat until it is null. Rerunning from the beginning only considers still-missing dimensions. Processing is sequential, bounded to 1–1000 entries per batch and one image buffer up to 64 MiB; it uses the configured filesystem or S3 store, never external source URLs or AI. Existing dimensions are not overwritten, and one unreadable file does not stop the batch. Skipped files retain the browser fallback. Refresh the feed after applying the backfill.
+
+The schema change is additive; originals, notes, titles and tags are untouched. The script is an explicit maintenance step rather than automatic work in a page request or database migration.
 
 ## Virtual library
 
@@ -85,7 +101,7 @@ A Chrome 152 run on 2026-09-08 mounted at most 36 cards during the 1000-card scr
 
 These checks are lifecycle and request-budget evidence, not measurements of total browser/GPU memory, production network latency, large-video decoding, or Safari/iOS performance. API tests separately exercise real Sharp/ffmpeg conversion, orientation, H.264/duration/dimension/audio/faststart constraints, byte ranges, authorization, cache reuse across instances, queue bounds and eviction.
 
-The layout regression fixture uses actual card images, video posters, virtual masonry and Tailwind styles. It forces image-cache eviction between visits and delays image responses by 300 ms; cached tiny fixtures otherwise conceal the bug.
+The layout regression fixture uses actual card images, video posters, virtual masonry and Tailwind styles. First-load checks provide server dimensions and sample skeletons through image completion on desktop and mobile widths, reporting zero height change. It forces image-cache eviction between visits and delays image responses by 300 ms; cached tiny fixtures otherwise conceal the bug.
 
 ```sh
 # Requires an installed Chrome and the browser-fixture dependencies.

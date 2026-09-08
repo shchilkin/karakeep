@@ -122,6 +122,7 @@ test("downloads the original bytes, generates a real first-frame JPEG, and reuse
   const poster = attached.find(
     (a) => a.assetType === AssetTypes.LINK_BANNER_IMAGE,
   )!;
+  expect(poster).toMatchObject({ width: 1280, height: 853 });
   expect(stored.get(original.id)).toEqual(video);
   expect(poster.fileName).toBe(
     original.fileName!.replace(/\.mp4$/, ".poster.jpg"),

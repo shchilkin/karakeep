@@ -36,6 +36,7 @@ let server, browser;
 let failPhoto = false;
 const errors = [];
 const cycles = [];
+const firstLoads = [];
 try {
   server = await createServer({
     root: here,
@@ -100,6 +101,67 @@ try {
     await cdp.send("Network.enable");
     await cdp.send("Network.setCacheDisabled", { cacheDisabled: true });
     page.on("pageerror", (e) => errors.push(e.message));
+    // Observe before hydration: even the first skeleton must have the final size.
+    await page.addInitScript(() => {
+      window.firstLoadSamples = [];
+      const sample = () => {
+        for (const id of [0, 1, 2]) {
+          const card = document.querySelector(`[data-card="${id}"]`);
+          const img = card?.querySelector("img");
+          if (card && img)
+            window.firstLoadSamples.push({
+              id,
+              height: card.getBoundingClientRect().height,
+              loading:
+                card.querySelector("[aria-busy]")?.getAttribute("aria-busy") ===
+                "true",
+            });
+        }
+        if (performance.now() < 8000) requestAnimationFrame(sample);
+      };
+      requestAnimationFrame(sample);
+    });
+    for (const viewport of [
+      { width: 1200, height: 900 },
+      { width: 390, height: 844 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await page.goto(`${url}?dimensions`);
+      await page.waitForFunction(
+        () => document.querySelector('[data-card="0"] img')?.naturalWidth > 0,
+      );
+      await page.waitForTimeout(400);
+      const samples = await page.evaluate(() => window.firstLoadSamples);
+      for (const id of viewport.width < 640 ? [0] : [0, 1, 2]) {
+        const frames = samples.filter((s) => s.id === id);
+        assert(
+          frames.some((s) => s.loading),
+          "No first-load skeleton sample",
+        );
+        assert(
+          frames.some((s) => !s.loading),
+          "No loaded image sample",
+        );
+        const heights = frames.map((s) => s.height);
+        const delta = Math.max(...heights) - Math.min(...heights);
+        assert(delta < 1, `First load changes card ${id} height by ${delta}px`);
+        firstLoads.push({
+          scenario: "first-load",
+          viewport: viewport.width,
+          id,
+          delta,
+        });
+        console.log(
+          JSON.stringify({
+            scenario: "first-load",
+            viewport: viewport.width,
+            id,
+            delta,
+          }),
+        );
+      }
+    }
+    await page.setViewportSize({ width: 1200, height: 900 });
     await page.goto(url);
     await page.waitForFunction(() =>
       [0, 1, 2].every(
@@ -222,7 +284,7 @@ try {
     if (process.env.RESULT_PATH)
       await writeFile(
         process.env.RESULT_PATH,
-        JSON.stringify({ cycles, errors }, null, 2),
+        JSON.stringify({ firstLoads, cycles, errors }, null, 2),
       );
     if (process.env.SCREENSHOT_PATH)
       await page.screenshot({ path: process.env.SCREENSHOT_PATH });

@@ -114,6 +114,8 @@ export const zAssetTypesSchema = z.enum([
 export type ZAssetType = z.infer<typeof zAssetTypesSchema>;
 
 export const zAssetSchema = z.object({
+  width: z.number().int().positive().nullish(),
+  height: z.number().int().positive().nullish(),
   id: z.string(),
   assetType: zAssetTypesSchema,
   fileName: z.string().nullish(),

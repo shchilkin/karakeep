@@ -16,6 +16,7 @@ import {
 } from "@karakeep/db/schema";
 import {
   addLogFields,
+  extractImageDimensions,
   AssetPreprocessingQueue,
   EmbeddingsQueue,
   newAssetId,
@@ -256,6 +257,7 @@ export async function extractAndSavePDFScreenshot(
       assetType: AssetTypes.ASSET_SCREENSHOT,
       contentType,
       size: screenshot.buffer.byteLength,
+      ...(await extractImageDimensions(screenshot.buffer, contentType)),
       fileName,
     });
 

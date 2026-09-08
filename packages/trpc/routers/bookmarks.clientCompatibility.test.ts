@@ -65,6 +65,8 @@ test<CustomTestContext>("ordinary clients receive AI title and stored photo cove
       userId: b.userId,
       assetType: AssetTypes.USER_UPLOADED,
       fileName: "001.jpg",
+      width: 1001,
+      height: 1500,
     },
   ]);
   const fetched = await api.getBookmark({ bookmarkId: b.id });
@@ -77,6 +79,9 @@ test<CustomTestContext>("ordinary clients receive AI title and stored photo cove
   for (const response of [fetched, listed, saved]) {
     expect(response).toMatchObject({
       title: analysis.result.title,
+      assets: expect.arrayContaining([
+        expect.objectContaining({ id: "first", width: 1001, height: 1500 }),
+      ]),
       originalTitle: null,
       content: { imageAssetId: "first" },
     });

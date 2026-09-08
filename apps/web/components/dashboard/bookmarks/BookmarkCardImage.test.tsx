@@ -96,3 +96,36 @@ it("keeps a revisited image's proportions while loading or failing, and forgets 
   expect(frame().style.aspectRatio).toBe("4 / 3");
   expect(frame().getAttribute("aria-busy")).toBe("true");
 });
+
+it("reserves server dimensions on first render and keeps them across thumbnail rounding and errors", () => {
+  const { container, rerender } = render(
+    <BookmarkCardImage
+      src="/first.webp"
+      alt="First visit"
+      naturalSize
+      dimensions={{ width: 1001, height: 1500 }}
+    />,
+  );
+  const frame = () => container.querySelector<HTMLElement>("[aria-busy]")!;
+  expect(frame().style.aspectRatio).toBe("1001 / 1500");
+  expect(frame().getAttribute("aria-busy")).toBe("true");
+  const img = screen.getByAltText("First visit");
+  Object.defineProperties(img, {
+    naturalWidth: { value: 320 },
+    naturalHeight: { value: 480 },
+  });
+  fireEvent.load(img);
+  expect(frame().style.aspectRatio).toBe("1001 / 1500");
+  fireEvent.error(img);
+  expect(frame().style.aspectRatio).toBe("1001 / 1500");
+  rerender(
+    <BookmarkCardImage
+      key="new"
+      src="/new.webp"
+      alt="New"
+      naturalSize
+      dimensions={{ width: 0, height: 900 }}
+    />,
+  );
+  expect(frame().style.aspectRatio).toBe("4 / 3");
+});

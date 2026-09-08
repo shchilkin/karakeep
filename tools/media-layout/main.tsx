@@ -4,6 +4,15 @@ import BookmarkCardImage from "@/components/dashboard/bookmarks/BookmarkCardImag
 import BookmarkCardVideo from "@/components/dashboard/bookmarks/BookmarkCardVideo";
 import VirtualMasonry from "@/components/dashboard/bookmarks/VirtualMasonry";
 
+const withDimensions = new URLSearchParams(location.search).has("dimensions");
+const dimensions = (id: string) =>
+  withDimensions
+    ? {
+        width: 640,
+        height: Number(id) % 3 === 0 ? 960 : Number(id) % 3 === 1 ? 400 : 640,
+      }
+    : undefined;
+
 const ids = Array.from({ length: 18 }, (_, i) => String(i));
 function App() {
   const [columns, setColumns] = useState(3);
@@ -38,6 +47,7 @@ function App() {
                 <BookmarkCardImage
                   src={`/media/${id}.svg`}
                   alt={`Photo ${id}`}
+                  dimensions={dimensions(id)}
                   naturalSize
                 />
               ) : (
@@ -45,6 +55,7 @@ function App() {
                   src={`/media/${id}.mp4`}
                   poster={`/media/${id}.svg`}
                   alt={`Video ${id}`}
+                  dimensions={dimensions(id)}
                   naturalSize
                 />
               )}

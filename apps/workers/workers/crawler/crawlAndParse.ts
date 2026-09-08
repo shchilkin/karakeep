@@ -117,6 +117,7 @@ export async function handleAsAssetBookmark(
             assetType: AssetTypes.BOOKMARK_ASSET,
             contentType: downloaded.contentType,
             size: downloaded.size,
+            ...downloaded.dimensions,
             fileName,
           },
           trx,
@@ -391,6 +392,7 @@ export async function crawlAndParseUrl(
             assetType: AssetTypes.LINK_BANNER_IMAGE,
             contentType: downloaded.contentType,
             size: downloaded.size,
+            ...downloaded.dimensions,
           };
         }
       }
@@ -433,6 +435,7 @@ export async function crawlAndParseUrl(
               assetType: AssetTypes.LINK_SCREENSHOT,
               contentType: screenshotAssetInfo.contentType,
               size: screenshotAssetInfo.size,
+              ...screenshotAssetInfo.dimensions,
               fileName: screenshotAssetInfo.fileName,
             },
             txn,

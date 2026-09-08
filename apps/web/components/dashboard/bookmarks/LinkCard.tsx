@@ -79,6 +79,10 @@ function LinkImage({
   const first = images[0];
   const coverId = first && getMediaCoverId(first);
   const cover = coverId ? getAssetThumbnailUrl(coverId) : imageDetails?.url;
+  const dimensions = bookmark.assets.find(
+    (asset) =>
+      asset.id === (coverId ?? link.imageAssetId ?? link.screenshotAssetId),
+  );
 
   if (cover && (layout === "masonry" || layout === "grid")) {
     return (
@@ -97,6 +101,7 @@ function LinkImage({
               coverId ? getAssetThumbnailSrcSet(coverId) : undefined
             }
             alt={getBookmarkTitle(bookmark) ?? new URL(link.url).host}
+            dimensions={dimensions}
             naturalSize={layout === "masonry"}
             className={className}
           />
@@ -106,6 +111,7 @@ function LinkImage({
             src={cover}
             srcSet={coverId ? getAssetThumbnailSrcSet(coverId) : undefined}
             alt={getBookmarkTitle(bookmark) ?? new URL(link.url).host}
+            dimensions={dimensions}
             naturalSize={layout === "masonry"}
             className={className}
           />

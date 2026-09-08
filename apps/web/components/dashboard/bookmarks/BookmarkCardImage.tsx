@@ -1,6 +1,10 @@
 import { useCallback, useContext, useState } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CardImageDimensionsContext } from "@/lib/cardImageDimensions";
+import {
+  CardImageDimensionsContext,
+  validImageDimensions,
+} from "@/lib/cardImageDimensions";
+import type { ImageDimensions } from "@/lib/cardImageDimensions";
 import { useTranslation } from "@/lib/i18n/client";
 import { cn } from "@/lib/utils";
 import { ImageOff } from "lucide-react";
@@ -12,16 +16,18 @@ export default function BookmarkCardImage({
   naturalSize,
   className,
   srcSet,
+  dimensions: sourceDimensions,
 }: {
   src: string;
   alt: string;
   naturalSize: boolean;
   className?: string;
   srcSet?: string;
+  dimensions?: ImageDimensions;
 }) {
   const { t } = useTranslation();
   const savedDimensions = useContext(CardImageDimensionsContext);
-  const [dimensions, setDimensions] = useState(() =>
+  const [learnedDimensions, setDimensions] = useState(() =>
     savedDimensions?.current?.src === src ? savedDimensions.current : undefined,
   );
   const [status, setStatus] = useState<"loading" | "ready" | "error">(
@@ -49,6 +55,9 @@ export default function BookmarkCardImage({
     },
     [loaded],
   );
+  // Keep the original ratio even when a responsive thumbnail rounds its pixels.
+  const dimensions =
+    validImageDimensions(sourceDimensions) ?? learnedDimensions;
   const aspectRatio = dimensions
     ? `${dimensions.width} / ${dimensions.height}`
     : "4 / 3";
@@ -102,7 +111,9 @@ export default function BookmarkCardImage({
             className={cn(
               "relative block w-full transition-opacity duration-150 motion-reduce:transition-none",
               status === "loading" ? "opacity-0" : "opacity-100",
-              naturalSize ? "h-auto" : "aspect-square h-full",
+              naturalSize
+                ? "absolute inset-0 h-full object-contain"
+                : "aspect-square h-full",
               className,
             )}
           />

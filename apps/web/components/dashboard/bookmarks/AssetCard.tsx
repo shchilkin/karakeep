@@ -112,6 +112,9 @@ export default function AssetCard({
               alt={
                 bookmarkedAsset.title ?? bookmarkedAsset.content.fileName ?? ""
               }
+              dimensions={bookmarkedAsset.assets.find(
+                (asset) => asset.id === bookmarkedAsset.content.assetId,
+              )}
               naturalSize={layout === "masonry"}
               className={className}
             />

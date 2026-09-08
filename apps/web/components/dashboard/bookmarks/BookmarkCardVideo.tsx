@@ -6,6 +6,8 @@ import { useTranslation } from "@/lib/i18n/client";
 import { mediaPlayback, releaseVideo } from "@/lib/mediaPlayback";
 import { cn } from "@/lib/utils";
 
+import type { ImageDimensions } from "@/lib/cardImageDimensions";
+
 import BookmarkCardImage from "./BookmarkCardImage";
 
 /** The image owns layout; video bytes are requested only after hover/focus. */
@@ -16,6 +18,7 @@ export default function BookmarkCardVideo({
   naturalSize,
   className,
   posterSrcSet,
+  dimensions,
 }: {
   src: string;
   poster: string;
@@ -23,6 +26,7 @@ export default function BookmarkCardVideo({
   naturalSize: boolean;
   className?: string;
   posterSrcSet?: string;
+  dimensions?: ImageDimensions;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const { t } = useTranslation();
@@ -150,6 +154,7 @@ export default function BookmarkCardVideo({
         key={poster}
         src={poster}
         srcSet={posterSrcSet}
+        dimensions={dimensions}
         alt={alt}
         naturalSize={naturalSize}
         className={className}

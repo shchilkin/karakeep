@@ -17,6 +17,7 @@ import type { RunProxyConfig } from "network";
 import { db } from "@karakeep/db";
 import {
   ASSET_TYPES,
+  extractImageDimensions,
   getAssetSize,
   getTracer,
   IMAGE_ASSET_TYPES,
@@ -88,7 +89,13 @@ export async function storeScreenshot(
       logger.info(
         `[Crawler][${jobId}] Stored the screenshot as assetId: ${assetId} (${screenshot.byteLength} bytes)`,
       );
-      return { assetId, contentType, fileName, size: screenshot.byteLength };
+      return {
+        assetId,
+        contentType,
+        fileName,
+        size: screenshot.byteLength,
+        dimensions: await extractImageDimensions(screenshot, contentType),
+      };
     },
   );
 }
@@ -219,7 +226,13 @@ async function storeDataUriAsset(
   logger.info(
     `[Crawler][${jobId}] Stored data URI ${fileType} as assetId: ${assetId} (${asset.byteLength} bytes)`,
   );
-  return { assetId, userId, contentType, size: asset.byteLength };
+  return {
+    assetId,
+    userId,
+    contentType,
+    size: asset.byteLength,
+    dimensions: await extractImageDimensions(asset, contentType),
+  };
 }
 
 export async function downloadAndStoreFile(
@@ -319,6 +332,7 @@ export async function downloadAndStoreFile(
           return null;
         }
 
+        const dimensions = await extractImageDimensions(assetPath, contentType);
         await saveAssetFromFile({
           userId,
           assetId,
@@ -331,7 +345,7 @@ export async function downloadAndStoreFile(
           `[Crawler][${jobId}] Downloaded ${fileType} as assetId: ${assetId} (${bytesRead} bytes)`,
         );
 
-        return { assetId, userId, contentType, size: bytesRead };
+        return { assetId, userId, contentType, size: bytesRead, dimensions };
       } catch (e) {
         logger.error(
           `[Crawler][${jobId}] Failed to download and store ${fileType}: ${e}`,

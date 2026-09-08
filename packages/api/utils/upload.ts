@@ -8,6 +8,7 @@ import { fileTypeFromBlob, supportedMimeTypes } from "file-type";
 import { assets, AssetTypes } from "@karakeep/db/schema";
 import {
   newAssetId,
+  extractImageDimensions,
   QuotaService,
   saveAssetFromFile,
   StorageQuotaError,
@@ -102,6 +103,7 @@ export async function uploadAsset(
       webStreamToNode(data.stream()),
       fs.createWriteStream(tempFilePath),
     );
+    const dimensions = await extractImageDimensions(tempFilePath, contentType);
     const [assetDb] = await db
       .insert(assets)
       .values({
@@ -114,6 +116,7 @@ export async function uploadAsset(
         contentType,
         size: data.size,
         fileName,
+        ...dimensions,
       })
       .returning();
 
