@@ -13,10 +13,16 @@
         padding: 20px;
       }
       .grid {
-        display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 14px;
         padding: 20px;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      @media (max-width: 640px) {
+        .grid {
+          height: auto !important;
+          overflow-y: visible !important;
+        }
       }
       .grid a {
         display: block;

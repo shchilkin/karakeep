@@ -12,9 +12,9 @@ import {
 import serverConfig from "@karakeep/shared/config";
 import type { ThumbnailWidth } from "@karakeep/shared/utils/assetUtils";
 
-import { ThumbnailBusyError, ThumbnailCache } from "./thumbnailCache";
+import { PreviewBusyError, MediaPreviewCache } from "./mediaPreviewCache";
 
-const cache = new ThumbnailCache(
+const cache = new MediaPreviewCache(
   path.join(serverConfig.dataDir, "cache", "thumbnails-v1"),
 );
 const maxInputBytes = 64 * 1024 * 1024;
@@ -83,7 +83,7 @@ export async function serveThumbnail(
     c.header("X-Content-Type-Options", "nosniff");
     return c.body(new Uint8Array(buffer));
   } catch (error) {
-    if (error instanceof ThumbnailBusyError) {
+    if (error instanceof PreviewBusyError) {
       c.header("Retry-After", "1");
       return c.json({ error: "Thumbnail generation is busy" }, 503);
     }

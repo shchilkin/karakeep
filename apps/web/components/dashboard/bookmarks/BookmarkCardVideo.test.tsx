@@ -61,7 +61,7 @@ function card() {
     // eslint-disable-next-line @next/next/no-html-link-for-pages -- Isolate media behavior from the Next router.
     <a href="/dashboard/preview/post">
       <BookmarkCardVideo
-        src="/api/assets/video"
+        src="/api/assets/video/hover-clip"
         poster="/api/assets/poster"
         alt="Video post"
         naturalSize
@@ -78,6 +78,7 @@ it("loads only the poster at rest, plays muted on hover and releases video on le
   fireEvent.pointerEnter(screen.getByRole("link"));
   await waitFor(() => expect(play).toHaveBeenCalledOnce());
   const video = container.querySelector("video")!;
+  expect(video.getAttribute("src")).toBe("/api/assets/video/hover-clip");
   expect(video.muted).toBe(true);
   expect(video.playsInline).toBe(true);
   fireEvent.pointerLeave(screen.getByRole("link"));

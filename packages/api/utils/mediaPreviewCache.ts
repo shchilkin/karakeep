@@ -11,7 +11,7 @@ import {
 import path from "node:path";
 
 /** Recomputable disk cache. One conversion at a time; duplicate requests share it. */
-export class ThumbnailCache {
+export class MediaPreviewCache {
   private entries = new Map<string, { size: number; created: number }>();
   private pending = new Map<string, Promise<Buffer>>();
   private queue: Promise<unknown> = Promise.resolve();
@@ -23,6 +23,7 @@ export class ThumbnailCache {
     private maxBytes = 256 * 1024 * 1024,
     private maxPending = 64,
     private maxAgeMs = 7 * 24 * 60 * 60 * 1000,
+    private extension: "webp" | "mp4" = "webp",
   ) {}
 
   private async initialize() {
@@ -30,7 +31,7 @@ export class ThumbnailCache {
     for (const name of await readdir(this.directory)) {
       if (/^[a-f0-9]{64}\.[a-f0-9-]+\.tmp$/.test(name)) {
         await rm(path.join(this.directory, name), { force: true });
-      } else if (/^[a-f0-9]{64}\.webp$/.test(name)) {
+      } else if (new RegExp(`^[a-f0-9]{64}\\.${this.extension}$`).test(name)) {
         const info = await stat(path.join(this.directory, name));
         this.entries.set(name, { size: info.size, created: info.mtimeMs });
         this.bytes += info.size;
@@ -55,7 +56,9 @@ export class ThumbnailCache {
   }
 
   async get(identity: string, render: () => Promise<Buffer>): Promise<Buffer> {
-    const name = createHash("sha256").update(identity).digest("hex") + ".webp";
+    const name =
+      createHash("sha256").update(identity).digest("hex") +
+      `.${this.extension}`;
     this.initialized ??= this.initialize().catch((error) => {
       this.initialized = undefined;
       this.entries.clear();
@@ -78,7 +81,7 @@ export class ThumbnailCache {
     }
     const existing = this.pending.get(name);
     if (existing) return existing;
-    if (this.pending.size >= this.maxPending) throw new ThumbnailBusyError();
+    if (this.pending.size >= this.maxPending) throw new PreviewBusyError();
     const job = this.queue
       .catch(() => undefined)
       .then(async () => {
@@ -86,7 +89,7 @@ export class ThumbnailCache {
         if (buffer.length > this.maxBytes) return buffer;
         const temporary = path.join(
           this.directory,
-          name.replace(/\.webp$/, `.${randomUUID()}.tmp`),
+          `${name.slice(0, 64)}.${randomUUID()}.tmp`,
         );
         try {
           await writeFile(temporary, buffer, { mode: 0o600 });
@@ -110,4 +113,4 @@ export class ThumbnailCache {
   }
 }
 
-export class ThumbnailBusyError extends Error {}
+export class PreviewBusyError extends Error {}

@@ -124,7 +124,11 @@ function useBookmarkFocusNavigation({
         `[data-bookmark-index="${focusedIndex}"]`,
       );
       if (el) {
-        el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        // Virtual positions can change as newly mounted cards are measured.
+        el.scrollIntoView({
+          behavior: el.closest("[data-virtual-grid]") ? "instant" : "smooth",
+          block: "nearest",
+        });
       }
     }
   }, [focusedIndex, isNavigating]);

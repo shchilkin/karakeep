@@ -8,6 +8,7 @@ import { useTranslation } from "@/lib/i18n/client";
 import { useUserSettings } from "@/lib/userSettings";
 import { Images, Play } from "lucide-react";
 import {
+  getAssetHoverClipUrl,
   getAssetUrl,
   getAssetThumbnailUrl,
   getAssetThumbnailSrcSet,
@@ -90,7 +91,7 @@ function LinkImage({
         {first?.video ? (
           <BookmarkCardVideo
             key={first.id}
-            src={getAssetUrl(first.id)}
+            src={getAssetHoverClipUrl(first.id)}
             poster={cover}
             posterSrcSet={
               coverId ? getAssetThumbnailSrcSet(coverId) : undefined
@@ -142,7 +143,7 @@ function LinkImage({
     img = (
       <BookmarkCardVideo
         key={first.id}
-        src={getAssetUrl(first.id)}
+        src={getAssetHoverClipUrl(first.id)}
         poster={cover}
         alt={getBookmarkTitle(bookmark) ?? new URL(link.url).host}
         naturalSize={false}

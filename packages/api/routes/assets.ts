@@ -13,6 +13,7 @@ import { createRateLimitMiddleware } from "../middlewares/rateLimit";
 import { rejectMutationInReadOnlyMode } from "../middlewares/readOnlyMode";
 import { serveAsset } from "../utils/assets";
 import { serveThumbnail } from "../utils/thumbnails";
+import { serveHoverClip } from "../utils/hoverClips";
 import { uploadAsset } from "../utils/upload";
 
 const app = new Hono()
@@ -87,6 +88,16 @@ const app = new Hono()
         asset.asset.userId,
         c.req.valid("query").width as ThumbnailWidth,
       );
+    },
+  )
+  .get(
+    "/:assetId/hover-clip",
+    apiKeyScopeMiddleware("assets", "read"),
+    async (c) => {
+      const assetId = c.req.param("assetId");
+      const asset = await Asset.fromId(c.var.ctx, assetId);
+      await asset.ensureCanView();
+      return serveHoverClip(c, assetId, asset.asset.userId);
     },
   )
   .get("/:assetId", apiKeyScopeMiddleware("assets", "read"), async (c) => {
