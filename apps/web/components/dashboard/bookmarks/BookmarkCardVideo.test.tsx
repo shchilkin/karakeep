@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -10,6 +11,9 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { mediaPlayback } from "@/lib/mediaPlayback";
 import BookmarkCardVideo from "./BookmarkCardVideo";
 
+vi.mock("@/lib/i18n/client", () => ({
+  useTranslation: () => ({ t: (key: string) => key }),
+}));
 vi.mock("./BookmarkCardImage", () => ({
   default: ({ src, alt }: { src: string; alt: string }) => (
     // eslint-disable-next-line @next/next/no-img-element -- Test adapter for browser image state.
@@ -53,6 +57,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -141,4 +146,66 @@ it("revokes an existing preview when a gallery opens and blocks further hover", 
   } finally {
     close();
   }
+});
+
+it("starts after 50 ms and shows a loader only for a slow response", async () => {
+  vi.useFakeTimers();
+  const { container } = card();
+  fireEvent.pointerEnter(screen.getByRole("link"));
+  await act(() => vi.advanceTimersByTimeAsync(49));
+  expect(play).not.toHaveBeenCalled();
+  await act(() => vi.advanceTimersByTimeAsync(1));
+  expect(play).toHaveBeenCalledOnce();
+  expect(screen.queryByRole("status")).toBeNull();
+  await act(() => vi.advanceTimersByTimeAsync(349));
+  expect(screen.queryByRole("status")).toBeNull();
+  await act(() => vi.advanceTimersByTimeAsync(1));
+  expect(screen.getByRole("status").getAttribute("aria-label")).toBe(
+    "preview.media.loading",
+  );
+  expect(screen.getByAltText("Video post")).toBeTruthy();
+  fireEvent.playing(container.querySelector("video")!);
+  expect(screen.queryByRole("status")).toBeNull();
+  await act(() => vi.advanceTimersByTimeAsync(36_000));
+  expect(
+    container.querySelector("video")?.classList.contains("opacity-0"),
+  ).toBe(false);
+});
+
+it("never flashes a loader for a fast clip and cancels it on leave", async () => {
+  vi.useFakeTimers();
+  const { container } = card();
+  const link = screen.getByRole("link");
+  fireEvent.pointerEnter(link);
+  await act(() => vi.advanceTimersByTimeAsync(50));
+  fireEvent.playing(container.querySelector("video")!);
+  await act(() => vi.advanceTimersByTimeAsync(400));
+  expect(screen.queryByRole("status")).toBeNull();
+  fireEvent.pointerLeave(link);
+  fireEvent.pointerEnter(link);
+  await act(() => vi.advanceTimersByTimeAsync(50));
+  fireEvent.pointerLeave(link);
+  await act(() => vi.advanceTimersByTimeAsync(400));
+  expect(screen.queryByRole("status")).toBeNull();
+  expect(container.querySelector("video")).toBeNull();
+});
+
+it("removes the loader on errors and bounds stalled playback", async () => {
+  vi.useFakeTimers();
+  const { container } = card();
+  const link = screen.getByRole("link");
+  fireEvent.pointerEnter(link);
+  await act(() => vi.advanceTimersByTimeAsync(50));
+  await act(() => vi.advanceTimersByTimeAsync(350));
+  fireEvent.error(container.querySelector("video")!);
+  expect(screen.queryByRole("status")).toBeNull();
+  fireEvent.pointerLeave(link);
+  fireEvent.pointerEnter(link);
+  await act(() => vi.advanceTimersByTimeAsync(50));
+  await act(() => vi.advanceTimersByTimeAsync(350));
+  expect(screen.getByRole("status")).toBeTruthy();
+  await act(() => vi.advanceTimersByTimeAsync(35_000));
+  expect(screen.queryByRole("status")).toBeNull();
+  expect(container.querySelector("video")?.getAttribute("src")).toBeNull();
+  expect(screen.getByAltText("Video post")).toBeTruthy();
 });

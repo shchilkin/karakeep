@@ -15,6 +15,7 @@
     "analyze_preview": "Analyze saved preview with AI"
   },
   "common": {
+    "loading_bookmarks": "Loading bookmarks…",
     "default": "Default",
     "id": "ID",
     "url": "URL",

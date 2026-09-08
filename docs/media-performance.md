@@ -1,8 +1,14 @@
 # Media previews and player lifecycle
 
-The web library renders a still image until a card is hovered or keyboard-focused for 150 ms. Only one card preview can own playback. Opening a saved-media gallery revokes that preview and blocks other card previews until the gallery closes. Leaving the viewport, hiding the tab, or enabling reduced motion stops card playback.
+The web library renders a still image until a card is hovered or keyboard-focused for 50 ms. Only one card preview can own playback. Opening a saved-media gallery revokes that preview and blocks other card previews until the gallery closes. Leaving the viewport, hiding the tab, or enabling reduced motion stops card playback.
 
 Gallery videos release their source on navigation, enlargement and close: pause, remove `src`, then reset the media element. Source setup is repeatable under React StrictMode. Hidden tabs pause gallery playback without automatically resuming it.
+
+## Loading feedback
+
+Bookmark queries render inside a Suspense boundary with a responsive, image-first skeleton matching the chosen layout. The editor has its own placeholder when present; search uses the same skeleton. Real cards keep a rounded image placeholder until load, then fade in. Already cached images are detected at mount, and errors replace the placeholder with the existing error state. Skeleton animation and image transitions respect reduced motion.
+
+Hover starts requesting the clip after 50 ms. A small indicator appears over the poster only if playback is still waiting 350 ms later; it never delays playback. Playback success, failure, cancellation and unmount clear it. A stalled initial request releases its media source after 35 seconds and keeps the poster; full playback remains available in the gallery.
 
 ## Virtual library
 
@@ -49,7 +55,7 @@ Run package tests using their own configuration:
 
 ```sh
 (cd packages/api && pnpm exec vitest run)
-(cd apps/web && TZ=UTC pnpm exec vitest run)
+(cd apps/web && TZ=UTC pnpm exec vitest run --exclude '**/.next/**')
 ```
 
 The browser fixture uses the actual card, gallery and playback coordinator, with synthetic media, a minimal layout, an i18n adapter and a native-image adapter for the gallery's unoptimized Next images. It does not connect to an account or modify a library.
@@ -71,7 +77,7 @@ The fixture creates 1000 cards, performs 100 hover/open/play/navigate/close cycl
 - DOM nodes, event listeners and JS heap do not grow beyond bounded tolerances after warm-up and forced GC.
 - Normal card/gallery previews request no original image files.
 
-A Chrome 152 run on 2026-09-08 mounted at most 36 cards during the 1000-card scroll fixture, retained the editor draft, and measured zero scroll-anchor displacement after a height change above the viewport. All 200 native players created during 100 viewing cycles were released. At cycles 10/50/100, DOM nodes were 294/294/294 and event listeners 406/406/406, with JS heap about 12–13 MiB after forced GC. No original photo requests or JavaScript errors occurred. The gallery still fetched original videos, while hover fetched only clip URLs.
+A Chrome 152 run on 2026-09-08 mounted at most 36 cards during the 1000-card scroll fixture, retained the editor draft, and measured zero scroll-anchor displacement after a height change above the viewport. All 200 native players created during 100 viewing cycles were released. At cycles 10/50/100, DOM nodes were 327/327/327 and event listeners 406/406/406, with JS heap about 12–13 MiB after forced GC. No original photo requests or JavaScript errors occurred. The gallery still fetched original videos, while hover fetched only clip URLs. A separate component fixture checked light/dark/mobile skeletons, reduced motion, delayed media responses and loader removal. Web tests cover cached images, errors, fast hover playback, cancellation and the stalled-request deadline.
 
 These checks are lifecycle and request-budget evidence, not measurements of total browser/GPU memory, production network latency, large-video decoding, or Safari/iOS performance. API tests separately exercise real Sharp/ffmpeg conversion, orientation, H.264/duration/dimension/audio/faststart constraints, byte ranges, authorization, cache reuse across instances, queue bounds and eviction.
 
