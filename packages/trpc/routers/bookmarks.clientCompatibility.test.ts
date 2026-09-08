@@ -1,3 +1,10 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { drizzle } from "drizzle-orm/better-sqlite3";
+import { openSqliteDatabase } from "@karakeep/db/sqlite";
+import * as dbSchema from "@karakeep/db/schema";
+import { getApiCaller } from "../testUtils";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { assets, AssetTypes, bookmarks } from "@karakeep/db/schema";
@@ -235,15 +242,13 @@ test<CustomTestContext>("a private cover projection never changes public sharing
     type: BookmarkTypes.LINK,
     url: "https://example.com/private-photo",
   });
-  await db
-    .insert(assets)
-    .values({
-      id: "private-photo",
-      userId: b.userId,
-      bookmarkId: b.id,
-      assetType: AssetTypes.USER_UPLOADED,
-      fileName: "001.jpg",
-    });
+  await db.insert(assets).values({
+    id: "private-photo",
+    userId: b.userId,
+    bookmarkId: b.id,
+    assetType: AssetTypes.USER_UPLOADED,
+    fileName: "001.jpg",
+  });
   const model = await Bookmark.fromId(
     { db, user: { id: b.userId, role: "user" }, req: { ip: null } },
     b.id,
@@ -254,4 +259,64 @@ test<CustomTestContext>("a private cover projection never changes public sharing
     imageAssetId: "private-photo",
   });
   expect(model.asPublicBookmark().bannerImageUrl).toBeNull();
+});
+
+test<CustomTestContext>("title edit reserves the WAL writer before reading title provenance", async ({
+  apiCallers,
+  db,
+}) => {
+  const b = await apiCallers[0].bookmarks.createBookmark({
+    type: BookmarkTypes.LINK,
+    url: "https://example.com/wal",
+    title: "Captured",
+    titleSource: "captured",
+  });
+  await db
+    .update(bookmarks)
+    .set({ mediaAi: analysis })
+    .where(eq(bookmarks.id, b.id));
+  const directory = await mkdtemp(path.join(tmpdir(), "bookmark-edit-wal-"));
+  const file = path.join(directory, "db.sqlite");
+  await db.$client.backup(file);
+  const connection = openSqliteDatabase(file, {
+    readOnly: false,
+    walMode: true,
+  });
+  const competing = openSqliteDatabase(file, {
+    readOnly: false,
+    walMode: true,
+  });
+  competing.pragma("busy_timeout = 0");
+  try {
+    const database = drizzle(connection, { schema: dbSchema });
+    const transaction = database.transaction.bind(database);
+    const spy = vi
+      .spyOn(database, "transaction")
+      .mockImplementation((run, options) =>
+        transaction((tx) => {
+          expect(() =>
+            competing
+              .prepare(
+                "UPDATE bookmarks SET title = 'Concurrent edit' WHERE id = ?",
+              )
+              .run(b.id),
+          ).toThrow(/locked/);
+          return run(tx);
+        }, options),
+      );
+    const response = await getApiCaller(
+      database,
+      b.userId,
+    ).bookmarks.updateBookmark({
+      bookmarkId: b.id,
+      title: analysis.result.title,
+      note: "Only a note",
+    });
+    expect(response.originalTitle).toBe("Captured");
+    expect(spy).toHaveBeenCalledOnce();
+  } finally {
+    competing.close();
+    connection.close();
+    await rm(directory, { recursive: true, force: true });
+  }
 });

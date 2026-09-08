@@ -624,153 +624,156 @@ export const bookmarksAppRouter = router({
     .output(zBookmarkSchema)
     .use(ensureBookmarkOwnership)
     .mutation(async ({ input, ctx }) => {
-      await ctx.db.transaction((tx) => {
-        let somethingChanged = false;
+      await ctx.db.transaction(
+        (tx) => {
+          let somethingChanged = false;
 
-        // Update link-specific fields if any are provided
-        const linkUpdateData: Partial<{
-          url: string;
-          description: string | null;
-          author: string | null;
-          publisher: string | null;
-          datePublished: Date | null;
-          dateModified: Date | null;
-        }> = {};
-        if (input.url) {
-          linkUpdateData.url = input.url.trim();
-        }
-        if (input.description !== undefined) {
-          linkUpdateData.description = input.description;
-        }
-        if (input.author !== undefined) {
-          linkUpdateData.author = input.author;
-        }
-        if (input.publisher !== undefined) {
-          linkUpdateData.publisher = input.publisher;
-        }
-        if (input.datePublished !== undefined) {
-          linkUpdateData.datePublished = input.datePublished;
-        }
-        if (input.dateModified !== undefined) {
-          linkUpdateData.dateModified = input.dateModified;
-        }
-
-        if (Object.keys(linkUpdateData).length > 0) {
-          const result = tx
-            .update(bookmarkLinks)
-            .set(linkUpdateData)
-            .where(eq(bookmarkLinks.id, input.bookmarkId))
-            .run();
-          if (result.changes == 0) {
-            throw new TRPCError({
-              code: "BAD_REQUEST",
-              message:
-                "Attempting to set link attributes for non-link type bookmark",
-            });
+          // Update link-specific fields if any are provided
+          const linkUpdateData: Partial<{
+            url: string;
+            description: string | null;
+            author: string | null;
+            publisher: string | null;
+            datePublished: Date | null;
+            dateModified: Date | null;
+          }> = {};
+          if (input.url) {
+            linkUpdateData.url = input.url.trim();
           }
-          somethingChanged = true;
-        }
-
-        if (input.text) {
-          const result = tx
-            .update(bookmarkTexts)
-            .set({
-              text: input.text,
-            })
-            .where(eq(bookmarkTexts.id, input.bookmarkId))
-            .run();
-
-          if (result.changes == 0) {
-            throw new TRPCError({
-              code: "BAD_REQUEST",
-              message:
-                "Attempting to set link attributes for non-text type bookmark",
-            });
+          if (input.description !== undefined) {
+            linkUpdateData.description = input.description;
           }
-          somethingChanged = true;
-        }
-
-        if (input.assetContent !== undefined) {
-          const result = tx
-            .update(bookmarkAssets)
-            .set({
-              content: input.assetContent,
-            })
-            .where(and(eq(bookmarkAssets.id, input.bookmarkId)))
-            .run();
-
-          if (result.changes == 0) {
-            throw new TRPCError({
-              code: "BAD_REQUEST",
-              message:
-                "Attempting to set asset content for non-asset type bookmark",
-            });
+          if (input.author !== undefined) {
+            linkUpdateData.author = input.author;
           }
-          somethingChanged = true;
-        }
-
-        // Update common bookmark fields
-        const commonUpdateData: Partial<{
-          title: string | null;
-          titleSource: "manual" | "captured" | "unknown";
-          archived: boolean;
-          favourited: boolean;
-          note: string | null;
-          summary: string | null;
-          createdAt: Date;
-          modifiedAt: Date; // Always update modifiedAt
-        }> = {
-          modifiedAt: new Date(),
-        };
-        if (input.title !== undefined) {
-          // Old clients submit the displayed title even when only a note was
-          // changed. An explicit titleSource still lets a user pin that title.
-          const stored = tx
-            .select()
-            .from(bookmarks)
-            .where(eq(bookmarks.id, input.bookmarkId))
-            .get();
-          const echoesAiTitle =
-            input.titleSource === undefined &&
-            stored &&
-            input.title === stored.mediaAi?.result?.title &&
-            (!stored.title?.trim() || stored.titleSource === "captured");
-          if (!echoesAiTitle) {
-            commonUpdateData.title = input.title;
-            commonUpdateData.titleSource = input.titleSource ?? "manual";
+          if (input.publisher !== undefined) {
+            linkUpdateData.publisher = input.publisher;
           }
-        }
-        if (input.titleSource !== undefined) {
-          commonUpdateData.titleSource = input.titleSource;
-        }
-        if (input.archived !== undefined) {
-          commonUpdateData.archived = input.archived;
-        }
-        if (input.favourited !== undefined) {
-          commonUpdateData.favourited = input.favourited;
-        }
-        if (input.note !== undefined) {
-          commonUpdateData.note = input.note;
-        }
-        if (input.summary !== undefined) {
-          commonUpdateData.summary = input.summary;
-        }
-        if (input.createdAt !== undefined) {
-          commonUpdateData.createdAt = input.createdAt;
-        }
+          if (input.datePublished !== undefined) {
+            linkUpdateData.datePublished = input.datePublished;
+          }
+          if (input.dateModified !== undefined) {
+            linkUpdateData.dateModified = input.dateModified;
+          }
 
-        if (Object.keys(commonUpdateData).length > 1 || somethingChanged) {
-          tx.update(bookmarks)
-            .set(commonUpdateData)
-            .where(
-              and(
-                eq(bookmarks.userId, ctx.user.id),
-                eq(bookmarks.id, input.bookmarkId),
-              ),
-            )
-            .run();
-        }
-      });
+          if (Object.keys(linkUpdateData).length > 0) {
+            const result = tx
+              .update(bookmarkLinks)
+              .set(linkUpdateData)
+              .where(eq(bookmarkLinks.id, input.bookmarkId))
+              .run();
+            if (result.changes == 0) {
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message:
+                  "Attempting to set link attributes for non-link type bookmark",
+              });
+            }
+            somethingChanged = true;
+          }
+
+          if (input.text) {
+            const result = tx
+              .update(bookmarkTexts)
+              .set({
+                text: input.text,
+              })
+              .where(eq(bookmarkTexts.id, input.bookmarkId))
+              .run();
+
+            if (result.changes == 0) {
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message:
+                  "Attempting to set link attributes for non-text type bookmark",
+              });
+            }
+            somethingChanged = true;
+          }
+
+          if (input.assetContent !== undefined) {
+            const result = tx
+              .update(bookmarkAssets)
+              .set({
+                content: input.assetContent,
+              })
+              .where(and(eq(bookmarkAssets.id, input.bookmarkId)))
+              .run();
+
+            if (result.changes == 0) {
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message:
+                  "Attempting to set asset content for non-asset type bookmark",
+              });
+            }
+            somethingChanged = true;
+          }
+
+          // Update common bookmark fields
+          const commonUpdateData: Partial<{
+            title: string | null;
+            titleSource: "manual" | "captured" | "unknown";
+            archived: boolean;
+            favourited: boolean;
+            note: string | null;
+            summary: string | null;
+            createdAt: Date;
+            modifiedAt: Date; // Always update modifiedAt
+          }> = {
+            modifiedAt: new Date(),
+          };
+          if (input.title !== undefined) {
+            // Old clients submit the displayed title even when only a note was
+            // changed. An explicit titleSource still lets a user pin that title.
+            const stored = tx
+              .select()
+              .from(bookmarks)
+              .where(eq(bookmarks.id, input.bookmarkId))
+              .get();
+            const echoesAiTitle =
+              input.titleSource === undefined &&
+              stored &&
+              input.title === stored.mediaAi?.result?.title &&
+              (!stored.title?.trim() || stored.titleSource === "captured");
+            if (!echoesAiTitle) {
+              commonUpdateData.title = input.title;
+              commonUpdateData.titleSource = input.titleSource ?? "manual";
+            }
+          }
+          if (input.titleSource !== undefined) {
+            commonUpdateData.titleSource = input.titleSource;
+          }
+          if (input.archived !== undefined) {
+            commonUpdateData.archived = input.archived;
+          }
+          if (input.favourited !== undefined) {
+            commonUpdateData.favourited = input.favourited;
+          }
+          if (input.note !== undefined) {
+            commonUpdateData.note = input.note;
+          }
+          if (input.summary !== undefined) {
+            commonUpdateData.summary = input.summary;
+          }
+          if (input.createdAt !== undefined) {
+            commonUpdateData.createdAt = input.createdAt;
+          }
+
+          if (Object.keys(commonUpdateData).length > 1 || somethingChanged) {
+            tx.update(bookmarks)
+              .set(commonUpdateData)
+              .where(
+                and(
+                  eq(bookmarks.userId, ctx.user.id),
+                  eq(bookmarks.id, input.bookmarkId),
+                ),
+              )
+              .run();
+          }
+        },
+        { behavior: "immediate" },
+      );
 
       // Refetch the updated bookmark data to return the full object
       const updatedBookmark = (
