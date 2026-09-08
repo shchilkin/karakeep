@@ -149,6 +149,7 @@ async function runWebhook(job: DequeuedJob<ZWebhookRequest>) {
               url: bookmark?.link ? bookmark.link.url : undefined,
               type: bookmark?.type,
               operation: job.data.operation,
+              reason: job.data.reason,
             }),
             signal: AbortSignal.timeout(webhookTimeoutSec * 1000),
           });

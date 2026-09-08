@@ -112,7 +112,8 @@ describe("Bookmark title provenance", () => {
       note: "My note",
     });
     expect(saved.titleSource).toBe("captured");
-    expect(saved.title).toBe("Stories • Instagram");
+    expect(saved.title).toBe("Studio portrait");
+    expect(saved.originalTitle).toBe("Stories • Instagram");
     expect(getBookmarkTitle(saved)).toBe("Studio portrait");
   });
 
@@ -214,7 +215,8 @@ describe("Bookmark title provenance", () => {
       bookmarkId: b.id,
       titleSource: "captured",
     });
-    expect(saved.title).toBe("Stories • Instagram");
+    expect(saved.title).toBe("Studio portrait");
+    expect(saved.originalTitle).toBe("Stories • Instagram");
     expect(saved.mediaAi).toEqual(catalogResult);
     expect(getBookmarkTitle(saved)).toBe("Studio portrait");
     const edited = await api.updateBookmark({
@@ -230,7 +232,8 @@ describe("Bookmark title provenance", () => {
       title: "Stories • Instagram",
       source: "extension",
     });
-    expect(legacyResave.title).toBeNull();
+    expect(legacyResave.originalTitle).toBeNull();
+    expect(legacyResave.title).toBe("Studio portrait");
     expect(getBookmarkTitle(legacyResave)).toBe("Studio portrait");
   });
 
@@ -1091,6 +1094,7 @@ describe("Bookmark Routes", () => {
         {
           groupId: user.id,
         },
+        { reason: "resaved" },
       );
     } finally {
       triggerWebhookSpy.mockRestore();

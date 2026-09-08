@@ -57,7 +57,12 @@ import type { ZCursor } from "@karakeep/shared/types/pagination";
 import {
   getBookmarkLinkAssetIdOrUrl,
   getBookmarkTitle,
+  getBookmarkTitleOverride,
 } from "@karakeep/shared/utils/bookmarkUtils";
+import {
+  getBookmarkMedia,
+  getMediaCoverId,
+} from "@karakeep/shared/utils/bookmarkMedia";
 import { htmlToPlainText } from "@karakeep/shared/utils/htmlUtils";
 
 import { AuthedContext } from "..";
@@ -806,14 +811,27 @@ export class Bookmark extends BareBookmark {
   }
 
   asZBookmark(): ZBookmark {
-    if (this.bookmark.userId === this.ctx.user.id) {
-      return this.bookmark;
+    // Project display fields only at the authenticated API boundary. Keep the
+    // model/database originals intact for edits, exports and public sharing.
+    const firstMedia = getBookmarkMedia(this.bookmark)[0];
+    const coverId = firstMedia && getMediaCoverId(firstMedia);
+    const bookmark: ZBookmark = {
+      ...this.bookmark,
+      originalTitle: this.bookmark.title ?? null,
+      title: getBookmarkTitleOverride(this.bookmark),
+      content:
+        this.bookmark.content.type === BookmarkTypes.LINK && coverId
+          ? { ...this.bookmark.content, imageAssetId: coverId }
+          : this.bookmark.content,
+    };
+    if (bookmark.userId === this.ctx.user.id) {
+      return bookmark;
     }
 
     // Collaborators shouldn't see owner-specific state such as favourites,
     // archived flag, or personal notes.
     return {
-      ...this.bookmark,
+      ...bookmark,
       archived: false,
       favourited: false,
       note: null,

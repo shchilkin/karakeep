@@ -316,7 +316,7 @@ export const bookmarksAppRouter = router({
             ...(input.note !== undefined ? { note: input.note } : {}),
             ...(input.summary !== undefined ? { summary: input.summary } : {}),
           };
-          const [saved] = await ctx.db
+          await ctx.db
             .update(bookmarks)
             .set({ ...resaved, modifiedAt: now })
             .where(
@@ -337,12 +337,14 @@ export const bookmarksAppRouter = router({
               {
                 groupId: ctx.user.id,
               },
+              { reason: "resaved" },
             ),
           ]);
 
           return {
-            ...alreadyExists,
-            ...saved,
+            ...(
+              await Bookmark.fromId(ctx, alreadyExists.id, false)
+            ).asZBookmark(),
             alreadyExists: true,
           };
         }
@@ -721,8 +723,22 @@ export const bookmarksAppRouter = router({
           modifiedAt: new Date(),
         };
         if (input.title !== undefined) {
-          commonUpdateData.title = input.title;
-          commonUpdateData.titleSource = input.titleSource ?? "manual";
+          // Old clients submit the displayed title even when only a note was
+          // changed. An explicit titleSource still lets a user pin that title.
+          const stored = tx
+            .select()
+            .from(bookmarks)
+            .where(eq(bookmarks.id, input.bookmarkId))
+            .get();
+          const echoesAiTitle =
+            input.titleSource === undefined &&
+            stored &&
+            input.title === stored.mediaAi?.result?.title &&
+            (!stored.title?.trim() || stored.titleSource === "captured");
+          if (!echoesAiTitle) {
+            commonUpdateData.title = input.title;
+            commonUpdateData.titleSource = input.titleSource ?? "manual";
+          }
         }
         if (input.titleSource !== undefined) {
           commonUpdateData.titleSource = input.titleSource;

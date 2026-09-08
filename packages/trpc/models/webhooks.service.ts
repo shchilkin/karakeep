@@ -79,6 +79,7 @@ export class WebhooksService {
     operation: ZWebhookRequest["operation"],
     userId: string,
     opts?: EnqueueOptions,
+    context?: Pick<ZWebhookRequest, "reason">,
   ) {
     const count = await this.repo.countByUser(userId);
     if (count === 0) {
@@ -89,6 +90,7 @@ export class WebhooksService {
         bookmarkId,
         userId,
         operation,
+        ...context,
       },
       opts,
     );

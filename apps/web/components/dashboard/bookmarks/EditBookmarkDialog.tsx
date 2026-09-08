@@ -44,7 +44,10 @@ import {
   ZBookmark,
   zUpdateBookmarksRequestSchema,
 } from "@karakeep/shared/types/bookmarks";
-import { getBookmarkTitle } from "@karakeep/shared/utils/bookmarkUtils";
+import {
+  getBookmarkTitle,
+  getStoredBookmarkTitle,
+} from "@karakeep/shared/utils/bookmarkUtils";
 
 import { BookmarkTagsEditor } from "./BookmarkTagsEditor";
 
@@ -196,7 +199,7 @@ export function EditBookmarkDialog({
             />
 
             {bookmark.mediaAi?.result?.title &&
-              bookmark.title &&
+              getStoredBookmarkTitle(bookmark) &&
               bookmark.titleSource !== "captured" && (
                 <Button
                   type="button"
