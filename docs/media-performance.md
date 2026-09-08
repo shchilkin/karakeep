@@ -8,6 +8,10 @@ Gallery videos release their source on navigation, enlargement and close: pause,
 
 Bookmark queries render inside a Suspense boundary with a responsive, image-first skeleton matching the chosen layout. The editor has its own placeholder when present; search uses the same skeleton. Real cards keep a rounded image placeholder until load, then fade in. Already cached images are detected at mount, and errors replace the placeholder with the existing error state. Skeleton animation and image transitions respect reduced motion.
 
+The virtual feed remembers each card image's intrinsic dimensions separately from its mounted element. When a photo or video poster is revisited, its placeholder and error state reserve the same aspect ratio as the loaded image, including after a width change. Unmounting still releases the image/video elements. Each retained bookmark has at most one image-dimension record; records are removed when the bookmark leaves the result set, and a different cover URL cannot reuse stale proportions.
+
+This prevents a previously measured portrait from shrinking to a generic 4:3 placeholder and changing the virtual layout during image reload. Dimensions are scoped to the current feed rather than a global or persistent browser cache. A never-loaded image still uses a 4:3 estimate until its intrinsic size is known. Exact geometry on the first visit or after a full page reload would require stored server-side dimensions in the bookmark payload. Uniform fixed-ratio cards are another option, with cropping or letterboxing instead of the existing natural-height presentation.
+
 Hover starts requesting the clip after 50 ms. A small indicator appears over the poster only if playback is still waiting 350 ms later; it never delays playback. Playback success, failure, cancellation and unmount clear it. A stalled initial request releases its media source after 35 seconds and keeps the poster; full playback remains available in the gallery.
 
 ## Virtual library
@@ -80,6 +84,17 @@ The fixture creates 1000 cards, performs 100 hover/open/play/navigate/close cycl
 A Chrome 152 run on 2026-09-08 mounted at most 36 cards during the 1000-card scroll fixture, retained the editor draft, and measured zero scroll-anchor displacement after a height change above the viewport. All 200 native players created during 100 viewing cycles were released. At cycles 10/50/100, DOM nodes were 327/327/327 and event listeners 406/406/406, with JS heap about 12–13 MiB after forced GC. No original photo requests or JavaScript errors occurred. The gallery still fetched original videos, while hover fetched only clip URLs. A separate component fixture checked light/dark/mobile skeletons, reduced motion, delayed media responses and loader removal. Web tests cover cached images, errors, fast hover playback, cancellation and the stalled-request deadline.
 
 These checks are lifecycle and request-budget evidence, not measurements of total browser/GPU memory, production network latency, large-video decoding, or Safari/iOS performance. API tests separately exercise real Sharp/ffmpeg conversion, orientation, H.264/duration/dimension/audio/faststart constraints, byte ranges, authorization, cache reuse across instances, queue bounds and eviction.
+
+The layout regression fixture uses actual card images, video posters, virtual masonry and Tailwind styles. It forces image-cache eviction between visits and delays image responses by 300 ms; cached tiny fixtures otherwise conceal the bug.
+
+```sh
+# Requires an installed Chrome and the browser-fixture dependencies.
+RESULT_PATH=/tmp/karakeep-media-layout.json node tools/media-layout/run.mjs
+# Optional manual visual fixture; stop with Ctrl-C.
+SERVE_ONLY=1 node tools/media-layout/run.mjs
+```
+
+Before the fix, revisiting a portrait changed its height from 592 to 312 and back to 592 pixels. The regression checks both frame height and viewport position on every animation frame through reload. Repeated visits, portrait/landscape/square images and video posters, resizing, column changes, failed requests, recovery and mobile window scrolling all reported zero displacement after the fix. Mobile here is Chrome at a narrow viewport, not a Safari device test.
 
 ## Follow-up verification
 
