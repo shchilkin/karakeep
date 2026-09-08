@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import LoadingSpinner from "@/components/ui/spinner";
+import { useTranslation } from "@/lib/i18n/client";
 import { mediaPlayback, releaseVideo } from "@/lib/mediaPlayback";
 import { cn } from "@/lib/utils";
 
@@ -23,8 +25,12 @@ export default function BookmarkCardVideo({
   posterSrcSet?: string;
 }) {
   const host = useRef<HTMLDivElement>(null);
+  const { t } = useTranslation();
   const [requested, setRequested] = useState(false);
-  const [playing, setPlaying] = useState(false);
+  const [status, setStatus] = useState<"loading" | "playing" | "error">(
+    "loading",
+  );
+  const [showLoading, setShowLoading] = useState(false);
   const video = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
@@ -62,7 +68,7 @@ export default function BookmarkCardVideo({
           timer = undefined;
           active = mediaPlayback.requestPreview(owner, revoke);
           setRequested(active);
-        }, 150);
+        }, 50);
       }
     };
     const enter = (event: PointerEvent) => {
@@ -108,21 +114,35 @@ export default function BookmarkCardVideo({
 
   useEffect(() => {
     const element = video.current;
-    if (!requested || !element) {
-      setPlaying(false);
-      return;
-    }
+    if (!requested || !element) return;
+    setStatus("loading");
     let cancelled = false;
     element.src = src;
     element.muted = true;
     element.play().catch(() => {
-      if (!cancelled) setPlaying(false);
+      if (!cancelled) setStatus("error");
     });
     return () => {
       cancelled = true;
       releaseVideo(element);
     };
   }, [requested, src]);
+
+  const waiting = requested && status === "loading";
+  useEffect(() => {
+    setShowLoading(false);
+    if (!waiting) return;
+    const reveal = setTimeout(() => setShowLoading(true), 350);
+    // A stalled response must not leave a permanent loading indicator.
+    const timeout = setTimeout(() => {
+      setStatus("error");
+      if (video.current) releaseVideo(video.current);
+    }, 35_000);
+    return () => {
+      clearTimeout(reveal);
+      clearTimeout(timeout);
+    };
+  }, [waiting, src]);
 
   return (
     <div ref={host} className="relative h-full w-full">
@@ -144,13 +164,22 @@ export default function BookmarkCardVideo({
           preload="none"
           aria-hidden="true"
           tabIndex={-1}
-          onPlaying={() => setPlaying(true)}
-          onError={() => setPlaying(false)}
+          onPlaying={() => setStatus("playing")}
+          onError={() => setStatus("error")}
           className={cn(
             "pointer-events-none absolute inset-0 size-full object-cover",
-            !playing && "opacity-0",
+            status !== "playing" && "opacity-0",
           )}
         />
+      )}
+      {waiting && showLoading && (
+        <span
+          role="status"
+          aria-label={t("preview.media.loading")}
+          className="pointer-events-none absolute bottom-3 right-3 rounded-full bg-black/70 p-2 text-white"
+        >
+          <LoadingSpinner className="size-4 motion-reduce:animate-none" />
+        </span>
       )}
     </div>
   );

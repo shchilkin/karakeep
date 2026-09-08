@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useTranslation } from "@/lib/i18n/client";
 import { cn } from "@/lib/utils";
 import { ImageOff } from "lucide-react";
@@ -21,6 +22,10 @@ export default function BookmarkCardImage({
   const [status, setStatus] = useState<"loading" | "ready" | "error">(
     "loading",
   );
+  const imageRef = useCallback((image: HTMLImageElement | null) => {
+    // A cached image may finish before React attaches its load listener.
+    if (image?.complete && image.naturalWidth > 0) setStatus("ready");
+  }, []);
 
   if (status === "error") {
     return (
@@ -32,26 +37,42 @@ export default function BookmarkCardImage({
   }
 
   return (
-    // eslint-disable-next-line @next/next/no-img-element -- Authenticated server thumbnails supply responsive sources directly.
-    <img
-      src={src}
-      alt={alt}
-      srcSet={srcSet}
-      sizes={
-        srcSet
-          ? "auto, (max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-          : undefined
-      }
-      decoding="async"
-      loading="lazy"
-      onLoad={() => setStatus("ready")}
-      onError={() => setStatus("error")}
+    <span
       className={cn(
-        "block w-full",
-        naturalSize ? "h-auto" : "aspect-square h-full",
-        naturalSize && status === "loading" && "aspect-[4/3] object-contain",
-        className,
+        "relative block w-full overflow-hidden rounded-xl",
+        !naturalSize && "h-full",
       )}
-    />
+      aria-busy={status === "loading"}
+    >
+      {status === "loading" && (
+        <Skeleton
+          aria-hidden="true"
+          className="absolute inset-0 rounded-[inherit] bg-muted-foreground/10"
+        />
+      )}
+      {/* eslint-disable-next-line @next/next/no-img-element -- Authenticated server thumbnails supply responsive sources directly. */}
+      <img
+        ref={imageRef}
+        src={src}
+        alt={alt}
+        srcSet={srcSet}
+        sizes={
+          srcSet
+            ? "auto, (max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+            : undefined
+        }
+        decoding="async"
+        loading="lazy"
+        onLoad={() => setStatus("ready")}
+        onError={() => setStatus("error")}
+        className={cn(
+          "relative block w-full transition-opacity duration-150 motion-reduce:transition-none",
+          status === "loading" ? "opacity-0" : "opacity-100",
+          naturalSize ? "h-auto" : "aspect-square h-full",
+          naturalSize && status === "loading" && "aspect-[4/3] object-contain",
+          className,
+        )}
+      />
+    </span>
   );
 }

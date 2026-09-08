@@ -46,6 +46,7 @@ try {
       await sharp(original).resize({ width }).webp({ quality: 78 }).toBuffer(),
     );
   let videoRequests = 0,
+    hoverRequests = 0,
     originalRequests = 0,
     thumbnailRequests = 0;
   server = await createServer({
@@ -77,6 +78,10 @@ try {
               thumbnailRequests++;
               bytes = thumbnails.get(Number(url.searchParams.get("width")));
               type = "image/webp";
+            } else if (url.pathname.endsWith("/hover-clip")) {
+              hoverRequests++;
+              bytes = video;
+              type = "video/mp4";
             } else if (url.pathname.includes("/video-")) {
               videoRequests++;
               bytes = video;
@@ -145,19 +150,31 @@ try {
   };
   const url = `http://127.0.0.1:${server.httpServer.address().port}`;
   await page.goto(url);
-  await page.locator("[data-card='999']").waitFor({ state: "attached" });
+  await page.locator("[data-card='0']").waitFor({ state: "attached" });
   await page.waitForTimeout(500);
   assert.equal(await page.locator("video").count(), 0);
   assert.equal(videoRequests, 0);
+  assert.equal(hoverRequests, 0);
   assert.equal(originalRequests, 0);
   const idle = await snapshot();
   const samples = [];
   for (let i = 0; i < 100; i++) {
-    const card = page.locator(`[data-card='${i % 20}']`);
+    const card = page.locator(`[data-card='${i % 4}']`);
     await card.hover();
     await page.waitForFunction(
       () => document.querySelectorAll("video").length === 1,
     );
+    await page.waitForFunction(() => {
+      const v = document.querySelector("video");
+      return v && v.readyState >= 2 && !v.paused;
+    });
+    assert(hoverRequests > 0);
+    if (i === 0)
+      assert.equal(
+        videoRequests,
+        0,
+        "Hover must not request the original video",
+      );
     await card.click();
     await page.locator("[data-viewer]").waitFor();
     await page.waitForFunction(
@@ -178,7 +195,92 @@ try {
       console.log(JSON.stringify({ progress: i + 1, videos: 0 }));
     }
   }
-  await page.locator("[data-card='999']").scrollIntoViewIfNeeded();
+  const maxMounted = 100;
+  assert((await page.locator("[data-card]").count()) < maxMounted);
+  await page.getByRole("textbox", { name: "Draft" }).fill("Keep this draft");
+  const feed = page.locator("[data-feed]");
+  let peakMounted = 0;
+  for (let step = 0; step < 12; step++) {
+    await feed.evaluate((el, step) => {
+      el.scrollTop = (el.scrollHeight * step) / 12;
+    }, step);
+    await page.waitForTimeout(120);
+    peakMounted = Math.max(
+      peakMounted,
+      await page.locator("[data-card]").count(),
+    );
+    assert(
+      peakMounted < maxMounted,
+      "Offscreen cards accumulate while scrolling",
+    );
+  }
+  const anchor = await page.evaluate(() => {
+    const feed = document.querySelector("[data-feed]").getBoundingClientRect();
+    const node = [...document.querySelectorAll("[data-virtual-id]")].find(
+      (el) => {
+        const r = el.getBoundingClientRect();
+        return r.bottom > feed.top && r.top < feed.bottom;
+      },
+    );
+    return {
+      id: node.dataset.virtualId,
+      top: node.getBoundingClientRect().top - feed.top,
+    };
+  });
+  await page.getByRole("button", { name: "Grow editor" }).click();
+  await page.waitForTimeout(200);
+  const anchorShift = await page
+    .locator(`[data-virtual-id="${anchor.id}"]`)
+    .evaluate(
+      (el, top) =>
+        el.getBoundingClientRect().top -
+        document.querySelector("[data-feed]").getBoundingClientRect().top -
+        top,
+      anchor.top,
+    );
+  assert(
+    Math.abs(anchorShift) < 3,
+    "Changing a measured card above the viewport moved the scroll anchor",
+  );
+  await page.getByRole("button", { name: "Focus last card" }).click();
+  await page.locator("[data-card='999']").waitFor({ state: "visible" });
+  await page.waitForTimeout(300);
+  assert(
+    await page.locator("[data-card='999']").evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      return r.bottom > 0 && r.top < innerHeight;
+    }),
+    "Focused offscreen card was not scrolled into view",
+  );
+  await page.getByRole("button", { name: "Append 1000" }).click();
+  assert((await page.locator("[data-card]").count()) < maxMounted);
+  await page.getByRole("button", { name: "Change columns" }).click();
+  await page.waitForTimeout(200);
+  assert((await page.locator("[data-card]").count()) < maxMounted);
+  await page.getByRole("button", { name: "Filter to 20" }).click();
+  await page.waitForTimeout(300);
+  await feed.evaluate((el) => {
+    el.scrollTop = 0;
+  });
+  await page.waitForTimeout(100);
+  assert.equal(
+    await page.getByRole("textbox", { name: "Draft" }).inputValue(),
+    "Keep this draft",
+  );
+  assert(await page.locator("[data-card='0']").isVisible());
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(200);
+  await page.evaluate(() =>
+    window.scrollTo(0, document.documentElement.scrollHeight / 2),
+  );
+  await page.waitForTimeout(200);
+  assert(
+    (await page.locator("[data-card]").count()) < 15,
+    "Mobile window scrolling retained the entire list",
+  );
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.waitForTimeout(100);
+  assert(await page.locator("[data-card='0']").isVisible());
   await page.mouse.move(0, 0);
   await page.waitForTimeout(300);
   assert.equal(await page.locator("video").count(), 0);
@@ -213,12 +315,21 @@ try {
   );
   const result = {
     cards: 1000,
+    virtualFeed: {
+      peakMounted,
+      appendedTo: 2000,
+      filteredTo: 20,
+      draftPreserved: true,
+      anchorShift,
+      mobileWindowScroll: true,
+    },
     cycles: 100,
     browser: browser.version(),
     idle,
     samples,
     requests: {
       video: videoRequests,
+      hover: hoverRequests,
       original: originalRequests,
       thumbnail: thumbnailRequests,
     },

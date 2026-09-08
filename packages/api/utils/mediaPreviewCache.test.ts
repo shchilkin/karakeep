@@ -2,7 +2,7 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
-import { ThumbnailBusyError, ThumbnailCache } from "./thumbnailCache";
+import { PreviewBusyError, MediaPreviewCache } from "./mediaPreviewCache";
 
 const folders: string[] = [];
 async function cache(bytes = 1024, pending = 64, age?: number) {
@@ -10,7 +10,7 @@ async function cache(bytes = 1024, pending = 64, age?: number) {
     path.join(tmpdir(), "karakeep-thumbnails-test-"),
   );
   folders.push(folder);
-  return { folder, store: new ThumbnailCache(folder, bytes, pending, age) };
+  return { folder, store: new MediaPreviewCache(folder, bytes, pending, age) };
 }
 afterEach(async () => {
   await Promise.all(
@@ -26,7 +26,7 @@ it("coalesces duplicate requests and reuses disk cache after restart", async () 
   );
   expect(results.every((r) => r.toString() === "preview")).toBe(true);
   expect(render).toHaveBeenCalledOnce();
-  await new ThumbnailCache(folder).get("owner/asset/640", render);
+  await new MediaPreviewCache(folder).get("owner/asset/640", render);
   expect(render).toHaveBeenCalledOnce();
   await store.get("another-owner/asset/640", render);
   expect(render).toHaveBeenCalledTimes(2);
@@ -64,7 +64,7 @@ it("bounds the waiting queue and recovers after a failed conversion", async () =
   const assertion = expect(failed).rejects.toThrow("decode failed");
   await vi.waitFor(() => expect(render).toHaveBeenCalledOnce());
   await expect(store.get("overflow", render)).rejects.toBeInstanceOf(
-    ThumbnailBusyError,
+    PreviewBusyError,
   );
   release();
   await assertion;
@@ -92,4 +92,19 @@ it("recreates expired or manually removed cache files", async () => {
   for (const name of await readdir(folder)) await rm(path.join(folder, name));
   await store.get("old", render);
   expect(render).toHaveBeenCalledTimes(3);
+});
+
+it("persists MP4 previews and reuses them across cache instances", async () => {
+  const { folder } = await cache();
+  const render = vi.fn(async () => Buffer.from("small video"));
+  const first = new MediaPreviewCache(folder, 1024, 2, 60_000, "mp4");
+  await first.get("owner/video", render);
+  expect((await readdir(folder)).every((file) => file.endsWith(".mp4"))).toBe(
+    true,
+  );
+  const restarted = new MediaPreviewCache(folder, 1024, 2, 60_000, "mp4");
+  expect((await restarted.get("owner/video", render)).toString()).toBe(
+    "small video",
+  );
+  expect(render).toHaveBeenCalledOnce();
 });

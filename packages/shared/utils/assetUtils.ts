@@ -17,3 +17,8 @@ export function getAssetThumbnailSrcSet(assetId: string) {
     .map((width) => `${getAssetThumbnailUrl(assetId, width)} ${width}w`)
     .join(", ");
 }
+
+/** A small silent preview; full playback and downloads keep getAssetUrl. */
+export function getAssetHoverClipUrl(assetId: string) {
+  return `${getAssetUrl(assetId)}/hover-clip`;
+}
