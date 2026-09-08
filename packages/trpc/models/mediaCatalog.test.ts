@@ -82,6 +82,32 @@ async function queue() {
 }
 
 describe("media catalog lifecycle", () => {
+  test("a saved direct video queues automatic analysis without waiting for a social archive tag", async () => {
+    db.delete(assets).run();
+    db.insert(assets)
+      .values({
+        id: "video",
+        userId: "u1",
+        bookmarkId: "b1",
+        assetType: AssetTypes.LINK_VIDEO,
+        fileName: "direct-video-test.webm",
+      })
+      .run();
+    const state = await requestMediaCatalog(db, "u1", "b1", {
+      automatic: true,
+    });
+    expect(state?.status).toBe("pending");
+    expect(catalogSnapshot(db, "u1", "b1").input?.media.kind).toBe("video");
+    Object.assign(serverConfig.mediaAi, { autoNew: false });
+    expect(
+      startMediaCatalog(db, {
+        bookmarkId: "b1",
+        userId: "u1",
+        runId: state!.runId,
+      }),
+    ).toBeNull();
+    expect(db.select().from(mediaAiRequests).all()).toHaveLength(0);
+  });
   test("all lifecycle transactions reserve the WAL writer before taking a snapshot", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "media-catalog-wal-"));
     const file = path.join(directory, "db.sqlite");

@@ -6,7 +6,7 @@ import { promises as fs } from "fs";
 import * as fsSync from "fs";
 import * as path from "node:path";
 import * as os from "os";
-import { Transform } from "stream";
+import { Readable, Transform } from "stream";
 import { pipeline } from "stream/promises";
 import { dataUriToBuffer } from "data-uri-to-buffer";
 import type { MimeBuffer } from "data-uri-to-buffer";
@@ -229,6 +229,7 @@ export async function downloadAndStoreFile(
   fileType: string,
   abortSignal: AbortSignal,
   runProxy: RunProxyConfig,
+  expectedContentTypes?: ReadonlySet<string>,
 ) {
   return await withSpan(
     tracer,
@@ -267,6 +268,12 @@ export async function downloadAndStoreFile(
         );
         if (!contentType) {
           throw new Error("No content type in the response");
+        }
+        if (expectedContentTypes && !expectedContentTypes.has(contentType)) {
+          if (response.body instanceof Readable) response.body.destroy();
+          throw new Error(
+            `Unexpected ${fileType} content type: ${contentType}`,
+          );
         }
 
         const assetId = newAssetId();

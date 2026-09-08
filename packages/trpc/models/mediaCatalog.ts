@@ -99,7 +99,14 @@ export function catalogSnapshot(
     .where(eq(tagsOnBookmarks.bookmarkId, bookmarkId))
     .all()
     .map((t) => t.name);
-  return { bookmark, input, tags };
+  return {
+    bookmark,
+    input,
+    tags,
+    hasDownloadedVideo: attached.some(
+      (a) => a.assetType === AssetTypes.LINK_VIDEO,
+    ),
+  };
 }
 
 export function catalogFingerprint(input: CatalogInput, model: string) {
@@ -138,7 +145,7 @@ export async function requestMediaCatalog(
           .get()?.enabled === false
       )
         return null;
-      const { bookmark, input, tags } = catalogSnapshot(
+      const { bookmark, input, tags, hasDownloadedVideo } = catalogSnapshot(
         tx,
         userId,
         bookmarkId,
@@ -154,7 +161,8 @@ export async function requestMediaCatalog(
       if (
         options.automatic &&
         bookmark.type === BookmarkTypes.LINK &&
-        !tags.includes("social-media-archived")
+        !tags.includes("social-media-archived") &&
+        !hasDownloadedVideo
       )
         return null;
       const previous = bookmark.mediaAi;

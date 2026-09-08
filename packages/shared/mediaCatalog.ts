@@ -68,9 +68,9 @@ export function catalogInput(
   const originals = bookmark.assets
     .filter(
       (a) =>
-        a.assetType === "userUploaded" &&
+        (a.assetType === "userUploaded" || a.assetType === "video") &&
         !a.fileName?.toLowerCase().endsWith(".poster.jpg") &&
-        /\.(?:jpe?g|png|webp|avif|mp4)$/i.test(a.fileName ?? ""),
+        /\.(?:jpe?g|png|webp|avif|mp4|webm|mkv)$/i.test(a.fileName ?? ""),
     )
     .sort((a, b) => (a.fileName ?? a.id).localeCompare(b.fileName ?? b.id));
   const c = bookmark.content;
@@ -122,7 +122,7 @@ export function catalogInput(
           : [];
   if (!assets.length && !archivedText) return null;
   const videos = assets.filter((a) =>
-    a.fileName?.toLowerCase().endsWith(".mp4"),
+    /\.(mp4|webm|mkv)$/i.test(a.fileName ?? ""),
   ).length;
   return {
     assets: assets.map((a) => ({

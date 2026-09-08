@@ -4,6 +4,7 @@ import type { ZBookmark } from "@karakeep/shared/types/bookmarks";
 import { BookmarkTypes } from "@karakeep/shared/types/bookmarks";
 
 import { getBookmarkImages } from "./bookmarkImages";
+import { getBookmarkMedia, getMediaCoverId } from "./bookmarkImages";
 
 function bookmark(assets: ZBookmark["assets"]): ZBookmark {
   return {
@@ -26,6 +27,29 @@ function bookmark(assets: ZBookmark["assets"]): ZBookmark {
 }
 
 describe("saved bookmark images", () => {
+  it.each(["mp4", "webm", "mkv"])(
+    "uses a saved direct %s video and its first frame in the gallery",
+    (extension) => {
+      const post = bookmark([
+        {
+          id: "video",
+          assetType: "video",
+          fileName: `direct-video-test.${extension}`,
+        },
+        {
+          id: "poster",
+          assetType: "bannerImage",
+          fileName: "direct-video-test.poster.jpg",
+        },
+        { id: "screen", assetType: "screenshot", fileName: "screenshot.jpg" },
+      ]);
+      const media = getBookmarkMedia(post);
+      expect(media).toHaveLength(1);
+      expect(media[0]?.id).toBe("video");
+      expect(getMediaCoverId(media[0]!)).toBe("poster");
+      expect(getBookmarkImages(post)).toEqual([]);
+    },
+  );
   it("selects original photos in natural filename order without changing the bookmark", () => {
     const post = bookmark([
       { id: "ten", assetType: "userUploaded", fileName: "post_10.jpg" },

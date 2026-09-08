@@ -53,7 +53,7 @@ export async function prepareCatalogImages(
         `${index}${path.extname(item.fileName)}`,
       );
       await writeFile(file, asset, { mode: 0o600 });
-      const isVideo = /\.mp4$/i.test(file);
+      const isVideo = /\.(mp4|webm|mkv)$/i.test(file);
       let timestamps = [0];
       if (isVideo && chosen.length === 1) {
         const probe = await execa(

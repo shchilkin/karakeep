@@ -9,7 +9,8 @@ export type BookmarkMedia = BookmarkImage & { video?: { posterId?: string } };
 export function getBookmarkMedia(bookmark: ZBookmark): BookmarkMedia[] {
   if (bookmark.content.type !== BookmarkTypes.LINK) return [];
   const originals = bookmark.assets.filter(
-    (asset) => asset.assetType === "userUploaded",
+    (asset) =>
+      asset.assetType === "userUploaded" || asset.assetType === "video",
   );
   const seen = new Set<string>();
   return originals
@@ -17,7 +18,7 @@ export function getBookmarkMedia(bookmark: ZBookmark): BookmarkMedia[] {
       if (
         !asset.fileName ||
         /\.poster\.jpg$/i.test(asset.fileName) ||
-        !/\.(avif|gif|jpe?g|png|webp|mp4)$/i.test(asset.fileName) ||
+        !/\.(avif|gif|jpe?g|png|webp|mp4|webm|mkv)$/i.test(asset.fileName) ||
         seen.has(asset.id)
       )
         return false;
@@ -26,14 +27,17 @@ export function getBookmarkMedia(bookmark: ZBookmark): BookmarkMedia[] {
     })
     .map(
       (asset): BookmarkMedia =>
-        /\.mp4$/i.test(asset.fileName ?? "")
+        /\.(mp4|webm|mkv)$/i.test(asset.fileName ?? "")
           ? {
               ...asset,
               video: {
-                posterId: originals.find(
+                posterId: bookmark.assets.find(
                   (poster) =>
                     poster.fileName ===
-                    asset.fileName?.replace(/\.mp4$/i, ".poster.jpg"),
+                    asset.fileName?.replace(
+                      /\.(mp4|webm|mkv)$/i,
+                      ".poster.jpg",
+                    ),
                 )?.id,
               },
             }
