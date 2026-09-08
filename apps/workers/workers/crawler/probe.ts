@@ -2,6 +2,7 @@
 // (deciding asset-bookmark vs webpage routing) and, for HTML pages,
 // opportunistically extracts preview metadata in the background so the
 // bookmark gets a title/thumbnail before the slow browser render finishes.
+import { Readable } from "node:stream";
 import { eq, sql } from "drizzle-orm";
 import { fetchWithProxy, getBookmarkDomain } from "network";
 import type { RunProxyConfig } from "network";
@@ -135,6 +136,9 @@ export async function getContentTypeAndMetadata(
       );
 
       if (!contentType || !PROBE_HTML_CONTENT_TYPES.has(contentType)) {
+        // Only the headers are needed for media routing. Do not keep a second
+        // download of a potentially large video alive behind the real download.
+        if (response.body instanceof Readable) response.body.destroy();
         return { contentType, metadata: Promise.resolve(null) };
       }
 

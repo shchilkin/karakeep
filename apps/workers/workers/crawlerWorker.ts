@@ -20,6 +20,7 @@ import {
   IMAGE_ASSET_TYPES,
   OpenAIQueue,
   SUPPORTED_UPLOAD_ASSET_TYPES,
+  VIDEO_ASSET_TYPES,
   triggerSearchReindex,
   VideoWorkerQueue,
   withSpan,
@@ -54,6 +55,7 @@ import {
 } from "./crawler/probe";
 import type { UrlProbeResult } from "./crawler/probe";
 import { redactUrlCredentials, truncateUrl } from "./crawler/utils";
+import { downloadDirectVideo } from "./crawler/directVideo";
 
 // Re-exported for the adhoc crawl CLI (scripts/crawlAdhoc.ts).
 export { crawlPage } from "./crawler/crawlPage";
@@ -328,7 +330,7 @@ async function enqueuePostCrawlJobs(
   }
 }
 
-async function runCrawler(
+export async function runCrawler(
   job: DequeuedJob<ZCrawlLinkRequest>,
   maxRetries: number,
 ): Promise<CrawlerRunResult> {
@@ -426,6 +428,21 @@ async function runCrawler(
       job.abortSignal,
       runProxy,
     );
+  } else if (contentType && VIDEO_ASSET_TYPES.has(contentType)) {
+    // A direct media response is the item to save. Browser rendering and the
+    // optional webpage video extractor must never substitute a screenshot.
+    await downloadDirectVideo({
+      url,
+      userId,
+      bookmarkId,
+      jobId,
+      abortSignal: job.abortSignal,
+      runProxy,
+    });
+    await triggerSearchReindex(bookmarkId, {
+      groupId: userId,
+      priority: job.priority,
+    });
   } else {
     // Chain the early metadata write onto the (still running) probe
     // extraction so a title/thumbnail lands as soon as it's ready, while the

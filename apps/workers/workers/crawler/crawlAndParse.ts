@@ -24,6 +24,7 @@ import {
   ASSET_TYPES,
   AssetPreprocessingQueue,
   getTracer,
+  IMAGE_ASSET_TYPES,
   readAsset,
   setSpanAttributes,
   silentDeleteAsset,
@@ -93,6 +94,9 @@ export async function handleAsAssetBookmark(
         assetType,
         abortSignal,
         runProxy,
+        assetType === "image"
+          ? IMAGE_ASSET_TYPES
+          : new Set([ASSET_TYPES.APPLICATION_PDF]),
       );
       if (!downloaded) {
         // Unlike screenshots and banner images, this download is the crawl's
