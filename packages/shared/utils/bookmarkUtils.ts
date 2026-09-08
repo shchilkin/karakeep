@@ -97,10 +97,22 @@ export function getSourceUrl(bookmark: ZBookmark) {
   return null;
 }
 
-export function getBookmarkTitleOverride(
-  bookmark: Pick<ZBookmark, "title" | "titleSource" | "mediaAi">,
+export function getStoredBookmarkTitle(
+  bookmark: Pick<ZBookmark, "title" | "originalTitle">,
 ) {
-  const title = bookmark.title?.trim() ? bookmark.title : null;
+  return bookmark.originalTitle !== undefined
+    ? bookmark.originalTitle
+    : bookmark.title;
+}
+
+export function getBookmarkTitleOverride(
+  bookmark: Pick<
+    ZBookmark,
+    "title" | "originalTitle" | "titleSource" | "mediaAi"
+  >,
+) {
+  const storedTitle = getStoredBookmarkTitle(bookmark);
+  const title = storedTitle?.trim() ? storedTitle : null;
   return bookmark.titleSource === "captured"
     ? bookmark.mediaAi?.result?.title || title
     : title || bookmark.mediaAi?.result?.title;

@@ -200,6 +200,8 @@ export const zBareBookmarkSchema = z.object({
   modifiedAt: z.date().nullable(),
   title: z.string().nullish(),
   titleSource: zBookmarkTitleSourceSchema.optional(),
+  // Stored override before the server applies an AI display title.
+  originalTitle: z.string().nullable().optional(),
   mediaAi: zMediaCatalogState.nullish(),
   archived: z.boolean(),
   favourited: z.boolean(),

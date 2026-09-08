@@ -294,6 +294,8 @@ export const AssetPreprocessingQueue =
 export const zWebhookRequestSchema = z.object({
   bookmarkId: z.string(),
   operation: z.enum(["crawled", "created", "edited", "ai tagged", "deleted"]),
+  // Only createBookmark's deduplication path sets this. Ordinary edits do not.
+  reason: z.literal("resaved").optional(),
   userId: z.string().optional(),
 });
 export type ZWebhookRequest = z.infer<typeof zWebhookRequestSchema>;
