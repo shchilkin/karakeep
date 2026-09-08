@@ -8,7 +8,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { BookmarkImage } from "@/lib/bookmarkImages";
 
@@ -42,14 +42,25 @@ const images: BookmarkImage[] = [1, 2, 3].map((index) => ({
   fileName: `photo_${index}.jpg`,
 }));
 
-afterEach(cleanup);
+beforeEach(() => {
+  vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(
+    () => undefined,
+  );
+  vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(
+    () => undefined,
+  );
+});
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 describe("saved photo carousel", () => {
-  it("opens local originals, navigates with buttons, and downloads the selected photo", () => {
+  it("opens resized previews, navigates with buttons, and downloads the selected photo", () => {
     render(<SavedImageGallery images={images} title="A saved post" />);
     expect(
       screen.getByAltText("A saved post — photo 1 of 3").getAttribute("src"),
-    ).toBe("/api/assets/photo-1");
+    ).toBe("/api/assets/photo-1/thumbnail?width=1280");
     expect(
       screen
         .getByRole("button", { name: "Previous photo" })
@@ -58,7 +69,7 @@ describe("saved photo carousel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Next photo" }));
     expect(
       screen.getByAltText("A saved post — photo 2 of 3").getAttribute("src"),
-    ).toBe("/api/assets/photo-2");
+    ).toBe("/api/assets/photo-2/thumbnail?width=1280");
     expect(
       screen
         .getByRole("link", { name: "Download original photo" })
@@ -132,11 +143,11 @@ describe("saved photo carousel", () => {
       />,
     );
     expect(screen.getByAltText("Post — photo 3 of 4").getAttribute("src")).toBe(
-      "/api/assets/photo-2",
+      "/api/assets/photo-2/thumbnail?width=1280",
     );
     rerender(<SavedImageGallery images={[images[0]]} title="Post" />);
     expect(screen.getByAltText("Post — photo 1 of 1").getAttribute("src")).toBe(
-      "/api/assets/photo-1",
+      "/api/assets/photo-1/thumbnail?width=1280",
     );
     expect(screen.queryByRole("button", { name: "Next photo" })).toBeNull();
     rerender(<SavedImageGallery images={[]} title="Post" />);
@@ -177,7 +188,9 @@ it("opens a local video with controls and navigates to the next photo", () => {
   );
   const video = screen.getByLabelText("Mixed post — item 1 of 2");
   expect(video.getAttribute("src")).toBe("/api/assets/video");
-  expect(video.getAttribute("poster")).toBe("/api/assets/poster");
+  expect(video.getAttribute("poster")).toBe(
+    "/api/assets/poster/thumbnail?width=1280",
+  );
   expect(video.hasAttribute("controls")).toBe(true);
   expect(video.hasAttribute("autoplay")).toBe(false);
   expect(video.closest("button")).toBeNull();
@@ -185,7 +198,34 @@ it("opens a local video with controls and navigates to the next photo", () => {
   expect(container.querySelector("video")).toBe(video);
   fireEvent.click(screen.getByRole("button", { name: "Next item" }));
   expect(container.querySelector("video")).toBeNull();
+  expect(video.getAttribute("src")).toBeNull();
+  expect(HTMLMediaElement.prototype.pause).toHaveBeenCalled();
+  expect(HTMLMediaElement.prototype.load).toHaveBeenCalled();
   expect(
     screen.getByAltText("Mixed post — item 2 of 2").getAttribute("src"),
-  ).toBe("/api/assets/photo-1");
+  ).toBe("/api/assets/photo-1/thumbnail?width=1280");
+});
+
+it("restores the video source under StrictMode and releases it on close", () => {
+  const { unmount, container } = render(
+    <React.StrictMode>
+      <SavedImageGallery
+        images={[
+          {
+            id: "strict-video",
+            fileName: "clip.mp4",
+            assetType: "video",
+            video: { posterId: "poster" },
+          },
+        ]}
+        title="Strict video"
+      />
+    </React.StrictMode>,
+  );
+  const video = container.querySelector("video")!;
+  expect(video.getAttribute("src")).toBe("/api/assets/strict-video");
+  unmount();
+  expect(video.getAttribute("src")).toBeNull();
+  expect(HTMLMediaElement.prototype.pause).toHaveBeenCalled();
+  expect(HTMLMediaElement.prototype.load).toHaveBeenCalled();
 });

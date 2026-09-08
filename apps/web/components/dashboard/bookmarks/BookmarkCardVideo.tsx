@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { mediaPlayback, releaseVideo } from "@/lib/mediaPlayback";
 import { cn } from "@/lib/utils";
 
 import BookmarkCardImage from "./BookmarkCardImage";
@@ -12,12 +13,14 @@ export default function BookmarkCardVideo({
   alt,
   naturalSize,
   className,
+  posterSrcSet,
 }: {
   src: string;
   poster: string;
   alt: string;
   naturalSize: boolean;
   className?: string;
+  posterSrcSet?: string;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const [requested, setRequested] = useState(false);
@@ -32,10 +35,36 @@ export default function BookmarkCardVideo({
     let hovered = false;
     let focused = false;
     let visible = true;
-    const update = () =>
-      setRequested(
-        (hovered || focused) && visible && !document.hidden && !reduced.matches,
-      );
+    const owner = {};
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let active = false;
+    const revoke = () => {
+      active = false;
+      setRequested(false);
+    };
+    const cancel = () => {
+      clearTimeout(timer);
+      timer = undefined;
+      mediaPlayback.releasePreview(owner);
+      revoke();
+    };
+    const update = () => {
+      if (
+        !(hovered || focused) ||
+        !visible ||
+        document.hidden ||
+        reduced.matches
+      ) {
+        cancel();
+      } else if (!active && timer === undefined) {
+        // Avoid creating players while the pointer merely passes over cards.
+        timer = setTimeout(() => {
+          timer = undefined;
+          active = mediaPlayback.requestPreview(owner, revoke);
+          setRequested(active);
+        }, 150);
+      }
+    };
     const enter = (event: PointerEvent) => {
       if (event.pointerType === "touch") return;
       hovered = true;
@@ -65,6 +94,8 @@ export default function BookmarkCardVideo({
     document.addEventListener("visibilitychange", update);
     reduced.addEventListener("change", update);
     return () => {
+      clearTimeout(timer);
+      mediaPlayback.releasePreview(owner);
       observer.disconnect();
       trigger.removeEventListener("pointerenter", enter);
       trigger.removeEventListener("pointerleave", leave);
@@ -82,23 +113,23 @@ export default function BookmarkCardVideo({
       return;
     }
     let cancelled = false;
+    element.src = src;
     element.muted = true;
     element.play().catch(() => {
       if (!cancelled) setPlaying(false);
     });
     return () => {
       cancelled = true;
-      element.pause();
-      element.removeAttribute("src");
-      element.load();
+      releaseVideo(element);
     };
-  }, [requested]);
+  }, [requested, src]);
 
   return (
     <div ref={host} className="relative h-full w-full">
       <BookmarkCardImage
         key={poster}
         src={poster}
+        srcSet={posterSrcSet}
         alt={alt}
         naturalSize={naturalSize}
         className={className}
@@ -106,7 +137,6 @@ export default function BookmarkCardVideo({
       {requested && (
         <video
           ref={video}
-          src={src}
           poster={poster}
           muted
           loop

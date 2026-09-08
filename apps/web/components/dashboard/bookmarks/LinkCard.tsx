@@ -7,7 +7,11 @@ import { getBookmarkMedia, getMediaCoverId } from "@/lib/bookmarkImages";
 import { useTranslation } from "@/lib/i18n/client";
 import { useUserSettings } from "@/lib/userSettings";
 import { Images, Play } from "lucide-react";
-import { getAssetUrl } from "@karakeep/shared/utils/assetUtils";
+import {
+  getAssetUrl,
+  getAssetThumbnailUrl,
+  getAssetThumbnailSrcSet,
+} from "@karakeep/shared/utils/assetUtils";
 
 import type { ZBookmarkTypeLink } from "@karakeep/shared/types/bookmarks";
 import {
@@ -73,7 +77,7 @@ function LinkImage({
   const imageDetails = getBookmarkLinkImageUrl(link);
   const first = images[0];
   const coverId = first && getMediaCoverId(first);
-  const cover = coverId ? getAssetUrl(coverId) : imageDetails?.url;
+  const cover = coverId ? getAssetThumbnailUrl(coverId) : imageDetails?.url;
 
   if (cover && (layout === "masonry" || layout === "grid")) {
     return (
@@ -88,6 +92,9 @@ function LinkImage({
             key={first.id}
             src={getAssetUrl(first.id)}
             poster={cover}
+            posterSrcSet={
+              coverId ? getAssetThumbnailSrcSet(coverId) : undefined
+            }
             alt={getBookmarkTitle(bookmark) ?? new URL(link.url).host}
             naturalSize={layout === "masonry"}
             className={className}
@@ -96,6 +103,7 @@ function LinkImage({
           <BookmarkCardImage
             key={cover}
             src={cover}
+            srcSet={coverId ? getAssetThumbnailSrcSet(coverId) : undefined}
             alt={getBookmarkTitle(bookmark) ?? new URL(link.url).host}
             naturalSize={layout === "masonry"}
             className={className}

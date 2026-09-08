@@ -6,7 +6,11 @@ import { cn } from "@/lib/utils";
 import { FileText } from "lucide-react";
 
 import type { ZBookmarkTypeAsset } from "@karakeep/shared/types/bookmarks";
-import { getAssetUrl } from "@karakeep/shared/utils/assetUtils";
+import {
+  getAssetUrl,
+  getAssetThumbnailUrl,
+  getAssetThumbnailSrcSet,
+} from "@karakeep/shared/utils/assetUtils";
 import { getSourceUrl } from "@karakeep/shared/utils/bookmarkUtils";
 
 import { BookmarkLayoutAdaptingCard } from "./BookmarkLayoutAdaptingCard";
@@ -103,7 +107,8 @@ export default function AssetCard({
           >
             <BookmarkCardImage
               key={bookmarkedAsset.content.assetId}
-              src={getAssetUrl(bookmarkedAsset.content.assetId)}
+              src={getAssetThumbnailUrl(bookmarkedAsset.content.assetId)}
+              srcSet={getAssetThumbnailSrcSet(bookmarkedAsset.content.assetId)}
               alt={
                 bookmarkedAsset.title ?? bookmarkedAsset.content.fileName ?? ""
               }

@@ -2,6 +2,8 @@ import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { z } from "zod";
 
+import type { ThumbnailWidth } from "@karakeep/shared/utils/assetUtils";
+import { THUMBNAIL_WIDTHS } from "@karakeep/shared/utils/assetUtils";
 import { getAlignedExpiry } from "@karakeep/shared/signedTokens";
 import { Asset } from "@karakeep/trpc/models/assets";
 
@@ -10,6 +12,7 @@ import { authMiddleware } from "../middlewares/auth";
 import { createRateLimitMiddleware } from "../middlewares/rateLimit";
 import { rejectMutationInReadOnlyMode } from "../middlewares/readOnlyMode";
 import { serveAsset } from "../utils/assets";
+import { serveThumbnail } from "../utils/thumbnails";
 import { uploadAsset } from "../utils/upload";
 
 const app = new Hono()
@@ -60,6 +63,30 @@ const app = new Hono()
         ),
         expiresAt: new Date(expiresAt).toISOString(),
       });
+    },
+  )
+  .get(
+    "/:assetId/thumbnail",
+    apiKeyScopeMiddleware("assets", "read"),
+    zValidator(
+      "query",
+      z.object({
+        width: z.coerce
+          .number()
+          .refine((value) => THUMBNAIL_WIDTHS.includes(value as ThumbnailWidth))
+          .default(640),
+      }),
+    ),
+    async (c) => {
+      const assetId = c.req.param("assetId");
+      const asset = await Asset.fromId(c.var.ctx, assetId);
+      await asset.ensureCanView();
+      return serveThumbnail(
+        c,
+        assetId,
+        asset.asset.userId,
+        c.req.valid("query").width as ThumbnailWidth,
+      );
     },
   )
   .get("/:assetId", apiKeyScopeMiddleware("assets", "read"), async (c) => {
