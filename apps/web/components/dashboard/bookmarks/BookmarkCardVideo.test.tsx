@@ -7,6 +7,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { mediaPlayback } from "@/lib/mediaPlayback";
 import BookmarkCardVideo from "./BookmarkCardVideo";
 
 vi.mock("./BookmarkCardImage", () => ({
@@ -82,6 +83,8 @@ it("loads only the poster at rest, plays muted on hover and releases video on le
   fireEvent.pointerLeave(screen.getByRole("link"));
   expect(container.querySelector("video")).toBeNull();
   expect(pause).toHaveBeenCalledOnce();
+  expect(video.getAttribute("src")).toBeNull();
+  expect(HTMLMediaElement.prototype.load).toHaveBeenCalledOnce();
 });
 it("stops when scrolled offscreen", async () => {
   const { container } = card();
@@ -107,4 +110,34 @@ it("keeps the poster visible when autoplay is rejected", async () => {
     container.querySelector("video")?.classList.contains("opacity-0"),
   ).toBe(true);
   expect(screen.getByAltText("Video post")).toBeTruthy();
+});
+
+it("does not allocate players for brief pointer passes", async () => {
+  const { container } = card();
+  fireEvent.pointerEnter(screen.getByRole("link"));
+  fireEvent.pointerLeave(screen.getByRole("link"));
+  await new Promise((resolve) => setTimeout(resolve, 180));
+  expect(play).not.toHaveBeenCalled();
+  expect(container.querySelector("video")).toBeNull();
+});
+it("revokes an existing preview when a gallery opens and blocks further hover", async () => {
+  const { container } = card();
+  fireEvent.pointerEnter(screen.getByRole("link"));
+  await waitFor(() => expect(play).toHaveBeenCalledOnce());
+  const video = container.querySelector("video")!;
+  const { act } = await import("@testing-library/react");
+  let close!: () => void;
+  act(() => {
+    close = mediaPlayback.openViewer();
+  });
+  try {
+    expect(container.querySelector("video")).toBeNull();
+    expect(video.getAttribute("src")).toBeNull();
+    fireEvent.pointerLeave(screen.getByRole("link"));
+    fireEvent.pointerEnter(screen.getByRole("link"));
+    await act(() => new Promise((resolve) => setTimeout(resolve, 180)));
+    expect(container.querySelector("video")).toBeNull();
+  } finally {
+    close();
+  }
 });

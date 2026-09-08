@@ -1,5 +1,4 @@
 import { useState } from "react";
-import Image from "next/image";
 import { useTranslation } from "@/lib/i18n/client";
 import { cn } from "@/lib/utils";
 import { ImageOff } from "lucide-react";
@@ -10,11 +9,13 @@ export default function BookmarkCardImage({
   alt,
   naturalSize,
   className,
+  srcSet,
 }: {
   src: string;
   alt: string;
   naturalSize: boolean;
   className?: string;
+  srcSet?: string;
 }) {
   const { t } = useTranslation();
   const [status, setStatus] = useState<"loading" | "ready" | "error">(
@@ -31,12 +32,17 @@ export default function BookmarkCardImage({
   }
 
   return (
-    <Image
+    // eslint-disable-next-line @next/next/no-img-element -- Authenticated server thumbnails supply responsive sources directly.
+    <img
       src={src}
       alt={alt}
-      width={0}
-      height={0}
-      unoptimized
+      srcSet={srcSet}
+      sizes={
+        srcSet
+          ? "auto, (max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+          : undefined
+      }
+      decoding="async"
       loading="lazy"
       onLoad={() => setStatus("ready")}
       onError={() => setStatus("error")}

@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import type { BookmarkMedia } from "@/lib/bookmarkImages";
 import { getMediaCoverId } from "@/lib/bookmarkImages";
 import { useTranslation } from "@/lib/i18n/client";
+import { mediaPlayback, releaseVideo } from "@/lib/mediaPlayback";
 import { cn } from "@/lib/utils";
 import {
   ChevronLeft,
@@ -17,16 +18,63 @@ import {
   Play,
 } from "lucide-react";
 
-import { getAssetUrl } from "@karakeep/shared/utils/assetUtils";
+import {
+  getAssetUrl,
+  getAssetThumbnailUrl,
+} from "@karakeep/shared/utils/assetUtils";
+
+function GalleryVideo({
+  image,
+  alt,
+  onError,
+}: {
+  image: BookmarkMedia;
+  alt: string;
+  onError: () => void;
+}) {
+  const video = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    const element = video.current;
+    if (!element) return;
+    element.src = getAssetUrl(image.id);
+    const hide = () => {
+      if (document.hidden) element.pause();
+    };
+    document.addEventListener("visibilitychange", hide);
+    return () => {
+      document.removeEventListener("visibilitychange", hide);
+      releaseVideo(element);
+    };
+  }, [image.id]);
+  return (
+    // eslint-disable-next-line jsx-a11y/media-has-caption -- Archived originals do not provide caption tracks.
+    <video
+      ref={video}
+      poster={
+        image.video?.posterId
+          ? getAssetThumbnailUrl(image.video.posterId, 1280)
+          : undefined
+      }
+      controls
+      playsInline
+      preload="none"
+      aria-label={alt}
+      onError={onError}
+      className="relative z-10 max-h-full max-w-full rounded-xl bg-black object-contain"
+    />
+  );
+}
 
 function GalleryImage({
   image,
   alt,
   suspended = false,
+  original = false,
 }: {
   image: BookmarkMedia;
   alt: string;
   suspended?: boolean;
+  original?: boolean;
 }) {
   const { t } = useTranslation();
   const labels = image.video ? "preview.media" : "preview.gallery";
@@ -45,19 +93,10 @@ function GalleryImage({
 
   if (image.video && !suspended) {
     return (
-      // eslint-disable-next-line jsx-a11y/media-has-caption -- Archived source videos do not supply caption tracks; retain native playback controls.
-      <video
-        key={image.id}
-        src={getAssetUrl(image.id)}
-        poster={
-          image.video.posterId ? getAssetUrl(image.video.posterId) : undefined
-        }
-        controls
-        playsInline
-        preload="none"
-        aria-label={alt}
+      <GalleryVideo
+        image={image}
+        alt={alt}
         onError={() => setStatus("error")}
-        className="relative z-10 max-h-full max-w-full rounded-xl bg-black object-contain"
       />
     );
   }
@@ -71,7 +110,9 @@ function GalleryImage({
         </span>
       )}
       <Image
-        src={getAssetUrl(coverId)}
+        src={
+          original ? getAssetUrl(coverId) : getAssetThumbnailUrl(coverId, 1280)
+        }
         alt={alt}
         width={0}
         height={0}
@@ -96,6 +137,11 @@ export default function SavedImageGallery({
   images: BookmarkMedia[];
   title: string;
 }) {
+  const hasMedia = images.length > 0;
+  useEffect(
+    () => (hasMedia ? mediaPlayback.openViewer() : undefined),
+    [hasMedia],
+  );
   const { t } = useTranslation();
   const labels = images.some((image) => image.video)
     ? "preview.media"
@@ -196,7 +242,7 @@ export default function SavedImageGallery({
               getMediaCoverId(image) && (
                 <Image
                   key={image.id}
-                  src={getAssetUrl(getMediaCoverId(image)!)}
+                  src={getAssetThumbnailUrl(getMediaCoverId(image)!, 640)}
                   alt=""
                   aria-hidden="true"
                   width={0}
@@ -216,6 +262,7 @@ export default function SavedImageGallery({
               key={active.id}
               image={active}
               alt={imageLabel}
+              original={fullscreen}
               suspended={expanded && !fullscreen}
             />
           </div>
@@ -235,6 +282,7 @@ export default function SavedImageGallery({
               key={active.id}
               image={active}
               alt={imageLabel}
+              original={fullscreen}
               suspended={expanded && !fullscreen}
             />
           </button>
@@ -327,7 +375,7 @@ export default function SavedImageGallery({
               >
                 {getMediaCoverId(image) && (
                   <Image
-                    src={getAssetUrl(getMediaCoverId(image)!)}
+                    src={getAssetThumbnailUrl(getMediaCoverId(image)!, 96)}
                     alt=""
                     fill
                     unoptimized
