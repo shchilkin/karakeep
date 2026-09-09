@@ -1,10 +1,11 @@
-import { StrictMode, useEffect, useState } from "react";
+import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import BookmarkCardImage from "@/components/dashboard/bookmarks/BookmarkCardImage";
 import BookmarkCardVideo from "@/components/dashboard/bookmarks/BookmarkCardVideo";
 import VirtualMasonry from "@/components/dashboard/bookmarks/VirtualMasonry";
 
 const withDimensions = new URLSearchParams(location.search).has("dimensions");
+const dynamic = new URLSearchParams(location.search).has("dynamic");
 const dimensions = (id: string) =>
   withDimensions
     ? {
@@ -14,7 +15,13 @@ const dimensions = (id: string) =>
     : undefined;
 
 const ids = Array.from({ length: 18 }, (_, i) => String(i));
+const estimateHeight = (id: string, width: number) => {
+  const size = dimensions(id);
+  return size ? (width * size.height) / size.width + 56 : 340;
+};
 function App() {
+  const [items, setItems] = useState(ids);
+  const nextId = useRef(1000);
   const [columns, setColumns] = useState(3);
   const [mobile, setMobile] = useState(innerWidth < 640);
   useEffect(() => {
@@ -29,6 +36,32 @@ function App() {
         <button onClick={() => setColumns(columns === 3 ? 2 : 3)}>
           Change columns
         </button>
+        {dynamic && (
+          <>
+            <button
+              onClick={() => {
+                const id = String(nextId.current++);
+                setItems([id, ...items]);
+              }}
+            >
+              Prepend card
+            </button>
+            <button
+              onClick={() => {
+                const id = String(nextId.current++);
+                setItems([...items, id]);
+              }}
+            >
+              Append card
+            </button>
+            <button onClick={() => setItems(items.slice(1))}>
+              Remove newest
+            </button>
+            <button onClick={() => setItems([...items].reverse())}>
+              Reverse sort
+            </button>
+          </>
+        )}
       </header>
       <div
         data-feed
@@ -38,9 +71,9 @@ function App() {
         }}
       >
         <VirtualMasonry
-          ids={ids}
+          ids={items}
           columns={mobile ? 1 : columns}
-          estimateHeight={340}
+          estimateHeight={estimateHeight}
           renderItem={(id) => (
             <div data-card={id} className="mb-6">
               {Number(id) % 2 === 0 ? (

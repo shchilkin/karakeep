@@ -192,6 +192,33 @@ describe("useBookmarkKeyboardNavigation", () => {
     expect(fetchNextPage).not.toHaveBeenCalled();
   });
 
+  it("moves vertically within the masonry column, including the editor offset", () => {
+    const grid = document.createElement("div");
+    grid.dataset.masonryBalanced = "true";
+    grid.innerHTML =
+      '<div data-masonry-column="0" data-masonry-next="4" aria-posinset="2"><div data-bookmark-index="0"></div></div><div data-masonry-column="0" data-masonry-previous="1" aria-posinset="5"><div data-bookmark-index="3"></div></div>';
+    for (const card of grid.querySelectorAll<HTMLElement>(
+      "[data-bookmark-index]",
+    ))
+      card.scrollIntoView = vi.fn();
+    document.body.append(grid);
+    try {
+      useKeyboardNavigationStore.setState({
+        focusedIndex: 0,
+        isNavigating: true,
+      });
+      renderKeyboardHook(["a", "b", "c", "d", "e"].map((id) => bookmark(id)));
+      act(() => hotkey("down").callback());
+      expect(useKeyboardNavigationStore.getState().focusedIndex).toBe(3);
+      act(() => hotkey("down").callback());
+      expect(useKeyboardNavigationStore.getState().focusedIndex).toBe(3);
+      act(() => hotkey("up").callback());
+      expect(useKeyboardNavigationStore.getState().focusedIndex).toBe(0);
+    } finally {
+      grid.remove();
+    }
+  });
+
   it("toggles the focused bookmark into bulk selection with x", () => {
     const bookmarks = [bookmark("a"), bookmark("b")];
     useKeyboardNavigationStore.setState({

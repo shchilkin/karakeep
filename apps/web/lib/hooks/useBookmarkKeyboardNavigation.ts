@@ -70,14 +70,14 @@ function useBookmarkMoveHotkey({
   moveBy,
 }: {
   keys: string;
-  offset: number;
+  offset: number | (() => number);
   enabled: boolean;
   maxIndex: number;
   moveBy: MoveBookmarkFocus;
 }) {
   useHotkeys(
     keys,
-    () => moveBy(offset, maxIndex),
+    () => moveBy(typeof offset === "function" ? offset() : offset, maxIndex),
     { enabled, preventDefault: true },
     [enabled, maxIndex, moveBy, offset],
   );
@@ -157,6 +157,22 @@ function useBookmarkFocusNavigation({
   const horizontalArrowMovementEnabled =
     horizontalMovementEnabled && isNavigating;
 
+  const verticalOffset = (direction: "previous" | "next") => {
+    const card = document.querySelector(
+      `[data-bookmark-index="${focusedIndex}"]`,
+    );
+    const item = card?.closest("[data-masonry-column]");
+    if (!item?.closest("[data-masonry-balanced]"))
+      return direction === "next" ? columns : -columns;
+    // The layout includes offscreen neighbours and the editor card. Subtracting
+    // full layout indices cancels the editor offset from bookmark indices.
+    const next = item.getAttribute(`data-masonry-${direction}`);
+    if (next === null) return 0;
+    const offset =
+      Number(next) - (Number(item.getAttribute("aria-posinset")) - 1);
+    return focusedIndex + offset < 0 ? 0 : offset;
+  };
+
   useBookmarkMoveHotkey({
     keys: "h",
     offset: -1,
@@ -173,28 +189,28 @@ function useBookmarkFocusNavigation({
   });
   useBookmarkMoveHotkey({
     keys: "j",
-    offset: columns,
+    offset: () => verticalOffset("next"),
     enabled: movementEnabled,
     maxIndex,
     moveBy,
   });
   useBookmarkMoveHotkey({
     keys: "down",
-    offset: columns,
+    offset: () => verticalOffset("next"),
     enabled: arrowMovementEnabled,
     maxIndex,
     moveBy,
   });
   useBookmarkMoveHotkey({
     keys: "k",
-    offset: -columns,
+    offset: () => verticalOffset("previous"),
     enabled: movementEnabled,
     maxIndex,
     moveBy,
   });
   useBookmarkMoveHotkey({
     keys: "up",
-    offset: -columns,
+    offset: () => verticalOffset("previous"),
     enabled: arrowMovementEnabled,
     maxIndex,
     moveBy,
