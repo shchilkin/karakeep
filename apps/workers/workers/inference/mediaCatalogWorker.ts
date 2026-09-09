@@ -17,6 +17,8 @@ import {
   finishMediaCatalog,
   reindexMediaCatalog,
   startMediaCatalog,
+  continueMediaCatalog,
+  recoverLocalMediaCatalog,
 } from "@karakeep/trpc/models/mediaCatalog";
 import type { CatalogJob } from "@karakeep/trpc/models/mediaCatalog";
 import { RuleEngine } from "@karakeep/trpc/lib/ruleEngine";
@@ -25,6 +27,7 @@ import {
   CatalogFailure,
   inferMediaCatalog,
 } from "./mediaCatalogProvider";
+import { checkLocalMedia, reusableLocalCheck } from "./mediaLocalProvider";
 
 export async function prepareCatalogImages(
   userId: string,
@@ -122,19 +125,35 @@ export async function prepareCatalogImages(
 
 export async function runMediaCatalog(job: DequeuedJob<CatalogJob>) {
   const config = serverConfig.mediaAi;
-  if (!config.enabled || !config.apiKey) {
+  if (!config.enabled || (!config.apiKey && config.localMode !== "review")) {
     finishMediaCatalog(db, job.data, "failed");
     return;
   }
   const started = startMediaCatalog(db, job.data);
   if (!started) return;
   let attachedTagIds: string[] = [];
+  let cloudStarted =
+    !started.state.localMode || started.state.localMode === "off";
   try {
     const images = await prepareCatalogImages(
       job.data.userId,
       started.input,
       job.abortSignal,
     );
+    if (started.state.localMode && started.state.localMode !== "off") {
+      if (!images.length) {
+        finishMediaCatalog(db, job.data, "local_only");
+        return;
+      }
+      const local =
+        reusableLocalCheck(started.state.localCheck, images) ??
+        (await checkLocalMedia(images, job.abortSignal));
+      job.abortSignal.throwIfAborted();
+      if (!continueMediaCatalog(db, job.data, local)) return;
+      cloudStarted = true;
+    }
+    job.abortSignal.throwIfAborted();
+    if (!config.apiKey) throw new CatalogFailure("failed");
     const result = await inferMediaCatalog({
       provider: config.provider,
       apiKey: config.apiKey,
@@ -158,11 +177,13 @@ export async function runMediaCatalog(job: DequeuedJob<CatalogJob>) {
     finishMediaCatalog(
       db,
       job.data,
-      job.abortSignal.aborted
-        ? "timeout"
-        : error instanceof CatalogFailure
-          ? error.kind
-          : "failed",
+      !cloudStarted
+        ? "local_failed"
+        : job.abortSignal.aborted
+          ? "timeout"
+          : error instanceof CatalogFailure
+            ? error.kind
+            : "failed",
     );
   }
   // Downstream failures must never trigger another paid inference request.
@@ -185,7 +206,7 @@ export async function runMediaCatalog(job: DequeuedJob<CatalogJob>) {
 
 export class MediaCatalogWorker {
   static async build() {
-    return (await getQueueClient()).createRunner(
+    const runner = (await getQueueClient()).createRunner(
       MediaCatalogQueue,
       {
         run: runMediaCatalog,
@@ -193,7 +214,39 @@ export class MediaCatalogWorker {
           if (job.data) finishMediaCatalog(db, job.data, "failed");
         },
       },
-      { concurrency: 1, pollIntervalMs: 1000, timeoutSecs: 300 },
+      {
+        concurrency: 1,
+        pollIntervalMs: 1000,
+        timeoutSecs: serverConfig.mediaAi.localMode === "off" ? 300 : 600,
+      },
     );
+    let timer: ReturnType<typeof setInterval> | undefined;
+    let recovering = false;
+    const recover = async () => {
+      if (recovering) return;
+      recovering = true;
+      try {
+        await recoverLocalMediaCatalog(db);
+      } catch {
+        /* Pending checkpoints remain durable; the next scan retries. */
+      } finally {
+        recovering = false;
+      }
+    };
+    return {
+      async run() {
+        await recover();
+        timer = setInterval(() => void recover(), 60_000);
+        try {
+          await runner.run();
+        } finally {
+          clearInterval(timer);
+        }
+      },
+      stop() {
+        clearInterval(timer);
+        runner.stop();
+      },
+    };
   }
 }

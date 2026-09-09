@@ -199,7 +199,11 @@
                   "rate_limited",
                   "quota_exceeded",
                   "stale",
-                  "cancelled"
+                  "cancelled",
+                  "checking_local",
+                  "local_review",
+                  "local_only",
+                  "local_failed"
                 ]
               },
               "updatedAt": {
@@ -210,6 +214,110 @@
               },
               "automatic": {
                 "type": "boolean"
+              },
+              "localMode": {
+                "type": "string",
+                "enum": [
+                  "off",
+                  "review",
+                  "enforce"
+                ]
+              },
+              "localCheck": {
+                "type": "object",
+                "properties": {
+                  "scope": {
+                    "type": "string",
+                    "enum": [
+                      "outgoing_images_only"
+                    ]
+                  },
+                  "frames": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "model": {
+                          "type": "string",
+                          "enum": [
+                            "nvidia/Nemotron-3.5-Content-Safety"
+                          ]
+                        },
+                        "revision": {
+                          "type": "string",
+                          "enum": [
+                            "35645ed3543b7e7ffaed2e788699e57a5051497c"
+                          ]
+                        },
+                        "policy": {
+                          "type": "string",
+                          "enum": [
+                            "nemotron-visibility-v3"
+                          ]
+                        },
+                        "precision": {
+                          "type": "string",
+                          "enum": [
+                            "bf16"
+                          ]
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "complete",
+                            "unknown"
+                          ]
+                        },
+                        "categories": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": [
+                              "revealing_clothing",
+                              "suggestive",
+                              "nudity",
+                              "explicit_sexual",
+                              "violence",
+                              "gore",
+                              "self_harm",
+                              "drugs",
+                              "hate_extremism",
+                              "disturbing",
+                              "other"
+                            ]
+                          },
+                          "maxItems": 11
+                        },
+                        "sha256": {
+                          "type": "string",
+                          "pattern": "^[a-f0-9]{64}$"
+                        }
+                      },
+                      "required": [
+                        "model",
+                        "revision",
+                        "policy",
+                        "precision",
+                        "status",
+                        "categories",
+                        "sha256"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "minItems": 1,
+                    "maxItems": 3
+                  }
+                },
+                "required": [
+                  "scope",
+                  "frames"
+                ],
+                "additionalProperties": false
+              },
+              "localRecoveries": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2
               },
               "result": {
                 "type": "object",
@@ -1841,7 +1949,11 @@
                             "rate_limited",
                             "quota_exceeded",
                             "stale",
-                            "cancelled"
+                            "cancelled",
+                            "checking_local",
+                            "local_review",
+                            "local_only",
+                            "local_failed"
                           ]
                         },
                         "updatedAt": {
@@ -1852,6 +1964,110 @@
                         },
                         "automatic": {
                           "type": "boolean"
+                        },
+                        "localMode": {
+                          "type": "string",
+                          "enum": [
+                            "off",
+                            "review",
+                            "enforce"
+                          ]
+                        },
+                        "localCheck": {
+                          "type": "object",
+                          "properties": {
+                            "scope": {
+                              "type": "string",
+                              "enum": [
+                                "outgoing_images_only"
+                              ]
+                            },
+                            "frames": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "model": {
+                                    "type": "string",
+                                    "enum": [
+                                      "nvidia/Nemotron-3.5-Content-Safety"
+                                    ]
+                                  },
+                                  "revision": {
+                                    "type": "string",
+                                    "enum": [
+                                      "35645ed3543b7e7ffaed2e788699e57a5051497c"
+                                    ]
+                                  },
+                                  "policy": {
+                                    "type": "string",
+                                    "enum": [
+                                      "nemotron-visibility-v3"
+                                    ]
+                                  },
+                                  "precision": {
+                                    "type": "string",
+                                    "enum": [
+                                      "bf16"
+                                    ]
+                                  },
+                                  "status": {
+                                    "type": "string",
+                                    "enum": [
+                                      "complete",
+                                      "unknown"
+                                    ]
+                                  },
+                                  "categories": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "enum": [
+                                        "revealing_clothing",
+                                        "suggestive",
+                                        "nudity",
+                                        "explicit_sexual",
+                                        "violence",
+                                        "gore",
+                                        "self_harm",
+                                        "drugs",
+                                        "hate_extremism",
+                                        "disturbing",
+                                        "other"
+                                      ]
+                                    },
+                                    "maxItems": 11
+                                  },
+                                  "sha256": {
+                                    "type": "string",
+                                    "pattern": "^[a-f0-9]{64}$"
+                                  }
+                                },
+                                "required": [
+                                  "model",
+                                  "revision",
+                                  "policy",
+                                  "precision",
+                                  "status",
+                                  "categories",
+                                  "sha256"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "minItems": 1,
+                              "maxItems": 3
+                            }
+                          },
+                          "required": [
+                            "scope",
+                            "frames"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "localRecoveries": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 2
                         },
                         "result": {
                           "type": "object",
@@ -2216,7 +2432,11 @@
                             "rate_limited",
                             "quota_exceeded",
                             "stale",
-                            "cancelled"
+                            "cancelled",
+                            "checking_local",
+                            "local_review",
+                            "local_only",
+                            "local_failed"
                           ]
                         },
                         "updatedAt": {
@@ -2227,6 +2447,110 @@
                         },
                         "automatic": {
                           "type": "boolean"
+                        },
+                        "localMode": {
+                          "type": "string",
+                          "enum": [
+                            "off",
+                            "review",
+                            "enforce"
+                          ]
+                        },
+                        "localCheck": {
+                          "type": "object",
+                          "properties": {
+                            "scope": {
+                              "type": "string",
+                              "enum": [
+                                "outgoing_images_only"
+                              ]
+                            },
+                            "frames": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "model": {
+                                    "type": "string",
+                                    "enum": [
+                                      "nvidia/Nemotron-3.5-Content-Safety"
+                                    ]
+                                  },
+                                  "revision": {
+                                    "type": "string",
+                                    "enum": [
+                                      "35645ed3543b7e7ffaed2e788699e57a5051497c"
+                                    ]
+                                  },
+                                  "policy": {
+                                    "type": "string",
+                                    "enum": [
+                                      "nemotron-visibility-v3"
+                                    ]
+                                  },
+                                  "precision": {
+                                    "type": "string",
+                                    "enum": [
+                                      "bf16"
+                                    ]
+                                  },
+                                  "status": {
+                                    "type": "string",
+                                    "enum": [
+                                      "complete",
+                                      "unknown"
+                                    ]
+                                  },
+                                  "categories": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "enum": [
+                                        "revealing_clothing",
+                                        "suggestive",
+                                        "nudity",
+                                        "explicit_sexual",
+                                        "violence",
+                                        "gore",
+                                        "self_harm",
+                                        "drugs",
+                                        "hate_extremism",
+                                        "disturbing",
+                                        "other"
+                                      ]
+                                    },
+                                    "maxItems": 11
+                                  },
+                                  "sha256": {
+                                    "type": "string",
+                                    "pattern": "^[a-f0-9]{64}$"
+                                  }
+                                },
+                                "required": [
+                                  "model",
+                                  "revision",
+                                  "policy",
+                                  "precision",
+                                  "status",
+                                  "categories",
+                                  "sha256"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "minItems": 1,
+                              "maxItems": 3
+                            }
+                          },
+                          "required": [
+                            "scope",
+                            "frames"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "localRecoveries": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 2
                         },
                         "result": {
                           "type": "object",
@@ -2499,7 +2823,11 @@
                             "rate_limited",
                             "quota_exceeded",
                             "stale",
-                            "cancelled"
+                            "cancelled",
+                            "checking_local",
+                            "local_review",
+                            "local_only",
+                            "local_failed"
                           ]
                         },
                         "updatedAt": {
@@ -2510,6 +2838,110 @@
                         },
                         "automatic": {
                           "type": "boolean"
+                        },
+                        "localMode": {
+                          "type": "string",
+                          "enum": [
+                            "off",
+                            "review",
+                            "enforce"
+                          ]
+                        },
+                        "localCheck": {
+                          "type": "object",
+                          "properties": {
+                            "scope": {
+                              "type": "string",
+                              "enum": [
+                                "outgoing_images_only"
+                              ]
+                            },
+                            "frames": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "model": {
+                                    "type": "string",
+                                    "enum": [
+                                      "nvidia/Nemotron-3.5-Content-Safety"
+                                    ]
+                                  },
+                                  "revision": {
+                                    "type": "string",
+                                    "enum": [
+                                      "35645ed3543b7e7ffaed2e788699e57a5051497c"
+                                    ]
+                                  },
+                                  "policy": {
+                                    "type": "string",
+                                    "enum": [
+                                      "nemotron-visibility-v3"
+                                    ]
+                                  },
+                                  "precision": {
+                                    "type": "string",
+                                    "enum": [
+                                      "bf16"
+                                    ]
+                                  },
+                                  "status": {
+                                    "type": "string",
+                                    "enum": [
+                                      "complete",
+                                      "unknown"
+                                    ]
+                                  },
+                                  "categories": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "enum": [
+                                        "revealing_clothing",
+                                        "suggestive",
+                                        "nudity",
+                                        "explicit_sexual",
+                                        "violence",
+                                        "gore",
+                                        "self_harm",
+                                        "drugs",
+                                        "hate_extremism",
+                                        "disturbing",
+                                        "other"
+                                      ]
+                                    },
+                                    "maxItems": 11
+                                  },
+                                  "sha256": {
+                                    "type": "string",
+                                    "pattern": "^[a-f0-9]{64}$"
+                                  }
+                                },
+                                "required": [
+                                  "model",
+                                  "revision",
+                                  "policy",
+                                  "precision",
+                                  "status",
+                                  "categories",
+                                  "sha256"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "minItems": 1,
+                              "maxItems": 3
+                            }
+                          },
+                          "required": [
+                            "scope",
+                            "frames"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "localRecoveries": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 2
                         },
                         "result": {
                           "type": "object",

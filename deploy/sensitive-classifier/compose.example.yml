@@ -1,0 +1,28 @@
+services:
+  sensitive-classifier:
+    image: karakeep-sensitive-classifier:review
+    restart: unless-stopped
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    cpus: 2
+    mem_limit: 12g
+    memswap_limit: 12g
+    pids_limit: 256
+    devices:
+      - nvidia.com/gpu=0
+    environment:
+      HF_HOME: /tmp/hf
+      CUDA_CACHE_PATH: /tmp/cuda-cache
+      PYTHONDONTWRITEBYTECODE: "1"
+    tmpfs:
+      - /tmp:rw,nosuid,size=512m
+    volumes:
+      - /srv/appdata/karakeep/sensitive-pilot/models:/models:ro
+      - /srv/appdata/karakeep/secrets/local-token:/run/secrets/local_token:ro
+    networks: [media-local]
+
+networks:
+  media-local:
+    internal: true

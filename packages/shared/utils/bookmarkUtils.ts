@@ -58,6 +58,14 @@ export function getBookmarkRefreshInterval(
   bookmark: ZBookmark,
 ): number | false {
   if (catalogBusy(bookmark.mediaAi)) return 2000;
+  const state = bookmark.mediaAi;
+  if (
+    state?.localMode &&
+    state.localMode !== "off" &&
+    (["pending", "checking_local", "processing"].includes(state.status) ||
+      (state.status === "local_failed" && (state.localRecoveries ?? 0) < 2))
+  )
+    return 10_000;
   if (!isBookmarkStillLoading(bookmark)) {
     return false;
   }

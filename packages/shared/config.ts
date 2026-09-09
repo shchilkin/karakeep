@@ -79,6 +79,9 @@ const allEnv = z.object({
   MEDIA_AI_MODEL: z.string().default("grok-4.6"),
   MEDIA_AI_PROVIDER: z.enum(["xai", "openai"]).default("xai"),
   MEDIA_AI_DAILY_REQUESTS: z.coerce.number().int().min(1).max(1000).default(20),
+  MEDIA_AI_LOCAL_MODE: z.enum(["off", "review", "enforce"]).default("off"),
+  MEDIA_AI_LOCAL_URL: z.string().url().optional(),
+  MEDIA_AI_LOCAL_TOKEN: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_BASE_URL: z.string().url().optional(),
   OPENAI_PROXY_URL: z.string().url().optional(),
@@ -339,12 +342,17 @@ const serverConfigSchema = allEnv.transform((val, ctx) => {
         : undefined,
     },
     mediaAi: {
-      enabled: val.MEDIA_AI_ENABLED && !!val.MEDIA_AI_API_KEY,
+      enabled:
+        val.MEDIA_AI_ENABLED &&
+        (!!val.MEDIA_AI_API_KEY || val.MEDIA_AI_LOCAL_MODE === "review"),
       autoNew: val.MEDIA_AI_AUTO_NEW,
       apiKey: val.MEDIA_AI_API_KEY,
       provider: val.MEDIA_AI_PROVIDER,
       model: val.MEDIA_AI_MODEL,
       dailyRequests: val.MEDIA_AI_DAILY_REQUESTS,
+      localMode: val.MEDIA_AI_LOCAL_MODE,
+      localUrl: val.MEDIA_AI_LOCAL_URL,
+      localToken: val.MEDIA_AI_LOCAL_TOKEN,
     },
     inference: {
       isConfigured: !!val.OPENAI_API_KEY || !!val.OLLAMA_BASE_URL,

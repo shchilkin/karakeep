@@ -1,5 +1,11 @@
 {
   "media_ai": {
+    "checking_local": "Checking selected images locally…",
+    "local_review": "Local check saved. Cloud analysis is paused in test mode.",
+    "local_only": "Kept local: sensitivity or incomplete coverage prevented cloud analysis.",
+    "local_failed": "Local check could not be completed. Nothing was sent to the cloud.",
+    "local_scope": "Local check covers {{count}} selected images or frames, not the whole archive.",
+    "local_unknown": "Needs review",
     "details": "AI details",
     "processing": "Analyzing saved media…",
     "interrupted": "Analysis was interrupted. You can retry manually.",
