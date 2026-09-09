@@ -84,12 +84,15 @@ export default function BookmarkCardImage({
         </span>
       ) : (
         <>
-          {status === "loading" && (
-            <Skeleton
-              aria-hidden="true"
-              className="absolute inset-0 rounded-[inherit] bg-muted-foreground/10"
-            />
-          )}
+          {/* Keep a solid placeholder under the image until its fade-in ends.
+              Fading it out afterwards also preserves transparent image backgrounds. */}
+          <Skeleton
+            aria-hidden="true"
+            className={cn(
+              "pointer-events-none absolute inset-0 animate-none rounded-[inherit] bg-muted-foreground/25 transition-opacity duration-150 motion-reduce:transition-none",
+              status === "loading" ? "opacity-100" : "opacity-0 delay-150",
+            )}
+          />
           {/* eslint-disable-next-line @next/next/no-img-element -- Authenticated server thumbnails supply responsive sources directly. */}
           <img
             ref={imageRef}
