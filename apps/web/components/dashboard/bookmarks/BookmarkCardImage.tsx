@@ -84,7 +84,7 @@ export default function BookmarkCardImage({
         </span>
       ) : (
         <>
-          {/* Keep a visible base under the pulse and until the image fade-in ends.
+          {/* Keep a visible base under the shimmer until the image fade-in ends.
               Fading it out afterwards also preserves transparent image backgrounds. */}
           <Skeleton
             aria-hidden="true"
@@ -94,7 +94,7 @@ export default function BookmarkCardImage({
             )}
           >
             <span
-              className="absolute inset-0 rounded-[inherit] bg-muted-foreground/20 motion-safe:animate-pulse"
+              className="motion-safe:animate-media-shimmer absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/30 to-transparent motion-reduce:hidden"
               style={{
                 animationPlayState: status === "loading" ? "running" : "paused",
               }}

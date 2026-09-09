@@ -13,6 +13,19 @@ const config = {
     "../../node_modules/@streamdown/mermaid/dist/*.js",
   ],
   presets: [web],
+  theme: {
+    extend: {
+      keyframes: {
+        "media-shimmer": {
+          from: { transform: "translateX(-100%)" },
+          to: { transform: "translateX(100%)" },
+        },
+      },
+      animation: {
+        "media-shimmer": "media-shimmer 1.3s ease infinite",
+      },
+    },
+  },
 } satisfies Config;
 
 export default config;
