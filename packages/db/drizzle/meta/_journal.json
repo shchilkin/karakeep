@@ -673,6 +673,13 @@
       "when": 1788790032238,
       "tag": "0095_title_source",
       "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "6",
+      "when": 1788897455077,
+      "tag": "0096_asset_dimensions",
+      "breakpoints": true
     }
   ]
 }

@@ -16,6 +16,7 @@ import {
   newAssetId,
   QuotaService,
   saveAsset,
+  extractImageDimensions,
   silentDeleteAsset,
   VIDEO_ASSET_TYPES,
 } from "@karakeep/shared-server";
@@ -129,6 +130,7 @@ export async function downloadDirectVideo({
       metadata: { contentType: "image/jpeg" },
       quotaApproved,
     });
+    const dimensions = await extractImageDimensions(poster, "image/jpeg");
     abortSignal.throwIfAborted();
     const replaced = db.transaction(
       (tx) => {
@@ -174,6 +176,7 @@ export async function downloadDirectVideo({
             assetType: AssetTypes.LINK_BANNER_IMAGE,
             contentType: "image/jpeg",
             size: poster.length,
+            ...dimensions,
             fileName: `${baseName}.poster.jpg`,
           },
           tx,

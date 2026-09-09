@@ -256,6 +256,8 @@ export class Bookmark extends BareBookmark {
         id: a.id,
         assetType: mapDBAssetTypeToUserType(a.assetType),
         fileName: a.fileName,
+        width: a.width ?? undefined,
+        height: a.height ?? undefined,
       })),
       firstCreatedAt: bookmark.dbCreatedAt,
       ...rest,
@@ -742,6 +744,8 @@ export class Bookmark extends BareBookmark {
             id: row.assets.id,
             assetType: mapDBAssetTypeToUserType(row.assets.assetType),
             fileName: row.assets.fileName,
+            width: row.assets.width ?? undefined,
+            height: row.assets.height ?? undefined,
           });
         }
 

@@ -117,6 +117,8 @@ export class Asset {
       id: updatedAsset.id,
       assetType: mapDBAssetTypeToUserType(updatedAsset.assetType),
       fileName: updatedAsset.fileName,
+      width: updatedAsset.width ?? undefined,
+      height: updatedAsset.height ?? undefined,
     };
   }
 

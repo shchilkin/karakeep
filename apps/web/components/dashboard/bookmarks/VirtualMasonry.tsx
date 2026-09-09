@@ -2,6 +2,8 @@
 
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import type { CardImageDimensionsSlot } from "@/lib/cardImageDimensions";
+import { CardImageDimensionsContext } from "@/lib/cardImageDimensions";
 import { positionMasonry, visibleMasonry } from "@/lib/virtualMasonry";
 
 function scrollParent(element: HTMLElement): HTMLElement | Window {
@@ -37,6 +39,7 @@ export default function VirtualMasonry({
   const scroller = useRef<HTMLElement | Window>(null);
   const nodes = useRef(new Map<string, HTMLDivElement>());
   const observer = useRef<ResizeObserver>(null);
+  const imageDimensions = useRef(new Map<string, CardImageDimensionsSlot>());
   const measured = useRef(
     new Map<string, { width: number; height: number; layout: string }>(),
   );
@@ -168,6 +171,8 @@ export default function VirtualMasonry({
     const remaining = new Set(ids);
     for (const id of measured.current.keys())
       if (!remaining.has(id)) measured.current.delete(id);
+    for (const id of imageDimensions.current.keys())
+      if (!remaining.has(id)) imageDimensions.current.delete(id);
   }, [ids]);
 
   const visible = visibleMasonry(
@@ -198,6 +203,11 @@ export default function VirtualMasonry({
         .sort((a, b) => a - b)
         .map((index) => {
           const item = layout.positions[index];
+          let dimensions = imageDimensions.current.get(item.id);
+          if (!dimensions) {
+            dimensions = {};
+            imageDimensions.current.set(item.id, dimensions);
+          }
           return (
             <MeasuredCard
               key={item.id}
@@ -214,7 +224,9 @@ export default function VirtualMasonry({
                 top: item.top,
               }}
             >
-              {renderItem(item.id, index)}
+              <CardImageDimensionsContext value={dimensions}>
+                {renderItem(item.id, index)}
+              </CardImageDimensionsContext>
             </MeasuredCard>
           );
         })}

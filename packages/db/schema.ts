@@ -367,6 +367,8 @@ export const assets = sqliteTable(
     }).notNull(),
     size: integer("size").notNull().default(0),
     contentType: text("contentType"),
+    width: integer("width"),
+    height: integer("height"),
     fileName: text("fileName"),
     bookmarkId: text("bookmarkId").references(() => bookmarks.id, {
       onDelete: "cascade",

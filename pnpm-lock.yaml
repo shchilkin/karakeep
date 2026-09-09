@@ -1050,6 +1050,9 @@ importers:
       rss-parser:
         specifier: ^3.13.0
         version: 3.13.0
+      sharp:
+        specifier: ^0.33.3
+        version: 0.33.3
       tesseract.js:
         specifier: ^7.0.0
         version: 7.0.0
@@ -1550,6 +1553,9 @@ importers:
       '@trpc/server':
         specifier: ^11.9.0
         version: 11.9.0(typescript@5.9.3)
+      sharp:
+        specifier: ^0.33.3
+        version: 0.33.3
       winston:
         specifier: ^3.11.0
         version: 3.17.0

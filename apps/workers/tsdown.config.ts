@@ -1,7 +1,11 @@
 import { defineConfig } from "tsdown";
 
 export default defineConfig({
-  entry: ["index.ts", "scripts/parseHtmlSubprocess.ts"],
+  entry: [
+    "index.ts",
+    "scripts/parseHtmlSubprocess.ts",
+    "scripts/backfillAssetDimensions.ts",
+  ],
   format: ["esm"],
   target: "node22",
   outDir: "dist",
@@ -14,6 +18,7 @@ export default defineConfig({
     // Keep native binaries external (transitive deps of bundled workspace packages)
     "better-sqlite3",
     "liteque",
+    "sharp",
   ],
   noExternal: [
     // Bundle workspace packages (since they're not published to npm)
