@@ -41,9 +41,10 @@ collections use the existing first-frame sampling. Text-only cards stay local in
 service. Three sampled frames cannot prove that a full video contains no Sensitive
 content. This is a routing aid, not a guarantee of xAI acceptance or a safety certificate.
 
-The current upload policy allows `revealing_clothing` and `suggestive`. Any other
-recognized category, any unknown result, or a manually applied category hidden in
-Balanced mode holds the card locally. Work/Balanced/Show all display preferences
+The upload policy holds any native ShieldGemma category (`sexual`, `dangerous`,
+`violence`), any unknown result, or a manually applied category hidden in Balanced
+mode. All three scores below 0.5 permit the next admission checks. Native policies
+do not cover all manual categories; the absence of a match is not a safety certificate. Work/Balanced/Show all display preferences
 do not change the upload policy. Manual clear cannot override a detected category.
 
 Local classifications are displayed as separate observations. They **do not write
@@ -75,8 +76,10 @@ own explicitly selected canary after local validation.
 ## GPU service
 
 See [service deployment](../deploy/sensitive-classifier/README.md). It uses the pinned
-`nvidia/Nemotron-3.5-Content-Safety` revision
-`35645ed3543b7e7ffaed2e788699e57a5051497c`, BF16, policy `nemotron-visibility-v3`.
+`google/shieldgemma-2-4b-it` revision
+`eaf60452b5fc41a911338a022e628b0c15283897`, BF16, policy `shieldgemma-native-v1`.
+Scores and native categories are persisted per image; the threshold is pinned at 0.5.
+Historical Nemotron results remain readable but cannot authorize new cloud requests.
 CUDA is required; there is no CPU fallback. The service loads on the first request
 and releases the model after 120 seconds idle. It has no archive mount and accepts
 only prepared image bytes. Responses exclude raw model output and prompt text.

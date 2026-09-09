@@ -36,7 +36,7 @@ import { mapDBAssetTypeToUserType } from "../lib/attachments";
 
 import {
   holdLocalMedia,
-  zLocalCheckResult,
+  zCurrentLocalCheckResult,
   LOCAL_CHECK_POLICY,
   LOCAL_CHECK_REVISION,
 } from "@karakeep/shared/mediaLocalCheck";
@@ -341,7 +341,7 @@ export function continueMediaCatalog(
   job: CatalogJob,
   unchecked: LocalCheckResult,
 ) {
-  const localCheck = zLocalCheckResult.parse(unchecked);
+  const localCheck = zCurrentLocalCheckResult.parse(unchecked);
   return db.transaction(
     (tx) => {
       const snapshot = catalogSnapshot(tx, job.userId, job.bookmarkId, true);

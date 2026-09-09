@@ -5,6 +5,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Sparkles } from "lucide-react";
 import { useTRPC } from "@karakeep/shared-react/trpc";
 import { catalogBusy, catalogInput } from "@karakeep/shared/mediaCatalog";
+import { localCheckCategoryKeys } from "@karakeep/shared/mediaLocalCheck";
 import type { ZBookmark } from "@karakeep/shared/types/bookmarks";
 
 export default function MediaCatalogArea({
@@ -89,12 +90,8 @@ export default function MediaCatalogArea({
             })}
           </p>
           <p>
-            {[
-              ...new Set(
-                state.localCheck.frames.flatMap((frame) => frame.categories),
-              ),
-            ]
-              .map((category) => t(`sensitive.categories.${category}`))
+            {localCheckCategoryKeys(state.localCheck)
+              .map((key) => t(key))
               .join(", ")}
           </p>
           {state.localCheck.frames.some(

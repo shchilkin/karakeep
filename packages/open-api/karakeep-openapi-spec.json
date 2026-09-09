@@ -235,74 +235,168 @@
                   "frames": {
                     "type": "array",
                     "items": {
-                      "type": "object",
-                      "properties": {
-                        "model": {
-                          "type": "string",
-                          "enum": [
-                            "nvidia/Nemotron-3.5-Content-Safety"
-                          ]
-                        },
-                        "revision": {
-                          "type": "string",
-                          "enum": [
-                            "35645ed3543b7e7ffaed2e788699e57a5051497c"
-                          ]
-                        },
-                        "policy": {
-                          "type": "string",
-                          "enum": [
-                            "nemotron-visibility-v3"
-                          ]
-                        },
-                        "precision": {
-                          "type": "string",
-                          "enum": [
-                            "bf16"
-                          ]
-                        },
-                        "status": {
-                          "type": "string",
-                          "enum": [
-                            "complete",
-                            "unknown"
-                          ]
-                        },
-                        "categories": {
-                          "type": "array",
-                          "items": {
-                            "type": "string",
-                            "enum": [
-                              "revealing_clothing",
-                              "suggestive",
-                              "nudity",
-                              "explicit_sexual",
-                              "violence",
-                              "gore",
-                              "self_harm",
-                              "drugs",
-                              "hate_extremism",
-                              "disturbing",
-                              "other"
-                            ]
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "model": {
+                              "type": "string",
+                              "enum": [
+                                "google/shieldgemma-2-4b-it"
+                              ]
+                            },
+                            "revision": {
+                              "type": "string",
+                              "enum": [
+                                "eaf60452b5fc41a911338a022e628b0c15283897"
+                              ]
+                            },
+                            "policy": {
+                              "type": "string",
+                              "enum": [
+                                "shieldgemma-native-v1"
+                              ]
+                            },
+                            "precision": {
+                              "type": "string",
+                              "enum": [
+                                "bf16"
+                              ]
+                            },
+                            "status": {
+                              "type": "string",
+                              "enum": [
+                                "complete",
+                                "unknown"
+                              ]
+                            },
+                            "categories": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "enum": [
+                                  "dangerous",
+                                  "sexual",
+                                  "violence"
+                                ]
+                              },
+                              "maxItems": 3
+                            },
+                            "scores": {
+                              "type": "object",
+                              "nullable": true,
+                              "properties": {
+                                "dangerous": {
+                                  "type": "number",
+                                  "minimum": 0,
+                                  "maximum": 1
+                                },
+                                "sexual": {
+                                  "type": "number",
+                                  "minimum": 0,
+                                  "maximum": 1
+                                },
+                                "violence": {
+                                  "type": "number",
+                                  "minimum": 0,
+                                  "maximum": 1
+                                }
+                              },
+                              "required": [
+                                "dangerous",
+                                "sexual",
+                                "violence"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "sha256": {
+                              "type": "string",
+                              "pattern": "^[a-f0-9]{64}$"
+                            }
                           },
-                          "maxItems": 11
+                          "required": [
+                            "model",
+                            "revision",
+                            "policy",
+                            "precision",
+                            "status",
+                            "categories",
+                            "scores",
+                            "sha256"
+                          ],
+                          "additionalProperties": false
                         },
-                        "sha256": {
-                          "type": "string",
-                          "pattern": "^[a-f0-9]{64}$"
+                        {
+                          "type": "object",
+                          "properties": {
+                            "model": {
+                              "type": "string",
+                              "enum": [
+                                "nvidia/Nemotron-3.5-Content-Safety"
+                              ]
+                            },
+                            "revision": {
+                              "type": "string",
+                              "enum": [
+                                "35645ed3543b7e7ffaed2e788699e57a5051497c"
+                              ]
+                            },
+                            "policy": {
+                              "type": "string",
+                              "enum": [
+                                "nemotron-visibility-v3"
+                              ]
+                            },
+                            "precision": {
+                              "type": "string",
+                              "enum": [
+                                "bf16"
+                              ]
+                            },
+                            "status": {
+                              "type": "string",
+                              "enum": [
+                                "complete",
+                                "unknown"
+                              ]
+                            },
+                            "categories": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "enum": [
+                                  "revealing_clothing",
+                                  "suggestive",
+                                  "nudity",
+                                  "explicit_sexual",
+                                  "violence",
+                                  "gore",
+                                  "self_harm",
+                                  "drugs",
+                                  "hate_extremism",
+                                  "disturbing",
+                                  "other"
+                                ]
+                              },
+                              "maxItems": 11
+                            },
+                            "sha256": {
+                              "type": "string",
+                              "pattern": "^[a-f0-9]{64}$"
+                            }
+                          },
+                          "required": [
+                            "model",
+                            "revision",
+                            "policy",
+                            "precision",
+                            "status",
+                            "categories",
+                            "sha256"
+                          ],
+                          "additionalProperties": false
                         }
-                      },
-                      "required": [
-                        "model",
-                        "revision",
-                        "policy",
-                        "precision",
-                        "status",
-                        "categories",
-                        "sha256"
-                      ],
-                      "additionalProperties": false
+                      ]
                     },
                     "minItems": 1,
                     "maxItems": 3
@@ -1985,74 +2079,168 @@
                             "frames": {
                               "type": "array",
                               "items": {
-                                "type": "object",
-                                "properties": {
-                                  "model": {
-                                    "type": "string",
-                                    "enum": [
-                                      "nvidia/Nemotron-3.5-Content-Safety"
-                                    ]
-                                  },
-                                  "revision": {
-                                    "type": "string",
-                                    "enum": [
-                                      "35645ed3543b7e7ffaed2e788699e57a5051497c"
-                                    ]
-                                  },
-                                  "policy": {
-                                    "type": "string",
-                                    "enum": [
-                                      "nemotron-visibility-v3"
-                                    ]
-                                  },
-                                  "precision": {
-                                    "type": "string",
-                                    "enum": [
-                                      "bf16"
-                                    ]
-                                  },
-                                  "status": {
-                                    "type": "string",
-                                    "enum": [
-                                      "complete",
-                                      "unknown"
-                                    ]
-                                  },
-                                  "categories": {
-                                    "type": "array",
-                                    "items": {
-                                      "type": "string",
-                                      "enum": [
-                                        "revealing_clothing",
-                                        "suggestive",
-                                        "nudity",
-                                        "explicit_sexual",
-                                        "violence",
-                                        "gore",
-                                        "self_harm",
-                                        "drugs",
-                                        "hate_extremism",
-                                        "disturbing",
-                                        "other"
-                                      ]
+                                "anyOf": [
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "model": {
+                                        "type": "string",
+                                        "enum": [
+                                          "google/shieldgemma-2-4b-it"
+                                        ]
+                                      },
+                                      "revision": {
+                                        "type": "string",
+                                        "enum": [
+                                          "eaf60452b5fc41a911338a022e628b0c15283897"
+                                        ]
+                                      },
+                                      "policy": {
+                                        "type": "string",
+                                        "enum": [
+                                          "shieldgemma-native-v1"
+                                        ]
+                                      },
+                                      "precision": {
+                                        "type": "string",
+                                        "enum": [
+                                          "bf16"
+                                        ]
+                                      },
+                                      "status": {
+                                        "type": "string",
+                                        "enum": [
+                                          "complete",
+                                          "unknown"
+                                        ]
+                                      },
+                                      "categories": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "enum": [
+                                            "dangerous",
+                                            "sexual",
+                                            "violence"
+                                          ]
+                                        },
+                                        "maxItems": 3
+                                      },
+                                      "scores": {
+                                        "type": "object",
+                                        "nullable": true,
+                                        "properties": {
+                                          "dangerous": {
+                                            "type": "number",
+                                            "minimum": 0,
+                                            "maximum": 1
+                                          },
+                                          "sexual": {
+                                            "type": "number",
+                                            "minimum": 0,
+                                            "maximum": 1
+                                          },
+                                          "violence": {
+                                            "type": "number",
+                                            "minimum": 0,
+                                            "maximum": 1
+                                          }
+                                        },
+                                        "required": [
+                                          "dangerous",
+                                          "sexual",
+                                          "violence"
+                                        ],
+                                        "additionalProperties": false
+                                      },
+                                      "sha256": {
+                                        "type": "string",
+                                        "pattern": "^[a-f0-9]{64}$"
+                                      }
                                     },
-                                    "maxItems": 11
+                                    "required": [
+                                      "model",
+                                      "revision",
+                                      "policy",
+                                      "precision",
+                                      "status",
+                                      "categories",
+                                      "scores",
+                                      "sha256"
+                                    ],
+                                    "additionalProperties": false
                                   },
-                                  "sha256": {
-                                    "type": "string",
-                                    "pattern": "^[a-f0-9]{64}$"
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "model": {
+                                        "type": "string",
+                                        "enum": [
+                                          "nvidia/Nemotron-3.5-Content-Safety"
+                                        ]
+                                      },
+                                      "revision": {
+                                        "type": "string",
+                                        "enum": [
+                                          "35645ed3543b7e7ffaed2e788699e57a5051497c"
+                                        ]
+                                      },
+                                      "policy": {
+                                        "type": "string",
+                                        "enum": [
+                                          "nemotron-visibility-v3"
+                                        ]
+                                      },
+                                      "precision": {
+                                        "type": "string",
+                                        "enum": [
+                                          "bf16"
+                                        ]
+                                      },
+                                      "status": {
+                                        "type": "string",
+                                        "enum": [
+                                          "complete",
+                                          "unknown"
+                                        ]
+                                      },
+                                      "categories": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "enum": [
+                                            "revealing_clothing",
+                                            "suggestive",
+                                            "nudity",
+                                            "explicit_sexual",
+                                            "violence",
+                                            "gore",
+                                            "self_harm",
+                                            "drugs",
+                                            "hate_extremism",
+                                            "disturbing",
+                                            "other"
+                                          ]
+                                        },
+                                        "maxItems": 11
+                                      },
+                                      "sha256": {
+                                        "type": "string",
+                                        "pattern": "^[a-f0-9]{64}$"
+                                      }
+                                    },
+                                    "required": [
+                                      "model",
+                                      "revision",
+                                      "policy",
+                                      "precision",
+                                      "status",
+                                      "categories",
+                                      "sha256"
+                                    ],
+                                    "additionalProperties": false
                                   }
-                                },
-                                "required": [
-                                  "model",
-                                  "revision",
-                                  "policy",
-                                  "precision",
-                                  "status",
-                                  "categories",
-                                  "sha256"
-                                ],
-                                "additionalProperties": false
+                                ]
                               },
                               "minItems": 1,
                               "maxItems": 3
@@ -2468,74 +2656,168 @@
                             "frames": {
                               "type": "array",
                               "items": {
-                                "type": "object",
-                                "properties": {
-                                  "model": {
-                                    "type": "string",
-                                    "enum": [
-                                      "nvidia/Nemotron-3.5-Content-Safety"
-                                    ]
-                                  },
-                                  "revision": {
-                                    "type": "string",
-                                    "enum": [
-                                      "35645ed3543b7e7ffaed2e788699e57a5051497c"
-                                    ]
-                                  },
-                                  "policy": {
-                                    "type": "string",
-                                    "enum": [
-                                      "nemotron-visibility-v3"
-                                    ]
-                                  },
-                                  "precision": {
-                                    "type": "string",
-                                    "enum": [
-                                      "bf16"
-                                    ]
-                                  },
-                                  "status": {
-                                    "type": "string",
-                                    "enum": [
-                                      "complete",
-                                      "unknown"
-                                    ]
-                                  },
-                                  "categories": {
-                                    "type": "array",
-                                    "items": {
-                                      "type": "string",
-                                      "enum": [
-                                        "revealing_clothing",
-                                        "suggestive",
-                                        "nudity",
-                                        "explicit_sexual",
-                                        "violence",
-                                        "gore",
-                                        "self_harm",
-                                        "drugs",
-                                        "hate_extremism",
-                                        "disturbing",
-                                        "other"
-                                      ]
+                                "anyOf": [
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "model": {
+                                        "type": "string",
+                                        "enum": [
+                                          "google/shieldgemma-2-4b-it"
+                                        ]
+                                      },
+                                      "revision": {
+                                        "type": "string",
+                                        "enum": [
+                                          "eaf60452b5fc41a911338a022e628b0c15283897"
+                                        ]
+                                      },
+                                      "policy": {
+                                        "type": "string",
+                                        "enum": [
+                                          "shieldgemma-native-v1"
+                                        ]
+                                      },
+                                      "precision": {
+                                        "type": "string",
+                                        "enum": [
+                                          "bf16"
+                                        ]
+                                      },
+                                      "status": {
+                                        "type": "string",
+                                        "enum": [
+                                          "complete",
+                                          "unknown"
+                                        ]
+                                      },
+                                      "categories": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "enum": [
+                                            "dangerous",
+                                            "sexual",
+                                            "violence"
+                                          ]
+                                        },
+                                        "maxItems": 3
+                                      },
+                                      "scores": {
+                                        "type": "object",
+                                        "nullable": true,
+                                        "properties": {
+                                          "dangerous": {
+                                            "type": "number",
+                                            "minimum": 0,
+                                            "maximum": 1
+                                          },
+                                          "sexual": {
+                                            "type": "number",
+                                            "minimum": 0,
+                                            "maximum": 1
+                                          },
+                                          "violence": {
+                                            "type": "number",
+                                            "minimum": 0,
+                                            "maximum": 1
+                                          }
+                                        },
+                                        "required": [
+                                          "dangerous",
+                                          "sexual",
+                                          "violence"
+                                        ],
+                                        "additionalProperties": false
+                                      },
+                                      "sha256": {
+                                        "type": "string",
+                                        "pattern": "^[a-f0-9]{64}$"
+                                      }
                                     },
-                                    "maxItems": 11
+                                    "required": [
+                                      "model",
+                                      "revision",
+                                      "policy",
+                                      "precision",
+                                      "status",
+                                      "categories",
+                                      "scores",
+                                      "sha256"
+                                    ],
+                                    "additionalProperties": false
                                   },
-                                  "sha256": {
-                                    "type": "string",
-                                    "pattern": "^[a-f0-9]{64}$"
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "model": {
+                                        "type": "string",
+                                        "enum": [
+                                          "nvidia/Nemotron-3.5-Content-Safety"
+                                        ]
+                                      },
+                                      "revision": {
+                                        "type": "string",
+                                        "enum": [
+                                          "35645ed3543b7e7ffaed2e788699e57a5051497c"
+                                        ]
+                                      },
+                                      "policy": {
+                                        "type": "string",
+                                        "enum": [
+                                          "nemotron-visibility-v3"
+                                        ]
+                                      },
+                                      "precision": {
+                                        "type": "string",
+                                        "enum": [
+                                          "bf16"
+                                        ]
+                                      },
+                                      "status": {
+                                        "type": "string",
+                                        "enum": [
+                                          "complete",
+                                          "unknown"
+                                        ]
+                                      },
+                                      "categories": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "enum": [
+                                            "revealing_clothing",
+                                            "suggestive",
+                                            "nudity",
+                                            "explicit_sexual",
+                                            "violence",
+                                            "gore",
+                                            "self_harm",
+                                            "drugs",
+                                            "hate_extremism",
+                                            "disturbing",
+                                            "other"
+                                          ]
+                                        },
+                                        "maxItems": 11
+                                      },
+                                      "sha256": {
+                                        "type": "string",
+                                        "pattern": "^[a-f0-9]{64}$"
+                                      }
+                                    },
+                                    "required": [
+                                      "model",
+                                      "revision",
+                                      "policy",
+                                      "precision",
+                                      "status",
+                                      "categories",
+                                      "sha256"
+                                    ],
+                                    "additionalProperties": false
                                   }
-                                },
-                                "required": [
-                                  "model",
-                                  "revision",
-                                  "policy",
-                                  "precision",
-                                  "status",
-                                  "categories",
-                                  "sha256"
-                                ],
-                                "additionalProperties": false
+                                ]
                               },
                               "minItems": 1,
                               "maxItems": 3
@@ -2859,74 +3141,168 @@
                             "frames": {
                               "type": "array",
                               "items": {
-                                "type": "object",
-                                "properties": {
-                                  "model": {
-                                    "type": "string",
-                                    "enum": [
-                                      "nvidia/Nemotron-3.5-Content-Safety"
-                                    ]
-                                  },
-                                  "revision": {
-                                    "type": "string",
-                                    "enum": [
-                                      "35645ed3543b7e7ffaed2e788699e57a5051497c"
-                                    ]
-                                  },
-                                  "policy": {
-                                    "type": "string",
-                                    "enum": [
-                                      "nemotron-visibility-v3"
-                                    ]
-                                  },
-                                  "precision": {
-                                    "type": "string",
-                                    "enum": [
-                                      "bf16"
-                                    ]
-                                  },
-                                  "status": {
-                                    "type": "string",
-                                    "enum": [
-                                      "complete",
-                                      "unknown"
-                                    ]
-                                  },
-                                  "categories": {
-                                    "type": "array",
-                                    "items": {
-                                      "type": "string",
-                                      "enum": [
-                                        "revealing_clothing",
-                                        "suggestive",
-                                        "nudity",
-                                        "explicit_sexual",
-                                        "violence",
-                                        "gore",
-                                        "self_harm",
-                                        "drugs",
-                                        "hate_extremism",
-                                        "disturbing",
-                                        "other"
-                                      ]
+                                "anyOf": [
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "model": {
+                                        "type": "string",
+                                        "enum": [
+                                          "google/shieldgemma-2-4b-it"
+                                        ]
+                                      },
+                                      "revision": {
+                                        "type": "string",
+                                        "enum": [
+                                          "eaf60452b5fc41a911338a022e628b0c15283897"
+                                        ]
+                                      },
+                                      "policy": {
+                                        "type": "string",
+                                        "enum": [
+                                          "shieldgemma-native-v1"
+                                        ]
+                                      },
+                                      "precision": {
+                                        "type": "string",
+                                        "enum": [
+                                          "bf16"
+                                        ]
+                                      },
+                                      "status": {
+                                        "type": "string",
+                                        "enum": [
+                                          "complete",
+                                          "unknown"
+                                        ]
+                                      },
+                                      "categories": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "enum": [
+                                            "dangerous",
+                                            "sexual",
+                                            "violence"
+                                          ]
+                                        },
+                                        "maxItems": 3
+                                      },
+                                      "scores": {
+                                        "type": "object",
+                                        "nullable": true,
+                                        "properties": {
+                                          "dangerous": {
+                                            "type": "number",
+                                            "minimum": 0,
+                                            "maximum": 1
+                                          },
+                                          "sexual": {
+                                            "type": "number",
+                                            "minimum": 0,
+                                            "maximum": 1
+                                          },
+                                          "violence": {
+                                            "type": "number",
+                                            "minimum": 0,
+                                            "maximum": 1
+                                          }
+                                        },
+                                        "required": [
+                                          "dangerous",
+                                          "sexual",
+                                          "violence"
+                                        ],
+                                        "additionalProperties": false
+                                      },
+                                      "sha256": {
+                                        "type": "string",
+                                        "pattern": "^[a-f0-9]{64}$"
+                                      }
                                     },
-                                    "maxItems": 11
+                                    "required": [
+                                      "model",
+                                      "revision",
+                                      "policy",
+                                      "precision",
+                                      "status",
+                                      "categories",
+                                      "scores",
+                                      "sha256"
+                                    ],
+                                    "additionalProperties": false
                                   },
-                                  "sha256": {
-                                    "type": "string",
-                                    "pattern": "^[a-f0-9]{64}$"
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "model": {
+                                        "type": "string",
+                                        "enum": [
+                                          "nvidia/Nemotron-3.5-Content-Safety"
+                                        ]
+                                      },
+                                      "revision": {
+                                        "type": "string",
+                                        "enum": [
+                                          "35645ed3543b7e7ffaed2e788699e57a5051497c"
+                                        ]
+                                      },
+                                      "policy": {
+                                        "type": "string",
+                                        "enum": [
+                                          "nemotron-visibility-v3"
+                                        ]
+                                      },
+                                      "precision": {
+                                        "type": "string",
+                                        "enum": [
+                                          "bf16"
+                                        ]
+                                      },
+                                      "status": {
+                                        "type": "string",
+                                        "enum": [
+                                          "complete",
+                                          "unknown"
+                                        ]
+                                      },
+                                      "categories": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "enum": [
+                                            "revealing_clothing",
+                                            "suggestive",
+                                            "nudity",
+                                            "explicit_sexual",
+                                            "violence",
+                                            "gore",
+                                            "self_harm",
+                                            "drugs",
+                                            "hate_extremism",
+                                            "disturbing",
+                                            "other"
+                                          ]
+                                        },
+                                        "maxItems": 11
+                                      },
+                                      "sha256": {
+                                        "type": "string",
+                                        "pattern": "^[a-f0-9]{64}$"
+                                      }
+                                    },
+                                    "required": [
+                                      "model",
+                                      "revision",
+                                      "policy",
+                                      "precision",
+                                      "status",
+                                      "categories",
+                                      "sha256"
+                                    ],
+                                    "additionalProperties": false
                                   }
-                                },
-                                "required": [
-                                  "model",
-                                  "revision",
-                                  "policy",
-                                  "precision",
-                                  "status",
-                                  "categories",
-                                  "sha256"
-                                ],
-                                "additionalProperties": false
+                                ]
                               },
                               "minItems": 1,
                               "maxItems": 3

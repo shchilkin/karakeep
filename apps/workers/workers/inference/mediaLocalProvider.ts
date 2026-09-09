@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import serverConfig from "@karakeep/shared/config";
 import {
   zLocalFrameResult,
-  zLocalCheckResult,
+  zCurrentLocalCheckResult,
 } from "@karakeep/shared/mediaLocalCheck";
 import type { LocalCheckResult } from "@karakeep/shared/mediaLocalCheck";
 import { CatalogFailure } from "./mediaCatalogProvider";
@@ -76,7 +76,7 @@ export async function checkLocalMedia(
 }
 
 export function reusableLocalCheck(value: unknown, images: Buffer[]) {
-  const parsed = zLocalCheckResult.safeParse(value);
+  const parsed = zCurrentLocalCheckResult.safeParse(value);
   if (!parsed.success || parsed.data.frames.length !== images.length)
     return null;
   return parsed.data.frames.every(

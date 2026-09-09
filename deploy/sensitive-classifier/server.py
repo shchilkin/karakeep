@@ -1,6 +1,7 @@
 """Private, sequential GPU classifier. No archive mounts, outbound calls or raw logs."""
 import base64
 import gc
+import hashlib
 import hmac
 import io
 import json
@@ -10,19 +11,10 @@ import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
-from policy import POLICY, parse_result
-
-MODEL = 'nvidia/Nemotron-3.5-Content-Safety'
-REVISION = '35645ed3543b7e7ffaed2e788699e57a5051497c'
-POLICY_VERSION = 'nemotron-visibility-v3'
+from shieldgemma import MODEL, REVISION, POLICIES, POLICIES_SHA256, response, repair_output_head
 MAX_BODY = 3 * 1024 * 1024
 os.environ.update(HF_HUB_OFFLINE='1', TRANSFORMERS_OFFLINE='1',
                   HF_HUB_DISABLE_TELEMETRY='1', TOKENIZERS_PARALLELISM='false')
-
-
-def response(status, categories):
-    return dict(model=MODEL, revision=REVISION, policy=POLICY_VERSION,
-                precision='bf16', status=status, categories=categories)
 
 
 class Classifier:
@@ -34,19 +26,28 @@ class Classifier:
         if self.model is not None:
             return
         import torch
-        from transformers import AutoProcessor, Gemma3ForConditionalGeneration
+        from transformers import AutoProcessor, ShieldGemma2ForImageClassification
         directory = Path(os.environ.get('MODEL_DIR', '/models'))
         manifest = json.loads((directory / 'download-manifest.json').read_text())
         if manifest['model'] != MODEL or manifest['revision'] != REVISION:
-            raise ValueError('model_revision_mismatch')
+            raise RuntimeError('model_revision_mismatch')
         if not torch.cuda.is_available():
             raise RuntimeError('cuda_required')
         torch.set_num_threads(2)
-        self.processor = AutoProcessor.from_pretrained(directory, local_files_only=True, trust_remote_code=False)
-        self.model = Gemma3ForConditionalGeneration.from_pretrained(
+        processor = AutoProcessor.from_pretrained(directory, local_files_only=True, trust_remote_code=False, use_fast=False)
+        digest = hashlib.sha256(json.dumps(processor.policy_definitions, sort_keys=True).encode()).hexdigest()
+        if set(processor.policy_definitions) != set(POLICIES) or digest != POLICIES_SHA256:
+            raise RuntimeError('native_policy_mismatch')
+        # The outer wrapper rejects SDPA; its Gemma3 text/vision backbone supports it.
+        model, loading_info = ShieldGemma2ForImageClassification.from_pretrained(
             directory, local_files_only=True, trust_remote_code=False,
-            dtype=torch.bfloat16, device_map={'': 0}, attn_implementation='sdpa',
-            low_cpu_mem_usage=True).eval()
+            dtype=torch.bfloat16, device_map={'': 0}, attn_implementation='eager',
+            low_cpu_mem_usage=True, output_loading_info=True)
+        repair_output_head(model, loading_info)
+        model.model.set_attn_implementation('sdpa')
+        if any(c._attn_implementation != 'sdpa' for c in [model.model.config.text_config, model.model.config.vision_config]):
+            raise RuntimeError('backbone_sdpa_required')
+        self.model, self.processor = model.eval(), processor
 
     def unload(self):
         self.model = self.processor = None
@@ -67,29 +68,20 @@ class Classifier:
                 raise ValueError('expected_prepared_jpeg')
             image = original.convert('RGB')
         import torch
-        self.load()
         try:
-            content = [{'type': 'image', 'image': image},
-                       {'type': 'text', 'text': 'Classify the sensitivity categories visible in this attached image.'}]
-            prompt = self.processor.apply_chat_template(
-                [{'role': 'user', 'content': content}], tokenize=False,
-                add_generation_prompt=True, request_categories='/categories',
-                custom_policy=POLICY, enable_thinking=False)
-            inputs = self.processor(text=prompt, images=[image], return_tensors='pt',
-                                    add_special_tokens=False).to('cuda')
-            if inputs['input_ids'].shape[-1] > 4096:
-                raise ValueError('input_token_limit')
-            if 'pixel_values' in inputs:
+            self.load()
+            scores = {}
+            for policy in POLICIES:
+                # One image/policy per pass bounds VRAM; no generation or KV cache.
+                inputs = self.processor(images=[image], policies=[policy], return_tensors='pt').to('cuda')
+                if inputs['input_ids'].shape[-1] > 4096:
+                    raise ValueError('input_token_limit')
                 inputs['pixel_values'] = inputs['pixel_values'].to(torch.bfloat16)
-            with torch.inference_mode():
-                generated = self.model.generate(**inputs, max_new_tokens=160, max_time=60, do_sample=False)
-            tokens = generated[0, inputs['input_ids'].shape[-1]:]
-            eos = self.model.generation_config.eos_token_id
-            eos_set = set(eos if isinstance(eos, list) else [eos])
-            truncated = not len(tokens) or int(tokens[-1]) not in eos_set
-            text = self.processor.decode(tokens, skip_special_tokens=True).strip()
-            parsed = parse_result(text, truncated)
-            return response(parsed['status'], parsed['categories'])
+                with torch.inference_mode():
+                    # forward() orders [Yes, No]; index zero is policy violation.
+                    scores[policy] = float(self.model(**inputs, logits_to_keep=1, use_cache=False).probabilities[0, 0].cpu())
+                del inputs
+            return response(scores)
         finally:
             self.last_used = time.monotonic()
             image.close()

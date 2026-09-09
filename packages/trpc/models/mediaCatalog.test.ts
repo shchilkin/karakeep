@@ -450,12 +450,20 @@ const localCheck = (categories: string[] = [], status = "complete") =>
     scope: "outgoing_images_only" as const,
     frames: [
       {
-        model: "nvidia/Nemotron-3.5-Content-Safety" as const,
-        revision: "35645ed3543b7e7ffaed2e788699e57a5051497c" as const,
-        policy: "nemotron-visibility-v3" as const,
+        model: "google/shieldgemma-2-4b-it" as const,
+        revision: "eaf60452b5fc41a911338a022e628b0c15283897" as const,
+        policy: "shieldgemma-native-v1" as const,
         precision: "bf16" as const,
         status,
         categories,
+        scores:
+          status === "complete"
+            ? {
+                dangerous: categories.includes("dangerous") ? 0.9 : 0.01,
+                sexual: categories.includes("sexual") ? 0.9 : 0.01,
+                violence: categories.includes("violence") ? 0.9 : 0.01,
+              }
+            : null,
         sha256: "a".repeat(64),
       },
     ],
@@ -514,22 +522,19 @@ describe("local admission before cloud reservation", () => {
     expect(db.select().from(mediaAiRequests).all()).toHaveLength(0);
   });
 
-  test.each([
-    ["nudity"],
-    ["explicit_sexual"],
-    ["gore"],
-    ["violence"],
-    ["self_harm"],
-  ])("marked %s never consumes cloud quota", async (category) => {
-    serverConfig.mediaAi.localMode = "enforce";
-    const job = await queue();
-    startMediaCatalog(db, job);
-    expect(continueMediaCatalog(db, job, localCheck([category]))).toBe(false);
-    expect(catalogSnapshot(db, "u1", "b1").bookmark.mediaAi?.status).toBe(
-      "local_only",
-    );
-    expect(db.select().from(mediaAiRequests).all()).toHaveLength(0);
-  });
+  test.each([["sexual"], ["dangerous"], ["violence"]])(
+    "marked %s never consumes cloud quota",
+    async (category) => {
+      serverConfig.mediaAi.localMode = "enforce";
+      const job = await queue();
+      startMediaCatalog(db, job);
+      expect(continueMediaCatalog(db, job, localCheck([category]))).toBe(false);
+      expect(catalogSnapshot(db, "u1", "b1").bookmark.mediaAi?.status).toBe(
+        "local_only",
+      );
+      expect(db.select().from(mediaAiRequests).all()).toHaveLength(0);
+    },
+  );
 
   test("unknown and manual marks cannot be bypassed by a local clean result", async () => {
     serverConfig.mediaAi.localMode = "enforce";
@@ -553,17 +558,14 @@ describe("local admission before cloud reservation", () => {
     const job = await queue();
     startMediaCatalog(db, job);
     expect(db.select().from(mediaAiRequests).all()).toHaveLength(0);
-    expect(
-      continueMediaCatalog(db, job, localCheck(["revealing_clothing"])),
-    ).toBe(true);
+    expect(continueMediaCatalog(db, job, localCheck())).toBe(true);
     expect(continueMediaCatalog(db, job, localCheck())).toBe(false);
     expect(db.select().from(mediaAiRequests).all()).toHaveLength(1);
     finishMediaCatalog(db, job, "refused");
     expect(finishMediaCatalog(db, job, "success", result)).toBe(false);
     const retry = await requestMediaCatalog(db, "u1", "b1", { retry: true });
-    expect(retry?.localCheck?.frames[0].categories).toEqual([
-      "revealing_clothing",
-    ]);
+    expect(retry?.localCheck?.frames[0].categories).toEqual([]);
+    expect(retry?.localCheck?.frames[0]).toHaveProperty("scores");
   });
 
   test("changing input or disabling auto analysis during the local stage prevents dispatch", async () => {

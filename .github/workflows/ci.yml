@@ -64,6 +64,9 @@ jobs:
       - name: Setup
         uses: ./tooling/github/setup
 
+      - name: Local classifier contract tests
+        run: python3 -m unittest discover -s deploy/sensitive-classifier -p 'test_*.py'
+
       - name: Shared Package Tests
         working-directory: packages/shared
         run: pnpm test

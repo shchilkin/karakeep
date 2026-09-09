@@ -33,12 +33,17 @@ test("real SQLite queue, asset storage, FFmpeg and local HTTP gate precede the s
     response.setHeader("Content-Type", "application/json");
     response.end(
       JSON.stringify({
-        model: "nvidia/Nemotron-3.5-Content-Safety",
-        revision: "35645ed3543b7e7ffaed2e788699e57a5051497c",
-        policy: "nemotron-visibility-v3",
+        model: "google/shieldgemma-2-4b-it",
+        revision: "eaf60452b5fc41a911338a022e628b0c15283897",
+        policy: "shieldgemma-native-v1",
         precision: "bf16",
         status: "complete",
         categories,
+        scores: {
+          dangerous: categories.includes("dangerous") ? 0.9 : 0.01,
+          sexual: categories.includes("sexual") ? 0.9 : 0.01,
+          violence: categories.includes("violence") ? 0.9 : 0.01,
+        },
       }),
     );
   });
@@ -170,7 +175,7 @@ test("real SQLite queue, asset storage, FFmpeg and local HTTP gate precede the s
       localMode: "enforce",
       apiKey: "synthetic-cloud-key",
     });
-    categories = ["nudity"];
+    categories = ["dangerous", "sexual"];
     expect((await run())?.status).toBe("local_only");
     expect(cloudCalls).toBe(0);
     categories = [];

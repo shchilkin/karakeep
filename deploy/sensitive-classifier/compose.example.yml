@@ -1,6 +1,6 @@
 services:
   sensitive-classifier:
-    image: karakeep-sensitive-classifier:review
+    image: karakeep-sensitive-classifier:shieldgemma-review
     restart: unless-stopped
     user: "1000:1000"
     read_only: true
@@ -19,7 +19,7 @@ services:
     tmpfs:
       - /tmp:rw,nosuid,size=512m
     volumes:
-      - /srv/appdata/karakeep/sensitive-pilot/models:/models:ro
+      - /srv/appdata/karakeep/models/shieldgemma:/models:ro
       - /srv/appdata/karakeep/secrets/local-token:/run/secrets/local_token:ro
     networks: [media-local]
 

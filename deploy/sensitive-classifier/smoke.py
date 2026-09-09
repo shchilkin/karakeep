@@ -11,6 +11,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 from PIL import Image, ImageDraw
+from shieldgemma import MODEL, REVISION, POLICY_VERSION, POLICIES
 
 token = secrets.token_hex(24)
 token_path = Path('/tmp/local-token')
@@ -43,6 +44,8 @@ try:
         with urllib.request.urlopen(request, timeout=120) as response:
             result = json.load(response)
         assert result['status'] == 'complete' and result['categories'] == [], result
+        assert (result['model'], result['revision'], result['policy']) == (MODEL, REVISION, POLICY_VERSION)
+        assert set(result['scores']) == set(POLICIES) and all(0 <= v < 0.5 for v in result['scores'].values())
         results.append({'fixture': kind, 'seconds': round(time.monotonic() - started, 3), **result})
     try:
         urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:8091/classify', data=b'{}'), timeout=5)
