@@ -39,6 +39,7 @@ const app = new Hono()
       "query",
       z
         .object({
+          sensitive: zStringBool.optional(),
           favourited: zStringBool.optional(),
           archived: zStringBool.optional(),
         })

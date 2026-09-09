@@ -18,6 +18,7 @@ export const UserLocalSettingsCtx = createContext<
   showTags: true,
   showTitle: true,
   imageFit: "cover",
+  sensitivityMode: "balanced",
 });
 
 function useUserLocalSettings() {

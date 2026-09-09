@@ -11,6 +11,7 @@ import { getServerAuthSession } from "@/server/auth";
 import { TRPCError } from "@trpc/server";
 import { TFunction } from "i18next";
 import {
+  EyeOff,
   Archive,
   ClipboardList,
   Highlighter,
@@ -80,6 +81,11 @@ export default async function Dashboard({
         name: t("common.highlights"),
         icon: <Highlighter size={18} />,
         path: "/dashboard/highlights",
+      },
+      {
+        name: t("sensitive.section_title"),
+        icon: <EyeOff size={18} />,
+        path: "/dashboard/sensitive",
       },
       {
         name: t("common.archive"),

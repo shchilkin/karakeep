@@ -13,6 +13,7 @@ import {
   lte,
   or,
   SQL,
+  sql,
 } from "drizzle-orm";
 import invariant from "tiny-invariant";
 import TurndownService from "turndown";
@@ -502,6 +503,11 @@ export class Bookmark extends BareBookmark {
 
     // Build common filter conditions (archived, favourited, ids)
     const buildCommonFilters = (): (SQL | undefined)[] => [
+      input.sensitive !== undefined
+        ? input.sensitive
+          ? sql`coalesce(json_array_length(${bookmarks.sensitiveCategories}), 0) > 0`
+          : sql`coalesce(json_array_length(${bookmarks.sensitiveCategories}), 0) = 0`
+        : undefined,
       input.archived !== undefined
         ? eq(bookmarks.archived, input.archived)
         : undefined,

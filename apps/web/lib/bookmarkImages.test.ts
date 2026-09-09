@@ -5,7 +5,11 @@ import { BookmarkTypes } from "@karakeep/shared/types/bookmarks";
 
 import { getBookmarkImages } from "./bookmarkImages";
 import { getBookmarkMedia, getMediaCoverId } from "./bookmarkImages";
-import { bookmarkCardImageRatio } from "./bookmarkCardHeight";
+import { getAssetThumbnailUrl } from "@karakeep/shared/utils/assetUtils";
+import {
+  bookmarkCardImageRatio,
+  bookmarkCardCoverDimensions,
+} from "./bookmarkCardHeight";
 
 function bookmark(assets: ZBookmark["assets"]): ZBookmark {
   return {
@@ -176,4 +180,28 @@ it("pairs video posters without counting them as carousel slides", async () => {
   expect(media.map((item) => item.id)).toEqual(["video", "photo"]);
   expect(getMediaCoverId(media[0])).toBe("poster");
   expect(getBookmarkImages(post).map((item) => item.id)).toEqual(["photo"]);
+});
+
+it("keeps conceal/reveal geometry tied to the current cover and prefers stored dimensions", () => {
+  const b = bookmark([
+    { id: "photo", assetType: "userUploaded", fileName: "001.jpg" },
+  ]);
+  const cached = {
+    src: getAssetThumbnailUrl("photo"),
+    width: 600,
+    height: 900,
+  };
+  expect(bookmarkCardCoverDimensions(b, cached)).toEqual({
+    width: 600,
+    height: 900,
+  });
+  expect(
+    bookmarkCardCoverDimensions(b, { ...cached, src: "old-cover" }),
+  ).toBeUndefined();
+  b.assets[0].width = 1200;
+  b.assets[0].height = 800;
+  expect(bookmarkCardCoverDimensions(b, cached)).toEqual({
+    width: 1200,
+    height: 800,
+  });
 });

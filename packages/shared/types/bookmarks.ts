@@ -1,3 +1,4 @@
+import { zSensitiveCategories } from "../sensitiveContent";
 import { z } from "zod";
 
 import { zMediaCatalogState } from "../mediaCatalog";
@@ -195,6 +196,7 @@ export const zBookmarkTitleSourceSchema = z.enum([
 ]);
 
 export const zBareBookmarkSchema = z.object({
+  sensitiveCategories: zSensitiveCategories.nullish(),
   id: z.string(),
   // This is optional for backwards compatibility
   firstCreatedAt: z.date().optional(),
@@ -302,6 +304,7 @@ export const DEFAULT_NUM_BOOKMARKS_PER_PAGE = 20;
 export const MAX_NUM_BOOKMARKS_PER_PAGE = 100;
 
 export const zGetBookmarksRequestSchema = z.object({
+  sensitive: z.boolean().optional(),
   archived: z.boolean().optional(),
   favourited: z.boolean().optional(),
   tagId: z.string().optional(),
@@ -326,6 +329,7 @@ export type ZGetBookmarksResponse = z.infer<typeof zGetBookmarksResponseSchema>;
 
 // PATCH /v1/bookmarks/[bookmarkId]
 export const zUpdateBookmarksRequestSchema = z.object({
+  sensitiveCategories: zSensitiveCategories.optional(),
   bookmarkId: z.string(),
   archived: z.boolean().optional(),
   favourited: z.boolean().optional(),

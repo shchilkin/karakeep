@@ -1,5 +1,6 @@
 "use client";
 
+import { SensitiveProvider } from "@/components/dashboard/sensitive/SensitiveProvider";
 import type { UserLocalSettings } from "@/lib/userLocalSettings/types";
 import React, { useState } from "react";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -93,7 +94,7 @@ export default function Providers({
                   disableTransitionOnChange
                 >
                   <TooltipProvider delayDuration={0}>
-                    {children}
+                    <SensitiveProvider>{children}</SensitiveProvider>
                   </TooltipProvider>
                 </ThemeProvider>
               </CustomI18nextProvider>

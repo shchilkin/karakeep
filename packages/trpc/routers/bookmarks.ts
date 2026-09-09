@@ -1,3 +1,4 @@
+import type { SensitiveCategory } from "@karakeep/shared/sensitiveContent";
 import { requestMediaCatalog } from "../models/mediaCatalog";
 import { experimental_trpcMiddleware, TRPCError } from "@trpc/server";
 import { and, eq, gt, inArray, like, lt, or, sql } from "drizzle-orm";
@@ -712,6 +713,7 @@ export const bookmarksAppRouter = router({
 
           // Update common bookmark fields
           const commonUpdateData: Partial<{
+            sensitiveCategories: SensitiveCategory[];
             title: string | null;
             titleSource: "manual" | "captured" | "unknown";
             archived: boolean;
@@ -743,6 +745,9 @@ export const bookmarksAppRouter = router({
           }
           if (input.titleSource !== undefined) {
             commonUpdateData.titleSource = input.titleSource;
+          }
+          if (input.sensitiveCategories !== undefined) {
+            commonUpdateData.sensitiveCategories = input.sensitiveCategories;
           }
           if (input.archived !== undefined) {
             commonUpdateData.archived = input.archived;
