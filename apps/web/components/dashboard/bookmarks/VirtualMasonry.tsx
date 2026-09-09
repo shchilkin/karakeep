@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import type { CardImageDimensionsSlot } from "@/lib/cardImageDimensions";
 import { CardImageDimensionsContext } from "@/lib/cardImageDimensions";
 import { positionMasonry, visibleMasonry } from "@/lib/virtualMasonry";
+import type { MasonryLayout } from "@/lib/virtualMasonry";
 
 function scrollParent(element: HTMLElement): HTMLElement | Window {
   for (
@@ -32,7 +33,7 @@ export default function VirtualMasonry({
   renderItem: (id: string, index: number) => ReactNode;
   focusedIndex?: number;
   persistentIndex?: number;
-  estimateHeight?: number;
+  estimateHeight?: number | ((id: string, width: number) => number);
   layoutKey?: string;
 }) {
   const host = useRef<HTMLDivElement>(null);
@@ -133,18 +134,36 @@ export default function VirtualMasonry({
   const itemWidth = view.width
     ? Math.max(1, (view.width - (columns - 1) * 16) / columns)
     : 320;
+  const placement = useRef<{ layout: MasonryLayout; key: string }>(null);
   const layout = useMemo(
     () =>
-      positionMasonry(ids, columns, (id) => {
-        const size = measured.current.get(id);
-        return size &&
-          Math.abs(size.width - itemWidth) < 1 &&
-          size.layout === layoutKey
-          ? size.height
-          : estimateHeight;
-      }),
+      positionMasonry(
+        ids,
+        columns,
+        (id) => {
+          const size = measured.current.get(id);
+          return size &&
+            Math.abs(size.width - itemWidth) < 1 &&
+            size.layout === layoutKey
+            ? size.height
+            : typeof estimateHeight === "function"
+              ? estimateHeight(id, itemWidth)
+              : estimateHeight;
+        },
+        {
+          balanced: layoutKey === "masonry",
+          previous:
+            placement.current?.key === layoutKey
+              ? placement.current.layout
+              : undefined,
+        },
+      ),
     [ids, columns, itemWidth, estimateHeight, layoutKey, revision],
   );
+  useLayoutEffect(() => {
+    // Do not lock in the temporary width used before the container is measured.
+    if (view.width) placement.current = { layout, key: layoutKey };
+  }, [layout, layoutKey, view.width]);
   const previous = useRef<{ layout: typeof layout; top: number }>(null);
   useLayoutEffect(() => {
     const before = previous.current;
@@ -193,6 +212,7 @@ export default function VirtualMasonry({
       ref={host}
       role="list"
       data-virtual-grid
+      data-masonry-balanced={layoutKey === "masonry" || undefined}
       style={{
         position: "relative",
         height: layout.height,
@@ -214,6 +234,9 @@ export default function VirtualMasonry({
               id={item.id}
               index={index}
               size={ids.length}
+              column={item.column}
+              previousInColumn={item.previousInColumn}
+              nextInColumn={item.nextInColumn}
               register={register}
               onInteract={setInteracting}
               style={{
@@ -238,6 +261,9 @@ function MeasuredCard({
   id,
   index,
   size,
+  column,
+  previousInColumn,
+  nextInColumn,
   register,
   onInteract,
   children,
@@ -246,6 +272,9 @@ function MeasuredCard({
   id: string;
   index: number;
   size: number;
+  column: number;
+  previousInColumn?: number;
+  nextInColumn?: number;
   register: (id: string, node: HTMLDivElement | null) => void;
   onInteract: (id: string) => void;
   children: ReactNode;
@@ -262,6 +291,9 @@ function MeasuredCard({
       aria-posinset={index + 1}
       aria-setsize={size}
       data-virtual-id={id}
+      data-masonry-column={column}
+      data-masonry-previous={previousInColumn}
+      data-masonry-next={nextInColumn}
       style={style}
       onPointerDownCapture={() => onInteract(id)}
       onFocusCapture={() => onInteract(id)}

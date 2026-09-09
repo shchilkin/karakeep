@@ -1,15 +1,17 @@
-import { memo, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import KeyboardShortcutsDialog from "@/components/dashboard/KeyboardShortcutsDialog";
 import NoBookmarksBanner from "@/components/dashboard/bookmarks/NoBookmarksBanner";
 import { ActionButton } from "@/components/ui/action-button";
 import ActionConfirmingDialog from "@/components/ui/action-confirming-dialog";
 import useBulkActionsStore from "@/lib/bulkActions";
+import { bookmarkCardImageRatio } from "@/lib/bookmarkCardHeight";
 import { useBookmarkKeyboardNavigation } from "@/lib/hooks/useBookmarkKeyboardNavigation";
 import { useTranslation } from "@/lib/i18n/client";
 import { useInBookmarkGridStore } from "@/lib/store/useInBookmarkGridStore";
 import { useKeyboardNavigationStore } from "@/lib/store/useKeyboardNavigationStore";
 import {
   useBookmarkLayout,
+  useBookmarkDisplaySettings,
   useGridColumns,
 } from "@/lib/userLocalSettings/bookmarksLayout";
 import { cn } from "@/lib/utils";
@@ -139,6 +141,7 @@ export default function BookmarksGrid({
 }) {
   const { t } = useTranslation();
   const layout = useBookmarkLayout();
+  const { showTitle, showNotes } = useBookmarkDisplaySettings();
   const gridColumns = useGridColumns();
   const activeGridColumns = useActiveGridColumns(gridColumns);
   const setVisibleBookmarks = useBulkActionsStore(
@@ -204,6 +207,36 @@ export default function BookmarksGrid({
     ],
     [bookmarks, showEditorCard],
   );
+  const estimates = useMemo(
+    () =>
+      new Map(
+        bookmarks.map((bookmark) => [
+          bookmark.id,
+          {
+            ratio: bookmarkCardImageRatio(bookmark),
+            hasNote: !!bookmark.note?.trim(),
+          },
+        ]),
+      ),
+    [bookmarks],
+  );
+  const estimateHeight = useCallback(
+    (id: string, width: number) => {
+      if (layout === "compact") return 72;
+      if (layout === "list") return 160;
+      const estimate = estimates.get(id);
+      if (layout !== "masonry" || estimate?.ratio === undefined) return 400;
+      // Media geometry plus the two-line caption, optional note and card spacing.
+      // ResizeObserver replaces these text estimates after the card first mounts.
+      return (
+        width * estimate.ratio +
+        16 +
+        (showTitle ? 54 : 0) +
+        (showNotes && estimate.hasNote ? 24 : 0)
+      );
+    },
+    [layout, estimates, showTitle, showNotes],
+  );
 
   if (bookmarks.length == 0 && !showEditorCard) {
     return (
@@ -223,9 +256,7 @@ export default function BookmarksGrid({
         ids={ids}
         columns={navColumns}
         layoutKey={layout}
-        estimateHeight={
-          layout === "compact" ? 72 : layout === "list" ? 160 : 400
-        }
+        estimateHeight={estimateHeight}
         focusedIndex={
           isNavigating && focusedIndex >= 0
             ? focusedIndex + Number(showEditorCard)

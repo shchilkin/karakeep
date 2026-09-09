@@ -91,6 +91,32 @@ function EditableCard({ id }: { id: string }) {
     </div>
   );
 }
+
+it("preserves mounted card columns when new bookmarks arrive and old ones are removed", () => {
+  const items = Array.from({ length: 12 }, (_, i) => String(i));
+  const tree = (ids: string[]) => (
+    <VirtualMasonry
+      ids={ids}
+      columns={3}
+      estimateHeight={(id, width) => width * (Number(id) % 3 === 0 ? 1.5 : 0.5)}
+      renderItem={(id) => <div>{id}</div>}
+    />
+  );
+  const { container, rerender } = render(tree(items));
+  const positions = () =>
+    new Map(
+      [...container.querySelectorAll<HTMLElement>("[data-virtual-id]")].map(
+        (node) => [node.dataset.virtualId!, node.dataset.masonryColumn!],
+      ),
+    );
+  const before = positions();
+  rerender(tree(["new", ...items.filter((id) => id !== "2"), "older"]));
+  const after = positions();
+  for (const [id, column] of before)
+    if (after.has(id)) expect(after.get(id)).toBe(column);
+  expect(after.has("new")).toBe(true);
+  expect(after.has("2")).toBe(false);
+});
 it("retains an active portal editor when its card scrolls away", async () => {
   const { container } = render(
     <main style={{ overflowY: "auto" }}>

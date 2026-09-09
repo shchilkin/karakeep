@@ -5,6 +5,7 @@ import { BookmarkTypes } from "@karakeep/shared/types/bookmarks";
 
 import { getBookmarkImages } from "./bookmarkImages";
 import { getBookmarkMedia, getMediaCoverId } from "./bookmarkImages";
+import { bookmarkCardImageRatio } from "./bookmarkCardHeight";
 
 function bookmark(assets: ZBookmark["assets"]): ZBookmark {
   return {
@@ -27,6 +28,47 @@ function bookmark(assets: ZBookmark["assets"]): ZBookmark {
 }
 
 describe("saved bookmark images", () => {
+  it("estimates the displayed saved cover instead of a generic banner", () => {
+    const post = bookmark([
+      {
+        id: "photo",
+        assetType: "userUploaded",
+        fileName: "post_1.jpg",
+        width: 600,
+        height: 900,
+      },
+      {
+        id: "banner",
+        assetType: "bannerImage",
+        fileName: "banner.jpg",
+        width: 400,
+        height: 400,
+      },
+    ]);
+    expect(bookmarkCardImageRatio(post)).toBe(1.5);
+    post.content = {
+      type: BookmarkTypes.ASSET,
+      assetType: "image",
+      assetId: "banner",
+    };
+    expect(bookmarkCardImageRatio(post)).toBe(1);
+  });
+  it("uses the video poster's dimensions and the card fallback for legacy metadata", () => {
+    const post = bookmark([
+      { id: "video", assetType: "video", fileName: "direct-video-test.mp4" },
+      {
+        id: "poster",
+        assetType: "bannerImage",
+        fileName: "direct-video-test.poster.jpg",
+        width: 1920,
+        height: 1080,
+      },
+    ]);
+    expect(bookmarkCardImageRatio(post)).toBe(1080 / 1920);
+    post.assets[1].width = null;
+    expect(bookmarkCardImageRatio(post)).toBe(3 / 4);
+    expect(bookmarkCardImageRatio(bookmark([]))).toBeUndefined();
+  });
   it.each(["mp4", "webm", "mkv"])(
     "uses a saved direct %s video and its first frame in the gallery",
     (extension) => {
