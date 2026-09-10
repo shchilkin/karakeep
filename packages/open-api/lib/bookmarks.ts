@@ -55,6 +55,12 @@ registry.registerPath({
   request: {
     query: z
       .object({
+        sensitive: z
+          .boolean()
+          .optional()
+          .describe(
+            "Filter by presence of manual sensitive categories. Omit to include all bookmarks.",
+          ),
         archived: z.boolean().optional().describe("Filter by archived status."),
         favourited: z
           .boolean()

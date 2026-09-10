@@ -56,6 +56,7 @@ interface Props {
   wrapTags: boolean;
   bookmarkIndex?: number;
   imageFirst?: boolean;
+  concealed?: boolean;
 }
 
 function BottomRow({
@@ -309,6 +310,7 @@ function HoverActionBar({
 }
 
 function ListView({
+  concealed = false,
   bookmark,
   image,
   title,
@@ -323,7 +325,7 @@ function ListView({
     cover: "object-cover",
     contain: "object-contain",
   });
-  const note = showNotes ? bookmark.note?.trim() : undefined;
+  const note = showNotes && !concealed ? bookmark.note?.trim() : undefined;
 
   return (
     <div
@@ -368,6 +370,7 @@ function ListView({
 }
 
 function ImageView({
+  concealed = false,
   bookmark,
   image,
   title,
@@ -376,7 +379,7 @@ function ImageView({
   bookmarkIndex,
 }: Props & { layout: BookmarksLayoutTypes }) {
   const { showTitle, showNotes, imageFit } = useBookmarkDisplaySettings();
-  const note = showNotes ? bookmark.note?.trim() : undefined;
+  const note = showNotes && !concealed ? bookmark.note?.trim() : undefined;
 
   return (
     <div
@@ -417,6 +420,7 @@ function ImageView({
 }
 
 function GridView({
+  concealed = false,
   bookmark,
   image,
   title,
@@ -434,7 +438,7 @@ function GridView({
     cover: "object-cover",
     contain: "object-contain",
   });
-  const note = showNotes ? bookmark.note?.trim() : undefined;
+  const note = showNotes && !concealed ? bookmark.note?.trim() : undefined;
   const img = image(
     "grid",
     cn("h-56 min-h-56 w-full rounded-t-lg", imgFitClass),
@@ -480,6 +484,7 @@ function GridView({
 }
 
 function CompactView({
+  concealed = false,
   bookmark,
   title,
   footer,
@@ -503,7 +508,8 @@ function CompactView({
       <OwnerIndicator bookmark={bookmark} />
       <div className="flex h-full justify-between gap-2 overflow-hidden p-2">
         <div className="flex items-center gap-2">
-          {bookmark.content.type === BookmarkTypes.LINK &&
+          {!concealed &&
+            bookmark.content.type === BookmarkTypes.LINK &&
             bookmark.content.favicon && (
               <Image
                 src={bookmark.content.favicon}

@@ -1,3 +1,5 @@
+import { useSensitiveContent } from "../sensitive/SensitiveProvider";
+import { ConcealedCard } from "../sensitive/ConcealedBookmark";
 import { useQuery } from "@tanstack/react-query";
 
 import { useTRPC } from "@karakeep/shared-react/trpc";
@@ -18,6 +20,7 @@ export default function BookmarkCard({
   className?: string;
   bookmarkIndex?: number;
 }) {
+  const { conceal } = useSensitiveContent();
   const api = useTRPC();
   const { data: bookmark } = useQuery(
     api.bookmarks.getBookmark.queryOptions(
@@ -36,6 +39,15 @@ export default function BookmarkCard({
       },
     ),
   );
+
+  if (conceal(bookmark))
+    return (
+      <ConcealedCard
+        bookmark={bookmark}
+        className={className}
+        bookmarkIndex={bookmarkIndex}
+      />
+    );
 
   switch (bookmark.content.type) {
     case BookmarkTypes.LINK:

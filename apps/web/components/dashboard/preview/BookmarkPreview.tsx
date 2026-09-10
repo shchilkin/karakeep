@@ -1,5 +1,7 @@
 "use client";
 
+import { useSensitiveContent } from "../sensitive/SensitiveProvider";
+import { ConcealedPreview } from "../sensitive/ConcealedBookmark";
 import { useState } from "react";
 import Link from "next/link";
 import { BookmarkTagsEditor } from "@/components/dashboard/bookmarks/BookmarkTagsEditor";
@@ -135,6 +137,7 @@ export default function BookmarkPreview({
   initialData?: ZBookmark;
   onClose?: () => void;
 }) {
+  const { conceal } = useSensitiveContent();
   const api = useTRPC();
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<string>("content");
@@ -165,6 +168,14 @@ export default function BookmarkPreview({
 
   // Check if the current user owns this bookmark
   const isOwner = session?.user?.id === bookmark.userId;
+  if (conceal(bookmark))
+    return (
+      <ConcealedPreview
+        bookmark={bookmark}
+        isOwner={isOwner}
+        onClose={onClose}
+      />
+    );
 
   if (
     bookmark.content.type === BookmarkTypes.LINK &&

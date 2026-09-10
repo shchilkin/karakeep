@@ -1,5 +1,7 @@
 "use server";
+import type { SensitivityMode } from "@karakeep/shared/sensitiveContent";
 
+import { zSensitivityMode } from "@karakeep/shared/sensitiveContent";
 import { cookies } from "next/headers";
 
 import type { BookmarksLayoutTypes, UserLocalSettings } from "./types";
@@ -57,4 +59,9 @@ export async function updateShowTitle(showTitle: boolean) {
 
 export async function updateImageFit(imageFit: "cover" | "contain") {
   await readModifyWrite(() => ({ imageFit }));
+}
+
+export async function updateSensitivityMode(mode: SensitivityMode) {
+  const sensitivityMode = zSensitivityMode.parse(mode);
+  await readModifyWrite(() => ({ sensitivityMode }));
 }

@@ -1,3 +1,4 @@
+import type { SensitiveCategory } from "@karakeep/shared/sensitiveContent";
 import type { AdapterAccount } from "@auth/core/adapters";
 import { createId } from "@paralleldrive/cuid2";
 import { relations, sql, SQL } from "drizzle-orm";
@@ -228,6 +229,9 @@ export const bookmarks = sqliteTable(
     })
       .notNull()
       .default("unknown"),
+    sensitiveCategories: text("sensitiveCategories", { mode: "json" }).$type<
+      SensitiveCategory[]
+    >(),
     mediaAi: text("mediaAi", { mode: "json" }).$type<MediaCatalogState>(),
     archived: integer("archived", { mode: "boolean" }).notNull().default(false),
     favourited: integer("favourited", { mode: "boolean" })

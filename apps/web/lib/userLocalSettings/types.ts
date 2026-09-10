@@ -1,3 +1,4 @@
+import { zSensitivityMode } from "@karakeep/shared/sensitiveContent";
 import { z } from "zod";
 
 export const USER_LOCAL_SETTINGS_COOKIE_NAME = "hoarder-user-local-settings";
@@ -6,6 +7,7 @@ const zBookmarkGridLayout = z.enum(["grid", "list", "masonry", "compact"]);
 export type BookmarksLayoutTypes = z.infer<typeof zBookmarkGridLayout>;
 
 export const zUserLocalSettings = z.object({
+  sensitivityMode: zSensitivityMode.catch("balanced").default("balanced"),
   bookmarkGridLayout: zBookmarkGridLayout.optional().default("masonry"),
   lang: z.string().optional().default("en"),
   gridColumns: z.number().min(1).max(6).optional().default(3),

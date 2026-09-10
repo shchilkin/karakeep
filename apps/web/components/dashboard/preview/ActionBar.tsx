@@ -1,3 +1,4 @@
+import SensitiveEditor from "../sensitive/SensitiveEditor";
 import { useState } from "react";
 import { ActionButton } from "@/components/ui/action-button";
 import { Button } from "@/components/ui/button";
@@ -8,7 +9,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useTranslation } from "@/lib/i18n/client";
-import { Pencil, Trash2 } from "lucide-react";
+import { EyeOff, Pencil, Trash2 } from "lucide-react";
 
 import type { ZBookmark } from "@karakeep/shared/types/bookmarks";
 import { useUpdateBookmark } from "@karakeep/shared-react/hooks/bookmarks";
@@ -19,6 +20,7 @@ import { ArchivedActionIcon, FavouritedActionIcon } from "../bookmarks/icons";
 
 export default function ActionBar({ bookmark }: { bookmark: ZBookmark }) {
   const { t } = useTranslation();
+  const [sensitiveOpen, setSensitiveOpen] = useState(false);
   const [deleteBookmarkDialogOpen, setDeleteBookmarkDialogOpen] =
     useState(false);
 
@@ -51,6 +53,27 @@ export default function ActionBar({ bookmark }: { bookmark: ZBookmark }) {
 
   return (
     <div className="flex items-center justify-center gap-3 text-muted-foreground">
+      <SensitiveEditor
+        bookmark={bookmark}
+        open={sensitiveOpen}
+        setOpen={setSensitiveOpen}
+      />
+      <Button
+        variant="ghost"
+        size="none"
+        className="size-8 rounded-md"
+        aria-label={t("sensitive.edit")}
+        title={t("sensitive.edit")}
+        onClick={() => setSensitiveOpen(true)}
+      >
+        <EyeOff
+          size={18}
+          strokeWidth={1.5}
+          className={
+            bookmark.sensitiveCategories?.length ? "text-foreground" : undefined
+          }
+        />
+      </Button>
       <Tooltip delayDuration={0}>
         <EditBookmarkDialog
           bookmark={bookmark}

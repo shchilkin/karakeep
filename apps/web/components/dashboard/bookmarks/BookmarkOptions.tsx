@@ -1,5 +1,7 @@
 "use client";
 
+import SensitiveEditor from "../sensitive/SensitiveEditor";
+import { EyeOff } from "lucide-react";
 import { ChangeEvent, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -127,6 +129,7 @@ export default function BookmarkOptions({ bookmark }: { bookmark: ZBookmark }) {
   const [deleteBookmarkDialogOpen, setDeleteBookmarkDialogOpen] =
     useState(false);
   const [isTextEditorOpen, setTextEditorOpen] = useState(false);
+  const [sensitiveOpen, setSensitiveOpen] = useState(false);
   const [isEditBookmarkDialogOpen, setEditBookmarkDialogOpen] = useState(false);
 
   const bannerFileInputRef = useRef<HTMLInputElement>(null);
@@ -245,6 +248,14 @@ export default function BookmarkOptions({ bookmark }: { bookmark: ZBookmark }) {
 
   // Define action items array
   const actionItems: ActionItemType[] = [
+    {
+      id: "sensitive",
+      title: t("sensitive.edit"),
+      icon: <EyeOff className="mr-2 size-4" />,
+      visible: isOwner,
+      disabled: false,
+      onClick: () => setSensitiveOpen(true),
+    },
     {
       id: "select",
       title: t("actions.select"),
@@ -478,6 +489,11 @@ export default function BookmarkOptions({ bookmark }: { bookmark: ZBookmark }) {
   return (
     <>
       {manageListsModal}
+      <SensitiveEditor
+        bookmark={bookmark}
+        open={sensitiveOpen}
+        setOpen={setSensitiveOpen}
+      />
       <EditBookmarkDialog
         bookmark={bookmark}
         open={isEditBookmarkDialogOpen}

@@ -680,6 +680,13 @@
       "when": 1788897455077,
       "tag": "0096_asset_dimensions",
       "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "6",
+      "when": 1788971603168,
+      "tag": "0097_sensitive_categories",
+      "breakpoints": true
     }
   ]
 }

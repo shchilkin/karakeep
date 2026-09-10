@@ -1237,5 +1237,46 @@
     "deselect_all": "Deselect all",
     "show_help": "Show keyboard shortcuts",
     "focus_search_alt": "Focus search"
+  },
+  "sensitive": {
+    "mode_label": "Sensitive content",
+    "modes": {
+      "work": "Work",
+      "balanced": "Balanced",
+      "all": "Show all"
+    },
+    "mode_help": {
+      "work": "Hide every marked category, including swimwear and suggestive imagery.",
+      "balanced": "Show swimwear and suggestive imagery. Hide nudity, explicit content and other sensitive categories.",
+      "all": "Show every marked category in this browser."
+    },
+    "warning_title": "Show sensitive content?",
+    "warning_description": "This section may contain explicit imagery, violence or other disturbing material. This confirmation lasts for this browser-tab session.",
+    "continue": "Continue",
+    "section_title": "Sensitive",
+    "open_section": "Open Sensitive",
+    "section_notice": "Sensitive section: marked previews are visible. Your feed mode still applies outside this section.",
+    "manual_only": "Only manually marked content is filtered. Automatic detection is not enabled yet.",
+    "edit": "Sensitive categories",
+    "edit_description": "Choose the categories yourself. This does not send the media for analysis. Unmarked content has not been verified as safe.",
+    "mark": "Sensitive content",
+    "categories_label": "Categories",
+    "save_error": "Could not save. Please try again.",
+    "saving": "Saving…",
+    "hidden": "Preview hidden",
+    "reveal": "Show this item",
+    "categories": {
+      "revealing_clothing": "Swimwear / revealing clothing",
+      "suggestive": "Suggestive",
+      "nudity": "Nudity",
+      "explicit_sexual": "Explicit sexual content",
+      "violence": "Violence",
+      "gore": "Blood / injuries",
+      "self_harm": "Self-harm",
+      "drugs": "Drugs",
+      "hate_extremism": "Hate / extremism",
+      "disturbing": "Disturbing",
+      "other": "Other sensitive content"
+    }
   }
 }

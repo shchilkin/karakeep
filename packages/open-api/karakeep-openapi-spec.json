@@ -121,6 +121,27 @@
       "Bookmark": {
         "type": "object",
         "properties": {
+          "sensitiveCategories": {
+            "type": "array",
+            "nullable": true,
+            "items": {
+              "type": "string",
+              "enum": [
+                "revealing_clothing",
+                "suggestive",
+                "nudity",
+                "explicit_sexual",
+                "violence",
+                "gore",
+                "self_harm",
+                "drugs",
+                "hate_extremism",
+                "disturbing",
+                "other"
+              ]
+            },
+            "maxItems": 11
+          },
           "id": {
             "type": "string"
           },
@@ -148,6 +169,10 @@
               "captured",
               "unknown"
             ]
+          },
+          "originalTitle": {
+            "type": "string",
+            "nullable": true
           },
           "mediaAi": {
             "type": "object",
@@ -534,6 +559,18 @@
             "items": {
               "type": "object",
               "properties": {
+                "width": {
+                  "type": "integer",
+                  "nullable": true,
+                  "minimum": 0,
+                  "exclusiveMinimum": true
+                },
+                "height": {
+                  "type": "integer",
+                  "nullable": true,
+                  "minimum": 0,
+                  "exclusiveMinimum": true
+                },
                 "id": {
                   "type": "string"
                 },
@@ -1022,6 +1059,16 @@
           }
         ],
         "parameters": [
+          {
+            "schema": {
+              "type": "boolean",
+              "description": "Filter by presence of manual sensitive categories. Omit to include all bookmarks."
+            },
+            "required": false,
+            "description": "Filter by presence of manual sensitive categories. Omit to include all bookmarks.",
+            "name": "sensitive",
+            "in": "query"
+          },
           {
             "schema": {
               "type": "boolean",
@@ -1619,6 +1666,26 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "sensitiveCategories": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "revealing_clothing",
+                        "suggestive",
+                        "nudity",
+                        "explicit_sexual",
+                        "violence",
+                        "gore",
+                        "self_harm",
+                        "drugs",
+                        "hate_extremism",
+                        "disturbing",
+                        "other"
+                      ]
+                    },
+                    "maxItems": 11
+                  },
                   "archived": {
                     "type": "boolean"
                   },
@@ -1696,6 +1763,27 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "sensitiveCategories": {
+                      "type": "array",
+                      "nullable": true,
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "revealing_clothing",
+                          "suggestive",
+                          "nudity",
+                          "explicit_sexual",
+                          "violence",
+                          "gore",
+                          "self_harm",
+                          "drugs",
+                          "hate_extremism",
+                          "disturbing",
+                          "other"
+                        ]
+                      },
+                      "maxItems": 11
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -1723,6 +1811,10 @@
                         "captured",
                         "unknown"
                       ]
+                    },
+                    "originalTitle": {
+                      "type": "string",
+                      "nullable": true
                     },
                     "mediaAi": {
                       "type": "object",
@@ -2046,6 +2138,27 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "sensitiveCategories": {
+                      "type": "array",
+                      "nullable": true,
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "revealing_clothing",
+                          "suggestive",
+                          "nudity",
+                          "explicit_sexual",
+                          "violence",
+                          "gore",
+                          "self_harm",
+                          "drugs",
+                          "hate_extremism",
+                          "disturbing",
+                          "other"
+                        ]
+                      },
+                      "maxItems": 11
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -2073,6 +2186,10 @@
                         "captured",
                         "unknown"
                       ]
+                    },
+                    "originalTitle": {
+                      "type": "string",
+                      "nullable": true
                     },
                     "mediaAi": {
                       "type": "object",
@@ -2304,6 +2421,27 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "sensitiveCategories": {
+                      "type": "array",
+                      "nullable": true,
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "revealing_clothing",
+                          "suggestive",
+                          "nudity",
+                          "explicit_sexual",
+                          "violence",
+                          "gore",
+                          "self_harm",
+                          "drugs",
+                          "hate_extremism",
+                          "disturbing",
+                          "other"
+                        ]
+                      },
+                      "maxItems": 11
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -2331,6 +2469,10 @@
                         "captured",
                         "unknown"
                       ]
+                    },
+                    "originalTitle": {
+                      "type": "string",
+                      "nullable": true
                     },
                     "mediaAi": {
                       "type": "object",
@@ -2920,6 +3062,18 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "width": {
+                      "type": "integer",
+                      "nullable": true,
+                      "minimum": 0,
+                      "exclusiveMinimum": true
+                    },
+                    "height": {
+                      "type": "integer",
+                      "nullable": true,
+                      "minimum": 0,
+                      "exclusiveMinimum": true
+                    },
                     "id": {
                       "type": "string"
                     },
