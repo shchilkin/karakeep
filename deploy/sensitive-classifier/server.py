@@ -124,6 +124,8 @@ class Handler(BaseHTTPRequestHandler):
             self.close_connection = True
             self.send_json(401, {'error': 'unauthorized'})
             return
+        status = 200
+        unload = False
         try:
             if self.path != '/classify' or self.headers.get('Transfer-Encoding'):
                 raise ValueError('invalid_request')
@@ -137,17 +139,19 @@ class Handler(BaseHTTPRequestHandler):
             # the app retains a retryable local failure, never dispatches cloud.
             signal.alarm(110)
             result = self.server.classifier.classify(payload['image'])
-            signal.alarm(0)
-            self.send_json(200, result)
         except (ValueError, TypeError):
-            signal.alarm(0)
-            self.send_json(400, {'error': 'invalid_request'})
+            status, result = 400, {'error': 'invalid_request'}
         except Exception:
-            signal.alarm(0)
-            self.send_json(503, {'error': 'local_unavailable'})
-            self.server.classifier.unload()
+            status, result = 503, {'error': 'local_unavailable'}
+            unload = True
         finally:
+            signal.alarm(0)
             self.close_connection = True
+        # Tracebacks can retain model/input tensors until the exception scope ends.
+        # Release them before flushing CUDA and before a disconnected client writes.
+        if unload:
+            self.server.classifier.unload()
+        self.send_json(status, result)
 
 
 def main():
