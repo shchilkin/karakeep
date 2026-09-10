@@ -29,7 +29,9 @@ import {
   startMediaCatalog,
   continueMediaCatalog,
   recoverLocalMediaCatalog,
+  reconcileLocalMediaCatalog,
 } from "./mediaCatalog";
+import { concealSensitiveBookmark } from "@karakeep/shared/sensitiveVisibility";
 import { getApiCaller } from "../testUtils";
 
 vi.mock("@karakeep/shared-server", async (original) => ({
@@ -88,6 +90,26 @@ async function queue() {
 }
 
 describe("media catalog lifecycle", () => {
+  test("an explicit expired pending retry repairs the same cloud queue key without reserving twice", async () => {
+    const job = await queue();
+    const pending = catalogSnapshot(db, "u1", "b1").bookmark.mediaAi!;
+    db.update(bookmarks)
+      .set({ mediaAi: { ...pending, updatedAt: new Date(0).toISOString() } })
+      .run();
+    // No automatic paid recovery. Only the owner's explicit retry repairs it.
+    await recoverLocalMediaCatalog(db);
+    expect(db.select().from(mediaAiRequests).all()).toHaveLength(0);
+    const retried = await requestMediaCatalog(db, "u1", "b1", { retry: true });
+    expect(retried?.runId).toBe(job.runId);
+    expect(MediaCatalogQueue.enqueue).toHaveBeenLastCalledWith(job, {
+      groupId: "u1",
+      idempotencyKey: job.runId,
+    });
+    expect(startMediaCatalog(db, job)).not.toBeNull();
+    expect(startMediaCatalog(db, job)).toBeNull();
+    expect(db.select().from(mediaAiRequests).all()).toHaveLength(1);
+  });
+
   test("a saved direct video queues automatic analysis without waiting for a social archive tag", async () => {
     db.delete(assets).run();
     db.insert(assets)
@@ -656,6 +678,93 @@ describe("local admission before cloud reservation", () => {
 });
 
 describe("automatic local-only display checks", () => {
+  test.each(["queued", "running", "restart", "opt-out", "disabled"])(
+    "attachment events overlapping manual backfill survive %s without cloud admission",
+    async (phase) => {
+      Object.assign(serverConfig.mediaAi, {
+        localMode: "enforce",
+        localAutoNew: true,
+        autoNew: false,
+      });
+      const manual = await requestMediaCatalog(db, "u1", "b1", {
+        localOnly: true,
+      });
+      const job = { bookmarkId: "b1", userId: "u1", runId: manual!.runId };
+      if (phase !== "queued") startMediaCatalog(db, job);
+      db.update(assets).set({ fileName: "replacement.jpg" }).run();
+      expect(
+        await requestMediaCatalog(db, "u1", "b1", { automatic: true }),
+      ).toBeNull();
+      expect(
+        catalogSnapshot(db, "u1", "b1").bookmark.mediaAi?.localRecheckRequested,
+      ).toBe(true);
+      if (phase === "queued") expect(startMediaCatalog(db, job)).toBeNull();
+      else expect(continueMediaCatalog(db, job, localCheck())).toBe(false);
+      if (phase === "opt-out")
+        db.update(users).set({ autoTaggingEnabled: false }).run();
+      if (phase === "disabled") serverConfig.mediaAi.localAutoNew = false;
+      if (phase === "restart") await recoverLocalMediaCatalog(db);
+      else await reconcileLocalMediaCatalog(db, job);
+      const next = catalogSnapshot(db, "u1", "b1").bookmark.mediaAi!;
+      if (["opt-out", "disabled"].includes(phase)) {
+        expect(next.runId).toBe(job.runId);
+        expect(next.status).toBe("stale");
+      } else {
+        expect(next.runId).not.toBe(job.runId);
+        expect(next).toMatchObject({
+          status: "pending",
+          automatic: true,
+          localOnly: true,
+        });
+        startMediaCatalog(db, { ...job, runId: next.runId });
+        expect(
+          continueMediaCatalog(db, { ...job, runId: next.runId }, localCheck()),
+        ).toBe(false);
+      }
+      expect(next.localRecheckRequested).toBeUndefined();
+      expect(db.select().from(mediaAiRequests).all()).toHaveLength(0);
+    },
+  );
+
+  test("an obsolete negative cannot clear a positive while the next replacement is pending or fails", async () => {
+    Object.assign(serverConfig.mediaAi, {
+      localMode: "review",
+      localAutoNew: true,
+    });
+    const first = await requestMediaCatalog(db, "u1", "b1", {
+      localOnly: true,
+    });
+    const job = { bookmarkId: "b1", userId: "u1", runId: first!.runId };
+    startMediaCatalog(db, job);
+    continueMediaCatalog(db, job, localCheck(["sexual"]));
+    db.update(assets).set({ fileName: "B.jpg" }).run();
+    const second = await requestMediaCatalog(db, "u1", "b1", {
+      automatic: true,
+    });
+    const secondJob = { ...job, runId: second!.runId };
+    startMediaCatalog(db, secondJob);
+    db.update(assets).set({ fileName: "C.jpg" }).run();
+    await requestMediaCatalog(db, "u1", "b1", { automatic: true });
+    expect(continueMediaCatalog(db, secondJob, localCheck())).toBe(false);
+    const assertConcealed = () => {
+      const card = catalogSnapshot(db, "u1", "b1").bookmark;
+      expect(card.mediaAi?.localCheck?.frames[0].categories).toEqual([
+        "sexual",
+      ]);
+      expect(concealSensitiveBookmark(card, "balanced")).toBe(true);
+      return card.mediaAi!;
+    };
+    expect(assertConcealed().status).toBe("stale");
+    await reconcileLocalMediaCatalog(db, secondJob);
+    const third = assertConcealed();
+    expect(third.status).toBe("pending");
+    const thirdJob = { ...job, runId: third.runId };
+    startMediaCatalog(db, thirdJob);
+    finishMediaCatalog(db, thirdJob, "local_failed");
+    expect(assertConcealed().status).toBe("local_failed");
+    expect(db.select().from(mediaAiRequests).all()).toHaveLength(0);
+  });
+
   test("ordinary previews queue without a social tag or cloud opt-in; enforce cannot promote local-only jobs", async () => {
     Object.assign(serverConfig.mediaAi, {
       localMode: "enforce",

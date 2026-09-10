@@ -40,6 +40,7 @@ export const zMediaCatalogState = z.object({
   localCheck: zLocalCheckResult.optional(),
   localCheckFingerprint: z.string().optional(),
   localRecoveries: z.number().int().min(0).max(2).optional(),
+  localRecheckRequested: z.boolean().optional(),
   result: zMediaCatalogResult.optional(),
   suppressedTags: z.array(z.string()).optional(),
 });

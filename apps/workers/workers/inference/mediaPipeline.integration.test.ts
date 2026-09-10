@@ -218,6 +218,28 @@ test("real SQLite queue, asset storage, FFmpeg and local HTTP gate precede the s
     expect(repaired?.runId).not.toBe(outdated!.runId);
     expect([localCalls, cloudCalls]).toEqual([6, 1]);
     expect(db.select().from(mediaAiRequests).all()).toHaveLength(1);
+    // The old job is manual/backfill, but the new attachment event is automatic.
+    // Its local-only intent must survive the occupied queue slot.
+    db.update(assets).set({ fileName: "manual-backfill.jpg" }).run();
+    const manual = await requestMediaCatalog(db, "qa-owner", "qa-card", {
+      localOnly: true,
+    });
+    expect(manual?.automatic).toBe(false);
+    db.update(assets).set({ fileName: "arrived-during-backfill.jpg" }).run();
+    expect(
+      await requestMediaCatalog(db, "qa-owner", "qa-card", { automatic: true }),
+    ).toBeNull();
+    await runner.runUntilEmpty!();
+    const afterBackfill = catalogSnapshot(db, "qa-owner", "qa-card").bookmark
+      .mediaAi;
+    expect(afterBackfill).toMatchObject({
+      status: "local_review",
+      automatic: true,
+      localOnly: true,
+    });
+    expect(afterBackfill?.runId).not.toBe(manual!.runId);
+    expect([localCalls, cloudCalls]).toEqual([7, 1]);
+    expect(db.select().from(mediaAiRequests).all()).toHaveLength(1);
   } finally {
     vi.unstubAllGlobals();
     service.close();

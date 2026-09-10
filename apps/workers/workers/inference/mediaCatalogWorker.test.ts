@@ -28,6 +28,7 @@ vi.mock("@karakeep/trpc/models/mediaCatalog", () => ({
   continueMediaCatalog: vi.fn(),
   finishMediaCatalog: vi.fn(),
   reindexMediaCatalog: vi.fn(),
+  reconcileLocalMediaCatalog: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("@karakeep/trpc/lib/ruleEngine", () => ({
   RuleEngine: { triggerOnEvent: vi.fn() },

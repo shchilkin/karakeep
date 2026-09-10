@@ -19,8 +19,7 @@ import {
   startMediaCatalog,
   continueMediaCatalog,
   recoverLocalMediaCatalog,
-  requestMediaCatalog,
-  catalogSnapshot,
+  reconcileLocalMediaCatalog,
 } from "@karakeep/trpc/models/mediaCatalog";
 import type { CatalogJob } from "@karakeep/trpc/models/mediaCatalog";
 import { RuleEngine } from "@karakeep/trpc/lib/ruleEngine";
@@ -133,25 +132,7 @@ export async function runMediaCatalog(job: DequeuedJob<CatalogJob>) {
   }
   const started = startMediaCatalog(db, job.data);
   if (!started) {
-    // A social carousel may finish downloading while its first job is queued.
-    // Repair that obsolete snapshot without replaying a cancelled/cloud job.
-    try {
-      const state = catalogSnapshot(db, job.data.userId, job.data.bookmarkId)
-        .bookmark.mediaAi;
-      if (
-        state?.runId === job.data.runId &&
-        state.status === "stale" &&
-        state.localOnly &&
-        state.automatic
-      ) {
-        await requestMediaCatalog(db, job.data.userId, job.data.bookmarkId, {
-          automatic: true,
-          localOnly: true,
-        });
-      }
-    } catch {
-      /* Deleted cards or failed enqueues need no cloud fallback. */
-    }
+    await reconcileLocalMediaCatalog(db, job.data).catch(() => undefined);
     return;
   }
   let attachedTagIds: string[] = [];
@@ -210,14 +191,8 @@ export async function runMediaCatalog(job: DequeuedJob<CatalogJob>) {
             : "failed",
     );
   } finally {
-    // Attachments can arrive while this run is busy. A changed fingerprint gets
-    // a new free job; unchanged terminal inputs are deduplicated. No cloud retry.
-    if (started.state.localOnly && started.state.automatic) {
-      await requestMediaCatalog(db, job.data.userId, job.data.bookmarkId, {
-        automatic: true,
-        localOnly: true,
-      }).catch(() => undefined);
-    }
+    // Includes manual/backfill jobs that overlapped an automatic attachment event.
+    await reconcileLocalMediaCatalog(db, job.data).catch(() => undefined);
   }
   // Downstream failures must never trigger another paid inference request.
   await Promise.allSettled([
