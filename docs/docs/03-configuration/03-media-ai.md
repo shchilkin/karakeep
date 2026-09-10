@@ -38,7 +38,8 @@ cancelled if automatic analysis has since been disabled.
 
 The authenticated owner-only endpoint is
 `POST /api/v1/bookmarks/:bookmarkId/analyze-media`, with JSON
-`{"retry":false,"allowPreview":false}`. It requires bookmark write permission.
+`{"retry":false,"allowPreview":false}`. Add `"localOnly":true` for an explicitly
+local-only check; local mode must be enabled and no cloud request is allowed. It requires bookmark write permission.
 An unchanged successful input is not billed again, even with `retry:true`.
 Changed inputs or a changed model can be submitted through this endpoint. A
 failed input requires an explicit retry. There is no automatic provider fallback.

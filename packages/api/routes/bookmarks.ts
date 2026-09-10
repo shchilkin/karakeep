@@ -70,6 +70,7 @@ const app = new Hono()
       z.object({
         retry: z.boolean().optional(),
         allowPreview: z.boolean().optional(),
+        localOnly: z.boolean().optional(),
       }),
     ),
     async (c) => {

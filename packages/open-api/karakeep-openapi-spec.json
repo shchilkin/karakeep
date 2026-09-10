@@ -3032,6 +3032,9 @@
                   },
                   "allowPreview": {
                     "type": "boolean"
+                  },
+                  "localOnly": {
+                    "type": "boolean"
                   }
                 }
               }
