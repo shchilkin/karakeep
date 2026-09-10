@@ -35,8 +35,10 @@ export const zMediaCatalogState = z.object({
   updatedAt: z.string(),
   allowPreview: z.boolean(),
   automatic: z.boolean().optional(),
+  localOnly: z.boolean().optional(),
   localMode: zLocalCheckMode.optional(),
   localCheck: zLocalCheckResult.optional(),
+  localCheckFingerprint: z.string().optional(),
   localRecoveries: z.number().int().min(0).max(2).optional(),
   result: zMediaCatalogResult.optional(),
   suppressedTags: z.array(z.string()).optional(),
@@ -126,8 +128,15 @@ export function catalogInput(
       ? []
       : c.type === "asset" && c.assetType === "image"
         ? [{ id: c.assetId, fileName: c.fileName ?? "image.jpg" }]
-        : c.type === "link" && allowPreview && c.imageAssetId
-          ? [{ id: c.imageAssetId, fileName: "preview.jpg" }]
+        : c.type === "link" &&
+            allowPreview &&
+            (c.imageAssetId || c.screenshotAssetId)
+          ? [
+              {
+                id: (c.imageAssetId || c.screenshotAssetId)!,
+                fileName: "preview.jpg",
+              },
+            ]
           : [];
   if (!assets.length && !archivedText) return null;
   const videos = assets.filter((a) =>

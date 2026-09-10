@@ -5,6 +5,7 @@ export default defineConfig({
     "index.ts",
     "scripts/parseHtmlSubprocess.ts",
     "scripts/backfillAssetDimensions.ts",
+    "scripts/backfillLocalMedia.ts",
   ],
   format: ["esm"],
   target: "node22",

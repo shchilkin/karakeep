@@ -153,9 +153,10 @@ test("real SQLite queue, asset storage, FFmpeg and local HTTP gate precede the s
       { run: runMediaCatalog },
       { concurrency: 1, timeoutSecs: 10 },
     );
-    const run = async (retry = false) => {
+    const run = async (retry = false, localOnly = false) => {
       const state = await requestMediaCatalog(db, "qa-owner", "qa-card", {
         retry,
+        ...(localOnly ? { localOnly: true, automatic: true } : {}),
       });
       if (state) {
         // A job waiting behind a large batch is repaired with the same key.
@@ -187,6 +188,36 @@ test("real SQLite queue, asset storage, FFmpeg and local HTTP gate precede the s
     expect(
       catalogSnapshot(db, "qa-owner", "qa-card").bookmark.sensitiveCategories,
     ).toBeNull();
+    // The same real queue must never promote explicitly local automatic jobs,
+    // even with enforce, a cloud key, and a clean native result.
+    Object.assign(config.mediaAi, { localAutoNew: true, autoNew: false });
+    expect((await run(false, true))?.status).toBe("local_review");
+    expect([localCalls, cloudCalls]).toEqual([4, 1]);
+    categories = ["sexual"];
+    const flagged = await run(true, true);
+    const { concealSensitiveBookmark } =
+      await import("@karakeep/shared/sensitiveVisibility");
+    expect(
+      concealSensitiveBookmark({ id: "qa-card", mediaAi: flagged }, "balanced"),
+    ).toBe(true);
+    expect([localCalls, cloudCalls]).toEqual([5, 1]);
+    expect(db.select().from(mediaAiRequests).all()).toHaveLength(1);
+    expect(flagged?.result?.title).toBe("Серый квадрат");
+    // Additional attachments arriving before the job is claimed invalidate the
+    // queued snapshot; the worker must repair it with a new local-only run.
+    db.update(assets).set({ fileName: "changed.jpg" }).run();
+    const outdated = await requestMediaCatalog(db, "qa-owner", "qa-card", {
+      automatic: true,
+    });
+    expect(outdated?.localOnly).toBe(true);
+    db.update(assets).set({ fileName: "changed-again.jpg" }).run();
+    await runner.runUntilEmpty!();
+    const repaired = catalogSnapshot(db, "qa-owner", "qa-card").bookmark
+      .mediaAi;
+    expect(repaired?.status).toBe("local_review");
+    expect(repaired?.runId).not.toBe(outdated!.runId);
+    expect([localCalls, cloudCalls]).toEqual([6, 1]);
+    expect(db.select().from(mediaAiRequests).all()).toHaveLength(1);
   } finally {
     vi.unstubAllGlobals();
     service.close();

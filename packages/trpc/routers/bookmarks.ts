@@ -1,5 +1,6 @@
 import type { SensitiveCategory } from "@karakeep/shared/sensitiveContent";
 import { requestMediaCatalog } from "../models/mediaCatalog";
+import { backfillLocalMedia } from "../models/localMediaBackfill";
 import { experimental_trpcMiddleware, TRPCError } from "@trpc/server";
 import { and, eq, gt, inArray, like, lt, or, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -599,12 +600,25 @@ export const bookmarksAppRouter = router({
       return bookmark;
     }),
 
+  backfillLocalMedia: bookmarksProcedure
+    .input(
+      z.object({
+        apply: z.boolean().default(false),
+        limit: z.number().int().min(1).max(200).default(200),
+        cursor: z.string().optional(),
+      }),
+    )
+    .mutation(({ ctx, input }) =>
+      backfillLocalMedia(ctx.db, ctx.user.id, input),
+    ),
+
   analyzeMedia: bookmarksProcedure
     .input(
       z.object({
         bookmarkId: z.string(),
         retry: z.boolean().optional(),
         allowPreview: z.boolean().optional(),
+        localOnly: z.boolean().optional(),
       }),
     )
     .use(ensureBookmarkOwnership)
@@ -713,7 +727,7 @@ export const bookmarksAppRouter = router({
 
           // Update common bookmark fields
           const commonUpdateData: Partial<{
-            sensitiveCategories: SensitiveCategory[];
+            sensitiveCategories: SensitiveCategory[] | null;
             title: string | null;
             titleSource: "manual" | "captured" | "unknown";
             archived: boolean;

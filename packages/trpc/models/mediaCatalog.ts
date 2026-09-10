@@ -89,6 +89,9 @@ export function catalogSnapshot(
               imageAssetId: attached.find(
                 (a) => a.assetType === AssetTypes.LINK_BANNER_IMAGE,
               )?.id,
+              screenshotAssetId: attached.find(
+                (a) => a.assetType === AssetTypes.LINK_SCREENSHOT,
+              )?.id,
             }
           : bookmark.type === BookmarkTypes.ASSET && asset
             ? { ...asset, type: BookmarkTypes.ASSET }
@@ -118,7 +121,11 @@ export function catalogSnapshot(
   };
 }
 
-export function catalogFingerprint(input: CatalogInput, model: string) {
+export function catalogFingerprint(
+  input: CatalogInput,
+  model: string,
+  localOnly = false,
+) {
   return createHash("sha256")
     .update(
       JSON.stringify({
@@ -126,6 +133,7 @@ export function catalogFingerprint(input: CatalogInput, model: string) {
         provider: serverConfig.mediaAi.provider,
         model,
         input,
+        ...(localOnly ? { localOnly: true } : {}),
         ...(serverConfig.mediaAi.localMode !== "off"
           ? {
               local: {
@@ -148,10 +156,22 @@ export async function requestMediaCatalog(
     retry?: boolean;
     allowPreview?: boolean;
     automatic?: boolean;
+    localOnly?: boolean;
   } = {},
 ) {
   const config = serverConfig.mediaAi;
-  if (!config.enabled || (options.automatic && !config.autoNew)) return null;
+  const localOnly =
+    options.localOnly ?? (!!options.automatic && config.localAutoNew);
+  const automaticEnabled = localOnly ? config.localAutoNew : config.autoNew;
+  if (!config.enabled || (options.automatic && !automaticEnabled)) return null;
+  if (localOnly && config.localMode === "off") {
+    if (options.automatic) return null;
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Local analysis is disabled",
+    });
+  }
+  const allowPreview = options.allowPreview ?? localOnly;
   const state = db.transaction(
     (tx) => {
       if (
@@ -167,7 +187,7 @@ export async function requestMediaCatalog(
         tx,
         userId,
         bookmarkId,
-        options.allowPreview,
+        allowPreview,
       );
       if (!input) {
         if (options.automatic) return null;
@@ -178,14 +198,15 @@ export async function requestMediaCatalog(
       }
       if (
         options.automatic &&
+        !localOnly &&
         bookmark.type === BookmarkTypes.LINK &&
         !tags.includes("social-media-archived") &&
         !hasDownloadedVideo
       )
         return null;
       const previous = bookmark.mediaAi;
-      const fingerprint = catalogFingerprint(input, config.model);
-      if (catalogBusy(previous)) return null;
+      const fingerprint = catalogFingerprint(input, config.model, localOnly);
+      if (previous?.status === "pending" || catalogBusy(previous)) return null;
       // A successful input is never charged again. Failed inputs require a manual retry.
       if (
         previous?.fingerprint === fingerprint &&
@@ -198,22 +219,24 @@ export async function requestMediaCatalog(
         model: config.model,
         status: "pending",
         updatedAt: new Date().toISOString(),
-        allowPreview: options.allowPreview ?? false,
+        allowPreview,
         automatic: options.automatic ?? false,
+        localOnly,
         localMode: config.localMode,
-        localCheck:
-          previous?.fingerprint === fingerprint &&
+        // Retain positive observations while replacement media is checked. The
+        // worker may reuse bytes only for the matching original fingerprint.
+        localCheck: previous?.localCheck,
+        localCheckFingerprint:
+          previous?.localCheck &&
+          previous.fingerprint === fingerprint &&
           [
             "failed",
             "refused",
             "timeout",
             "rate_limited",
             "quota_exceeded",
-          ].includes(previous.status) &&
-          previous.localCheck?.frames.every(
-            (frame) => frame.status === "complete",
-          )
-            ? previous.localCheck
+          ].includes(previous.status)
+            ? previous.localCheckFingerprint
             : undefined,
         result: previous?.result,
         suppressedTags: previous?.suppressedTags,
@@ -278,7 +301,9 @@ export function startMediaCatalog(db: DB, job: CatalogJob) {
           .run();
       if (
         state.automatic &&
-        (!serverConfig.mediaAi.autoNew ||
+        (!(state.localOnly
+          ? serverConfig.mediaAi.localAutoNew
+          : serverConfig.mediaAi.autoNew) ||
           tx
             .select({ enabled: users.autoTaggingEnabled })
             .from(users)
@@ -290,12 +315,17 @@ export function startMediaCatalog(db: DB, job: CatalogJob) {
       }
       if (
         !snapshot.input ||
-        catalogFingerprint(snapshot.input, state.model) !== state.fingerprint
+        catalogFingerprint(snapshot.input, state.model, state.localOnly) !==
+          state.fingerprint
       ) {
         update("stale");
         return null;
       }
       if ((state.localMode ?? "off") !== serverConfig.mediaAi.localMode) {
+        update("cancelled");
+        return null;
+      }
+      if (state.localOnly && state.localMode === "off") {
         update("cancelled");
         return null;
       }
@@ -359,6 +389,7 @@ export function continueMediaCatalog(
             mediaAi: {
               ...state,
               localCheck,
+              localCheckFingerprint: state.fingerprint,
               status,
               updatedAt: new Date().toISOString(),
             },
@@ -367,7 +398,8 @@ export function continueMediaCatalog(
           .run();
       if (
         !snapshot.input ||
-        catalogFingerprint(snapshot.input, state.model) !== state.fingerprint
+        catalogFingerprint(snapshot.input, state.model, state.localOnly) !==
+          state.fingerprint
       ) {
         update("stale");
         return false;
@@ -385,7 +417,9 @@ export function continueMediaCatalog(
         !serverConfig.mediaAi.enabled ||
         state.localMode !== serverConfig.mediaAi.localMode ||
         (state.automatic &&
-          (!serverConfig.mediaAi.autoNew ||
+          (!(state.localOnly
+            ? serverConfig.mediaAi.localAutoNew
+            : serverConfig.mediaAi.autoNew) ||
             tx
               .select({ enabled: users.autoTaggingEnabled })
               .from(users)
@@ -395,7 +429,7 @@ export function continueMediaCatalog(
         update("cancelled");
         return false;
       }
-      if (state.localMode === "review") {
+      if (state.localOnly || state.localMode === "review") {
         update("local_review");
         return false;
       }
@@ -578,7 +612,8 @@ export function finishMediaCatalog(
         );
         if (
           !fresh.input ||
-          catalogFingerprint(fresh.input, state.model) !== state.fingerprint
+          catalogFingerprint(fresh.input, state.model, state.localOnly) !==
+            state.fingerprint
         ) {
           status = "stale";
           applied = undefined;

@@ -71,6 +71,7 @@ import { mapDBAssetTypeToUserType } from "../lib/attachments";
 import { getPreferredLinkPreview } from "../lib/linkPreview";
 import { Asset } from "./assets";
 import { List } from "./lists";
+import { sensitiveBookmarkCondition } from "./sensitiveVisibility";
 
 async function dummyDrizzleReturnType() {
   const x = await DONT_USE_db.query.bookmarks.findFirst({
@@ -505,8 +506,8 @@ export class Bookmark extends BareBookmark {
     const buildCommonFilters = (): (SQL | undefined)[] => [
       input.sensitive !== undefined
         ? input.sensitive
-          ? sql`coalesce(json_array_length(${bookmarks.sensitiveCategories}), 0) > 0`
-          : sql`coalesce(json_array_length(${bookmarks.sensitiveCategories}), 0) = 0`
+          ? sensitiveBookmarkCondition()
+          : sql`NOT (${sensitiveBookmarkCondition()})`
         : undefined,
       input.archived !== undefined
         ? eq(bookmarks.archived, input.archived)

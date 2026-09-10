@@ -12,6 +12,7 @@ import { abortRace, raceWith } from "utils";
 import { updateAsset } from "workerUtils";
 
 import { db } from "@karakeep/db";
+import { requestMediaCatalog } from "@karakeep/trpc/models/mediaCatalog";
 import {
   assets,
   AssetTypes,
@@ -150,6 +151,11 @@ export async function handleAsAssetBookmark(
           groupId: userId,
         },
       );
+      if (assetType === "image") {
+        await requestMediaCatalog(db, userId, bookmarkId, {
+          automatic: true,
+        }).catch(() => undefined);
+      }
     },
   );
 }
@@ -488,6 +494,12 @@ export async function crawlAndParseUrl(
       });
 
       // Delete the old assets if any
+      if (serverConfig.mediaAi.localAutoNew) {
+        await requestMediaCatalog(db, userId, bookmarkId, {
+          automatic: true,
+          localOnly: true,
+        }).catch(() => undefined);
+      }
       await Promise.all(
         assetIdsToDelete.map((assetId) => silentDeleteAsset(userId, assetId)),
       );

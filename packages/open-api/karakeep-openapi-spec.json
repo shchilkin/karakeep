@@ -215,6 +215,9 @@
               "automatic": {
                 "type": "boolean"
               },
+              "localOnly": {
+                "type": "boolean"
+              },
               "localMode": {
                 "type": "string",
                 "enum": [
@@ -407,6 +410,9 @@
                   "frames"
                 ],
                 "additionalProperties": false
+              },
+              "localCheckFingerprint": {
+                "type": "string"
               },
               "localRecoveries": {
                 "type": "integer",
@@ -1870,6 +1876,7 @@
                 "properties": {
                   "sensitiveCategories": {
                     "type": "array",
+                    "nullable": true,
                     "items": {
                       "type": "string",
                       "enum": [
@@ -2057,6 +2064,9 @@
                           "type": "boolean"
                         },
                         "automatic": {
+                          "type": "boolean"
+                        },
+                        "localOnly": {
                           "type": "boolean"
                         },
                         "localMode": {
@@ -2251,6 +2261,9 @@
                             "frames"
                           ],
                           "additionalProperties": false
+                        },
+                        "localCheckFingerprint": {
+                          "type": "string"
                         },
                         "localRecoveries": {
                           "type": "integer",
@@ -2636,6 +2649,9 @@
                         "automatic": {
                           "type": "boolean"
                         },
+                        "localOnly": {
+                          "type": "boolean"
+                        },
                         "localMode": {
                           "type": "string",
                           "enum": [
@@ -2828,6 +2844,9 @@
                             "frames"
                           ],
                           "additionalProperties": false
+                        },
+                        "localCheckFingerprint": {
+                          "type": "string"
                         },
                         "localRecoveries": {
                           "type": "integer",
@@ -3121,6 +3140,9 @@
                         "automatic": {
                           "type": "boolean"
                         },
+                        "localOnly": {
+                          "type": "boolean"
+                        },
                         "localMode": {
                           "type": "string",
                           "enum": [
@@ -3313,6 +3335,9 @@
                             "frames"
                           ],
                           "additionalProperties": false
+                        },
+                        "localCheckFingerprint": {
+                          "type": "string"
                         },
                         "localRecoveries": {
                           "type": "integer",

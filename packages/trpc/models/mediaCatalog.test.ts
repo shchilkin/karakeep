@@ -75,6 +75,7 @@ beforeEach(() => {
     localMode: "off",
     apiKey: "synthetic",
     autoNew: true,
+    localAutoNew: false,
     model: "grok-4.6",
     dailyRequests: 20,
   });
@@ -651,5 +652,122 @@ describe("local admission before cloud reservation", () => {
     });
     expect(db.select().from(mediaAiRequests).all()).toHaveLength(1);
     expect(finishMediaCatalog(db, job, "success", result)).toBe(false);
+  });
+});
+
+describe("automatic local-only display checks", () => {
+  test("ordinary previews queue without a social tag or cloud opt-in; enforce cannot promote local-only jobs", async () => {
+    Object.assign(serverConfig.mediaAi, {
+      localMode: "enforce",
+      localAutoNew: true,
+      autoNew: false,
+    });
+    db.update(assets).set({ assetType: AssetTypes.LINK_BANNER_IMAGE }).run();
+    const state = await requestMediaCatalog(db, "u1", "b1", {
+      automatic: true,
+    });
+    expect(state).toMatchObject({
+      localOnly: true,
+      automatic: true,
+      allowPreview: true,
+    });
+    const job = { bookmarkId: "b1", userId: "u1", runId: state!.runId };
+    expect(startMediaCatalog(db, job)).toBeTruthy();
+    expect(continueMediaCatalog(db, job, localCheck())).toBe(false);
+    expect(catalogSnapshot(db, "u1", "b1").bookmark.mediaAi?.status).toBe(
+      "local_review",
+    );
+    expect(db.select().from(mediaAiRequests).all()).toHaveLength(0);
+    expect(
+      await requestMediaCatalog(db, "u1", "b1", { automatic: true }),
+    ).toBeNull();
+  });
+
+  test("switching local mode off or disabling automatic checks never falls through to cloud", async () => {
+    Object.assign(serverConfig.mediaAi, {
+      localMode: "review",
+      localAutoNew: true,
+      autoNew: true,
+    });
+    const state = await requestMediaCatalog(db, "u1", "b1", {
+      automatic: true,
+    });
+    const job = { bookmarkId: "b1", userId: "u1", runId: state!.runId };
+    serverConfig.mediaAi.localAutoNew = false;
+    expect(startMediaCatalog(db, job)).toBeNull();
+    serverConfig.mediaAi.localMode = "off";
+    await expect(
+      requestMediaCatalog(db, "u1", "b1", { localOnly: true }),
+    ).rejects.toThrow("Local analysis is disabled");
+    expect(db.select().from(mediaAiRequests).all()).toHaveLength(0);
+  });
+
+  test("replacement media retains positive observations and queues a new fingerprint", async () => {
+    Object.assign(serverConfig.mediaAi, {
+      localMode: "review",
+      localAutoNew: true,
+    });
+    const first = await requestMediaCatalog(db, "u1", "b1", {
+      automatic: true,
+    });
+    const job = { bookmarkId: "b1", userId: "u1", runId: first!.runId };
+    startMediaCatalog(db, job);
+    continueMediaCatalog(db, job, localCheck(["sexual"]));
+    db.update(assets).set({ fileName: "replacement.jpg" }).run();
+    const replacement = await requestMediaCatalog(db, "u1", "b1", {
+      automatic: true,
+    });
+    expect(replacement?.runId).not.toBe(first!.runId);
+    expect(replacement?.localCheck?.frames[0].categories).toEqual(["sexual"]);
+    expect(replacement?.localCheckFingerprint).toBeUndefined();
+    expect(replacement?.localOnly).toBe(true);
+    expect(db.select().from(mediaAiRequests).all()).toHaveLength(0);
+  });
+
+  test("owner-scoped backfill previews without mutation, queues once, and preserves manual work", async () => {
+    Object.assign(serverConfig.mediaAi, {
+      localMode: "enforce",
+      autoNew: false,
+    });
+    db.update(bookmarks)
+      .set({
+        sensitiveCategories: [],
+        title: "Manual title",
+        note: "Manual note",
+      })
+      .run();
+    const { backfillLocalMedia } = await import("./localMediaBackfill");
+    const before = db.select().from(bookmarks).all();
+    const dry = await backfillLocalMedia(db, "u1", {
+      apply: false,
+      limit: 200,
+    });
+    expect(dry).toMatchObject({ scanned: 1, eligible: 1, queued: 0 });
+    expect(db.select().from(bookmarks).all()).toEqual(before);
+    expect(
+      await backfillLocalMedia(db, "u2", { apply: true, limit: 200 }),
+    ).toMatchObject({ scanned: 0, queued: 0 });
+    expect(
+      await backfillLocalMedia(db, "u1", { apply: true, limit: 200 }),
+    ).toMatchObject({ queued: 1 });
+    const saved = catalogSnapshot(db, "u1", "b1").bookmark;
+    expect(saved).toMatchObject({
+      sensitiveCategories: [],
+      title: "Manual title",
+      note: "Manual note",
+    });
+    const job = { bookmarkId: "b1", userId: "u1", runId: saved.mediaAi!.runId };
+    startMediaCatalog(db, job);
+    expect(continueMediaCatalog(db, job, localCheck())).toBe(false);
+    expect(
+      await backfillLocalMedia(db, "u1", { apply: true, limit: 200 }),
+    ).toMatchObject({ unchanged: 1, queued: 0 });
+    expect(db.select().from(mediaAiRequests).all()).toHaveLength(0);
+    await expect(
+      getApiCaller(db).bookmarks.backfillLocalMedia({ apply: true }),
+    ).rejects.toThrow();
+    await expect(
+      getApiCaller(db, "u1").bookmarks.backfillLocalMedia({ limit: 201 }),
+    ).rejects.toThrow();
   });
 });

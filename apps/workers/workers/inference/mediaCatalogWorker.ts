@@ -19,6 +19,8 @@ import {
   startMediaCatalog,
   continueMediaCatalog,
   recoverLocalMediaCatalog,
+  requestMediaCatalog,
+  catalogSnapshot,
 } from "@karakeep/trpc/models/mediaCatalog";
 import type { CatalogJob } from "@karakeep/trpc/models/mediaCatalog";
 import { RuleEngine } from "@karakeep/trpc/lib/ruleEngine";
@@ -125,12 +127,33 @@ export async function prepareCatalogImages(
 
 export async function runMediaCatalog(job: DequeuedJob<CatalogJob>) {
   const config = serverConfig.mediaAi;
-  if (!config.enabled || (!config.apiKey && config.localMode !== "review")) {
+  if (!config.enabled || (!config.apiKey && config.localMode === "off")) {
     finishMediaCatalog(db, job.data, "failed");
     return;
   }
   const started = startMediaCatalog(db, job.data);
-  if (!started) return;
+  if (!started) {
+    // A social carousel may finish downloading while its first job is queued.
+    // Repair that obsolete snapshot without replaying a cancelled/cloud job.
+    try {
+      const state = catalogSnapshot(db, job.data.userId, job.data.bookmarkId)
+        .bookmark.mediaAi;
+      if (
+        state?.runId === job.data.runId &&
+        state.status === "stale" &&
+        state.localOnly &&
+        state.automatic
+      ) {
+        await requestMediaCatalog(db, job.data.userId, job.data.bookmarkId, {
+          automatic: true,
+          localOnly: true,
+        });
+      }
+    } catch {
+      /* Deleted cards or failed enqueues need no cloud fallback. */
+    }
+    return;
+  }
   let attachedTagIds: string[] = [];
   let cloudStarted =
     !started.state.localMode || started.state.localMode === "off";
@@ -146,8 +169,9 @@ export async function runMediaCatalog(job: DequeuedJob<CatalogJob>) {
         return;
       }
       const local =
-        reusableLocalCheck(started.state.localCheck, images) ??
-        (await checkLocalMedia(images, job.abortSignal));
+        (started.state.localCheckFingerprint === started.state.fingerprint
+          ? reusableLocalCheck(started.state.localCheck, images)
+          : null) ?? (await checkLocalMedia(images, job.abortSignal));
       job.abortSignal.throwIfAborted();
       if (!continueMediaCatalog(db, job.data, local)) return;
       cloudStarted = true;
@@ -185,6 +209,15 @@ export async function runMediaCatalog(job: DequeuedJob<CatalogJob>) {
             ? error.kind
             : "failed",
     );
+  } finally {
+    // Attachments can arrive while this run is busy. A changed fingerprint gets
+    // a new free job; unchanged terminal inputs are deduplicated. No cloud retry.
+    if (started.state.localOnly && started.state.automatic) {
+      await requestMediaCatalog(db, job.data.userId, job.data.bookmarkId, {
+        automatic: true,
+        localOnly: true,
+      }).catch(() => undefined);
+    }
   }
   // Downstream failures must never trigger another paid inference request.
   await Promise.allSettled([

@@ -329,7 +329,7 @@ export type ZGetBookmarksResponse = z.infer<typeof zGetBookmarksResponseSchema>;
 
 // PATCH /v1/bookmarks/[bookmarkId]
 export const zUpdateBookmarksRequestSchema = z.object({
-  sensitiveCategories: zSensitiveCategories.optional(),
+  sensitiveCategories: zSensitiveCategories.nullish(),
   bookmarkId: z.string(),
   archived: z.boolean().optional(),
   favourited: z.boolean().optional(),

@@ -47,10 +47,9 @@ mode. All three scores below 0.5 permit the next admission checks. Native polici
 do not cover all manual categories; the absence of a match is not a safety certificate. Work/Balanced/Show all display preferences
 do not change the upload policy. Manual clear cannot override a detected category.
 
-Local classifications are displayed as separate observations. They **do not write
-manual Sensitive categories or automatically reveal/conceal cards**. Classification
-accuracy on the owner's labeled examples must be reviewed before using these
-observations to drive automatic display behavior.
+Local classifications remain separate from manual categories. Their positive
+observations now drive Sensitive previews as described in the follow-up section
+below. Native negatives still do not certify Work suitability.
 
 ## Settings
 
@@ -109,3 +108,59 @@ cloud admission and duplicate suppression; **the Grok HTTP response is stubbed**
 The independent GPU smoke test invokes the actual HTTP service on synthetic JPEGs
 with Docker networking disabled. These two checks establish plumbing, not a full
 production archive-to-Grok run.
+
+## Automatic Sensitive previews (follow-up implementation)
+
+`MEDIA_AI_LOCAL_AUTO_NEW=true` selects explicitly **local-only** jobs at save,
+attachment changes, completed crawls, and the social archive completion event.
+It is independent of `MEDIA_AI_AUTO_NEW`, which may remain false. The persisted
+`localOnly` intent cannot reserve or dispatch a cloud request, even in `enforce`.
+Local mode must be enabled; switching it off cancels these jobs instead of
+promoting them to cloud. The user's automatic-tagging opt-out is respected for
+new automatic jobs. A manual local-only check/backfill is an explicit action.
+
+A link's saved banner or screenshot can be checked when no archived original
+is available. It is labeled `preview_only`; this does not check the remote page,
+an unsaved original, or a full video. Completed direct image downloads and saved
+images use the same queue. A changed input while queued or processing is queued
+again locally; unchanged terminal inputs are deduplicated. Previous positive
+observations remain visible while their replacement is being checked. Reuse for
+cloud retry requires matching fingerprints and exact JPEG hashes.
+
+Display uses the manual decision first: `null` delegates to observations, `[]`
+explicitly permits the item, and nonempty arrays apply the manual categories.
+Native `sexual`, `dangerous`, and `violence` detections close previews and enter
+the Sensitive section without inventing finer labels. This also applies to
+already stored observations, including warnings retained during retries.
+
+Work is deliberately conservative: every item without a manual decision remains
+closed, including native-negative, pending, failed, and unsupported items. A
+negative three-policy sample cannot certify suitability for work, especially
+swimwear/suggestive scenes or unsampled video segments. Balanced shows unchecked
+items and manually marked swimwear/suggestive imagery, but closes automatic
+native detections and other manual categories. Show all and the session-gated
+Sensitive section preserve the explicit reveal behavior. Temporary reveal is
+revoked when the manual decision or local observations change. The closed state
+does not mount an image/video, so no preview file/player is loaded behind it.
+
+Backfill is separate from enabling checks on new saves. On the application image:
+
+```sh
+# Count only: no inference, queue mutation, or cloud use.
+node /app/apps/workers/dist/scripts/backfillLocalMedia.js --limit 200
+# Explicitly enqueue up to one page of local-only work.
+node /app/apps/workers/dist/scripts/backfillLocalMedia.js --limit 200 --apply
+```
+
+For a multi-user installation supply `--user-id`; a single owner is selected only
+when exactly one exists. If `nextCursor` is returned, pass it with `--cursor` for
+the next page. Limits count inspected cards, not just eligible ones. Repeating
+an unchanged page does not retry terminal failures. The equivalent owner-scoped
+tRPC mutation is `bookmarks.backfillLocalMedia({apply:false,limit:200})` by
+default. Its apply mode only calls the local-only path. Manual decisions,
+existing titles, summaries, tags and downloaded files are preserved.
+
+This code does not enable production settings or start a backfill by deployment
+alone. Model weights, native thresholds, and the cloud admission policy remain
+unchanged. Fine-grained automatic labels and full-video coverage still require
+separate model evaluation; manual categories remain available for those cases.

@@ -18,6 +18,7 @@ import {
   mapSchemaAssetTypeToDB,
 } from "../lib/attachments";
 import { BareBookmark } from "./bookmarks";
+import { requestMediaCatalog } from "./mediaCatalog";
 
 export class Asset {
   constructor(
@@ -113,6 +114,13 @@ export class Asset {
       .where(and(eq(assets.id, input.asset.id), eq(assets.userId, ctx.user.id)))
       .returning();
 
+    if (serverConfig.mediaAi.localAutoNew) {
+      await requestMediaCatalog(ctx.db, ctx.user.id, input.bookmarkId, {
+        automatic: true,
+        localOnly: true,
+      }).catch(() => undefined);
+    }
+
     return {
       id: updatedAsset.id,
       assetType: mapDBAssetTypeToUserType(updatedAsset.assetType),
@@ -164,6 +172,12 @@ export class Asset {
       userId: ctx.user.id,
       assetId: input.oldAssetId,
     }).catch(() => ({}));
+    if (serverConfig.mediaAi.localAutoNew) {
+      await requestMediaCatalog(ctx.db, ctx.user.id, input.bookmarkId, {
+        automatic: true,
+        localOnly: true,
+      }).catch(() => undefined);
+    }
   }
 
   static async detachAsset(
@@ -201,6 +215,12 @@ export class Asset {
     await deleteAsset({ userId: ctx.user.id, assetId: input.assetId }).catch(
       () => ({}),
     );
+    if (serverConfig.mediaAi.localAutoNew) {
+      await requestMediaCatalog(ctx.db, ctx.user.id, input.bookmarkId, {
+        automatic: true,
+        localOnly: true,
+      }).catch(() => undefined);
+    }
   }
 
   private static async ensureBookmarkOwnership(
