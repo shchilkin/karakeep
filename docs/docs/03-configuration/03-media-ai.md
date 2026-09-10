@@ -38,7 +38,8 @@ cancelled if automatic analysis has since been disabled.
 
 The authenticated owner-only endpoint is
 `POST /api/v1/bookmarks/:bookmarkId/analyze-media`, with JSON
-`{"retry":false,"allowPreview":false}`. It requires bookmark write permission.
+`{"retry":false,"allowPreview":false}`. Add `"localOnly":true` for an explicitly
+local-only check; local mode must be enabled and no cloud request is allowed. It requires bookmark write permission.
 An unchanged successful input is not billed again, even with `retry:true`.
 Changed inputs or a changed model can be submitted through this endpoint. A
 failed input requires an explicit retry. There is no automatic provider fallback.
@@ -96,3 +97,19 @@ require dropping data.
 For OpenAI, change the provider, model and dedicated key together, for example
 `MEDIA_AI_PROVIDER=openai`, `MEDIA_AI_MODEL=gpt-5.6-terra`. The endpoint is fixed by
 provider; arbitrary API URLs are not accepted.
+
+## Local-only Sensitive checks
+
+With a configured local classifier (`MEDIA_AI_LOCAL_MODE=review` or `enforce`),
+`MEDIA_AI_LOCAL_AUTO_NEW=true` enables free local checks on newly saved media,
+completed crawls, and changed attachments. `MEDIA_AI_AUTO_NEW` can remain false:
+local-only jobs persist their intent and never call the cloud provider. The user's
+automatic-tagging opt-out still applies. Enabling this flag does not scan existing
+cards. Use the bounded dry-run/backfill command described in
+[the local-first pipeline](../../local-first-media-ai.md#automatic-sensitive-previews-follow-up-implementation).
+
+Local detections close previews in Balanced and Work and appear in Sensitive.
+Manual decisions override display; reset a manual decision to automatic in the
+Sensitive editor. Work also closes anything not manually reviewed, since a native
+negative on sampled frames does not establish work suitability. The exact mode
+rules, sampling limits, retry behavior and backfill steps are in the pipeline guide.

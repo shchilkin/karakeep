@@ -496,6 +496,7 @@ registry.registerPath({
           schema: z.object({
             retry: z.boolean().optional(),
             allowPreview: z.boolean().optional(),
+            localOnly: z.boolean().optional(),
           }),
         },
       },

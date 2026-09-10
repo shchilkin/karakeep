@@ -75,6 +75,7 @@ const allEnv = z.object({
   TURNSTILE_SECRET_KEY: z.string().optional(),
   MEDIA_AI_ENABLED: stringBool("false"),
   MEDIA_AI_AUTO_NEW: stringBool("false"),
+  MEDIA_AI_LOCAL_AUTO_NEW: stringBool("false"),
   MEDIA_AI_API_KEY: z.string().optional(),
   MEDIA_AI_MODEL: z.string().default("grok-4.6"),
   MEDIA_AI_PROVIDER: z.enum(["xai", "openai"]).default("xai"),
@@ -344,8 +345,9 @@ const serverConfigSchema = allEnv.transform((val, ctx) => {
     mediaAi: {
       enabled:
         val.MEDIA_AI_ENABLED &&
-        (!!val.MEDIA_AI_API_KEY || val.MEDIA_AI_LOCAL_MODE === "review"),
+        (!!val.MEDIA_AI_API_KEY || val.MEDIA_AI_LOCAL_MODE !== "off"),
       autoNew: val.MEDIA_AI_AUTO_NEW,
+      localAutoNew: val.MEDIA_AI_LOCAL_AUTO_NEW,
       apiKey: val.MEDIA_AI_API_KEY,
       provider: val.MEDIA_AI_PROVIDER,
       model: val.MEDIA_AI_MODEL,

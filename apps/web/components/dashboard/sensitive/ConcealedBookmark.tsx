@@ -3,6 +3,7 @@ import { useContext } from "react";
 import Link from "next/link";
 import { EyeOff } from "lucide-react";
 import type { ZBookmark } from "@karakeep/shared/types/bookmarks";
+import { sensitiveAssessment } from "@karakeep/shared/sensitiveVisibility";
 import { getBookmarkTitle } from "@karakeep/shared/utils/bookmarkUtils";
 import { bookmarkCardCoverDimensions } from "@/lib/bookmarkCardHeight";
 import { CardImageDimensionsContext } from "@/lib/cardImageDimensions";
@@ -55,7 +56,13 @@ export function ConcealedCard({
           }
         >
           <EyeOff className="size-6" />
-          <span className="text-sm">{t("sensitive.hidden")}</span>
+          <span className="text-sm">
+            {t(
+              sensitiveAssessment(bookmark).sensitive
+                ? "sensitive.hidden"
+                : "sensitive.unreviewed",
+            )}
+          </span>
           <span className="text-xs underline">{t("sensitive.reveal")}</span>
         </button>
       )}
@@ -80,10 +87,16 @@ export function ConcealedPreview({
     >
       <EyeOff className="size-10 text-muted-foreground" />
       <h2 className="max-w-xl text-xl">{getBookmarkTitle(bookmark)}</h2>
-      <p className="text-muted-foreground">{t("sensitive.hidden")}</p>
+      <p className="text-muted-foreground">
+        {t(
+          sensitiveAssessment(bookmark).sensitive
+            ? "sensitive.hidden"
+            : "sensitive.unreviewed",
+        )}
+      </p>
       <p className="max-w-xl text-sm text-muted-foreground">
-        {bookmark.sensitiveCategories
-          ?.map((c) => t(`sensitive.categories.${c}`))
+        {sensitiveAssessment(bookmark)
+          .labels.map((key) => t(key))
           .join(" · ")}
       </p>
       <Button onClick={() => reveal(bookmark)}>{t("sensitive.reveal")}</Button>

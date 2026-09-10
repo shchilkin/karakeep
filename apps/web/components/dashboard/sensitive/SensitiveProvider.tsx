@@ -1,11 +1,12 @@
 "use client";
 import { usePathname } from "next/navigation";
 import { createContext, useContext, useEffect, useState } from "react";
-import type {
-  SensitiveCategory,
-  SensitivityMode,
-} from "@karakeep/shared/sensitiveContent";
-import { shouldConcealSensitive } from "@karakeep/shared/sensitiveContent";
+import type { SensitivityMode } from "@karakeep/shared/sensitiveContent";
+import type { SensitiveBookmark } from "@karakeep/shared/sensitiveVisibility";
+import {
+  concealSensitiveBookmark,
+  sensitiveRevealKey,
+} from "@karakeep/shared/sensitiveVisibility";
 import { UserLocalSettingsCtx } from "@/lib/userLocalSettings/bookmarksLayout";
 import { updateSensitivityMode } from "@/lib/userLocalSettings/userLocalSettings";
 import { useTranslation } from "@/lib/i18n/client";
@@ -20,12 +21,6 @@ import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/sonner";
 
 const SESSION_KEY = "karakeep-sensitive-ack-v1";
-interface MarkedBookmark {
-  id: string;
-  sensitiveCategories?: SensitiveCategory[] | null;
-}
-const revealKey = (b: MarkedBookmark) =>
-  JSON.stringify([b.id, [...(b.sensitiveCategories ?? [])].sort()]);
 interface SensitiveContext {
   mode: SensitivityMode;
   pending: boolean;
@@ -34,8 +29,8 @@ interface SensitiveContext {
   setSectionOpen: (open: boolean) => void;
   requestAccess: () => void;
   setMode: (mode: SensitivityMode) => void;
-  conceal: (bookmark: MarkedBookmark) => boolean;
-  reveal: (bookmark: MarkedBookmark) => void;
+  conceal: (bookmark: SensitiveBookmark) => boolean;
+  reveal: (bookmark: SensitiveBookmark) => void;
 }
 const Context = createContext<SensitiveContext | null>(null);
 export function useSensitiveContent() {
@@ -102,10 +97,12 @@ export function SensitiveProvider({ children }: { children: React.ReactNode }) {
         requestAccess: () => setConfirmation("section"),
         conceal: (b) =>
           !sectionAllowsPreview &&
-          !revealed.has(revealKey(b)) &&
-          shouldConcealSensitive(b.sensitiveCategories, effectiveMode),
+          !revealed.has(sensitiveRevealKey(b)) &&
+          concealSensitiveBookmark(b, effectiveMode),
         reveal: (b) =>
-          setRevealed((previous) => new Set(previous).add(revealKey(b))),
+          setRevealed((previous) =>
+            new Set(previous).add(sensitiveRevealKey(b)),
+          ),
       }}
     >
       {children}

@@ -215,6 +215,9 @@
               "automatic": {
                 "type": "boolean"
               },
+              "localOnly": {
+                "type": "boolean"
+              },
               "localMode": {
                 "type": "string",
                 "enum": [
@@ -408,10 +411,16 @@
                 ],
                 "additionalProperties": false
               },
+              "localCheckFingerprint": {
+                "type": "string"
+              },
               "localRecoveries": {
                 "type": "integer",
                 "minimum": 0,
                 "maximum": 2
+              },
+              "localRecheckRequested": {
+                "type": "boolean"
               },
               "result": {
                 "type": "object",
@@ -1870,6 +1879,7 @@
                 "properties": {
                   "sensitiveCategories": {
                     "type": "array",
+                    "nullable": true,
                     "items": {
                       "type": "string",
                       "enum": [
@@ -2057,6 +2067,9 @@
                           "type": "boolean"
                         },
                         "automatic": {
+                          "type": "boolean"
+                        },
+                        "localOnly": {
                           "type": "boolean"
                         },
                         "localMode": {
@@ -2252,10 +2265,16 @@
                           ],
                           "additionalProperties": false
                         },
+                        "localCheckFingerprint": {
+                          "type": "string"
+                        },
                         "localRecoveries": {
                           "type": "integer",
                           "minimum": 0,
                           "maximum": 2
+                        },
+                        "localRecheckRequested": {
+                          "type": "boolean"
                         },
                         "result": {
                           "type": "object",
@@ -2636,6 +2655,9 @@
                         "automatic": {
                           "type": "boolean"
                         },
+                        "localOnly": {
+                          "type": "boolean"
+                        },
                         "localMode": {
                           "type": "string",
                           "enum": [
@@ -2829,10 +2851,16 @@
                           ],
                           "additionalProperties": false
                         },
+                        "localCheckFingerprint": {
+                          "type": "string"
+                        },
                         "localRecoveries": {
                           "type": "integer",
                           "minimum": 0,
                           "maximum": 2
+                        },
+                        "localRecheckRequested": {
+                          "type": "boolean"
                         },
                         "result": {
                           "type": "object",
@@ -3013,6 +3041,9 @@
                   },
                   "allowPreview": {
                     "type": "boolean"
+                  },
+                  "localOnly": {
+                    "type": "boolean"
                   }
                 }
               }
@@ -3119,6 +3150,9 @@
                           "type": "boolean"
                         },
                         "automatic": {
+                          "type": "boolean"
+                        },
+                        "localOnly": {
                           "type": "boolean"
                         },
                         "localMode": {
@@ -3314,10 +3348,16 @@
                           ],
                           "additionalProperties": false
                         },
+                        "localCheckFingerprint": {
+                          "type": "string"
+                        },
                         "localRecoveries": {
                           "type": "integer",
                           "minimum": 0,
                           "maximum": 2
+                        },
+                        "localRecheckRequested": {
+                          "type": "boolean"
                         },
                         "result": {
                           "type": "object",

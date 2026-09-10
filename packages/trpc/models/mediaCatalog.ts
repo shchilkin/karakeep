@@ -89,6 +89,9 @@ export function catalogSnapshot(
               imageAssetId: attached.find(
                 (a) => a.assetType === AssetTypes.LINK_BANNER_IMAGE,
               )?.id,
+              screenshotAssetId: attached.find(
+                (a) => a.assetType === AssetTypes.LINK_SCREENSHOT,
+              )?.id,
             }
           : bookmark.type === BookmarkTypes.ASSET && asset
             ? { ...asset, type: BookmarkTypes.ASSET }
@@ -118,7 +121,11 @@ export function catalogSnapshot(
   };
 }
 
-export function catalogFingerprint(input: CatalogInput, model: string) {
+export function catalogFingerprint(
+  input: CatalogInput,
+  model: string,
+  localOnly = false,
+) {
   return createHash("sha256")
     .update(
       JSON.stringify({
@@ -126,6 +133,7 @@ export function catalogFingerprint(input: CatalogInput, model: string) {
         provider: serverConfig.mediaAi.provider,
         model,
         input,
+        ...(localOnly ? { localOnly: true } : {}),
         ...(serverConfig.mediaAi.localMode !== "off"
           ? {
               local: {
@@ -148,10 +156,22 @@ export async function requestMediaCatalog(
     retry?: boolean;
     allowPreview?: boolean;
     automatic?: boolean;
+    localOnly?: boolean;
   } = {},
 ) {
   const config = serverConfig.mediaAi;
-  if (!config.enabled || (options.automatic && !config.autoNew)) return null;
+  const localOnly =
+    options.localOnly ?? (!!options.automatic && config.localAutoNew);
+  const automaticEnabled = localOnly ? config.localAutoNew : config.autoNew;
+  if (!config.enabled || (options.automatic && !automaticEnabled)) return null;
+  if (localOnly && config.localMode === "off") {
+    if (options.automatic) return null;
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Local analysis is disabled",
+    });
+  }
+  const allowPreview = options.allowPreview ?? localOnly;
   const state = db.transaction(
     (tx) => {
       if (
@@ -167,7 +187,7 @@ export async function requestMediaCatalog(
         tx,
         userId,
         bookmarkId,
-        options.allowPreview,
+        allowPreview,
       );
       if (!input) {
         if (options.automatic) return null;
@@ -178,14 +198,38 @@ export async function requestMediaCatalog(
       }
       if (
         options.automatic &&
+        !localOnly &&
         bookmark.type === BookmarkTypes.LINK &&
         !tags.includes("social-media-archived") &&
         !hasDownloadedVideo
       )
         return null;
       const previous = bookmark.mediaAi;
-      const fingerprint = catalogFingerprint(input, config.model);
-      if (catalogBusy(previous)) return null;
+      const fingerprint = catalogFingerprint(input, config.model, localOnly);
+      const busy = catalogBusy(previous);
+      if (previous?.status === "pending" || busy) {
+        // Repair a lost enqueue only on an explicit, expired retry. Reusing the
+        // same key deduplicates an existing backlog and cannot reserve twice.
+        if (previous?.status === "pending" && !busy && options.retry) {
+          if (previous.fingerprint === fingerprint) return previous;
+        } else {
+          // An attachment event may overlap a manual/backfill or cloud run.
+          // Persist its free follow-up intent until that run reaches a terminal
+          // state, including across worker restarts.
+          if (
+            previous &&
+            options.automatic &&
+            localOnly &&
+            previous.fingerprint !== fingerprint
+          ) {
+            tx.update(bookmarks)
+              .set({ mediaAi: { ...previous, localRecheckRequested: true } })
+              .where(eq(bookmarks.id, bookmarkId))
+              .run();
+          }
+          return null;
+        }
+      }
       // A successful input is never charged again. Failed inputs require a manual retry.
       if (
         previous?.fingerprint === fingerprint &&
@@ -198,22 +242,24 @@ export async function requestMediaCatalog(
         model: config.model,
         status: "pending",
         updatedAt: new Date().toISOString(),
-        allowPreview: options.allowPreview ?? false,
+        allowPreview,
         automatic: options.automatic ?? false,
+        localOnly,
         localMode: config.localMode,
-        localCheck:
-          previous?.fingerprint === fingerprint &&
+        // Retain positive observations while replacement media is checked. The
+        // worker may reuse bytes only for the matching original fingerprint.
+        localCheck: previous?.localCheck,
+        localCheckFingerprint:
+          previous?.localCheck &&
+          previous.fingerprint === fingerprint &&
           [
             "failed",
             "refused",
             "timeout",
             "rate_limited",
             "quota_exceeded",
-          ].includes(previous.status) &&
-          previous.localCheck?.frames.every(
-            (frame) => frame.status === "complete",
-          )
-            ? previous.localCheck
+          ].includes(previous.status)
+            ? previous.localCheckFingerprint
             : undefined,
         result: previous?.result,
         suppressedTags: previous?.suppressedTags,
@@ -278,7 +324,9 @@ export function startMediaCatalog(db: DB, job: CatalogJob) {
           .run();
       if (
         state.automatic &&
-        (!serverConfig.mediaAi.autoNew ||
+        (!(state.localOnly
+          ? serverConfig.mediaAi.localAutoNew
+          : serverConfig.mediaAi.autoNew) ||
           tx
             .select({ enabled: users.autoTaggingEnabled })
             .from(users)
@@ -290,12 +338,17 @@ export function startMediaCatalog(db: DB, job: CatalogJob) {
       }
       if (
         !snapshot.input ||
-        catalogFingerprint(snapshot.input, state.model) !== state.fingerprint
+        catalogFingerprint(snapshot.input, state.model, state.localOnly) !==
+          state.fingerprint
       ) {
         update("stale");
         return null;
       }
       if ((state.localMode ?? "off") !== serverConfig.mediaAi.localMode) {
+        update("cancelled");
+        return null;
+      }
+      if (state.localOnly && state.localMode === "off") {
         update("cancelled");
         return null;
       }
@@ -352,13 +405,18 @@ export function continueMediaCatalog(
         state.status !== "checking_local"
       )
         return false;
-      const update = (status: MediaCatalogState["status"]) =>
+      const update = (
+        status: MediaCatalogState["status"],
+        acceptObservation = true,
+      ) =>
         tx
           .update(bookmarks)
           .set({
             mediaAi: {
               ...state,
-              localCheck,
+              ...(acceptObservation
+                ? { localCheck, localCheckFingerprint: state.fingerprint }
+                : {}),
               status,
               updatedAt: new Date().toISOString(),
             },
@@ -367,9 +425,10 @@ export function continueMediaCatalog(
           .run();
       if (
         !snapshot.input ||
-        catalogFingerprint(snapshot.input, state.model) !== state.fingerprint
+        catalogFingerprint(snapshot.input, state.model, state.localOnly) !==
+          state.fingerprint
       ) {
-        update("stale");
+        update("stale", false);
         return false;
       }
       const expected =
@@ -378,24 +437,26 @@ export function continueMediaCatalog(
           ? 3
           : Math.min(3, snapshot.input.assets.length);
       if (!expected || localCheck.frames.length !== expected) {
-        update("local_failed");
+        update("local_failed", false);
         return false;
       }
       if (
         !serverConfig.mediaAi.enabled ||
         state.localMode !== serverConfig.mediaAi.localMode ||
         (state.automatic &&
-          (!serverConfig.mediaAi.autoNew ||
+          (!(state.localOnly
+            ? serverConfig.mediaAi.localAutoNew
+            : serverConfig.mediaAi.autoNew) ||
             tx
               .select({ enabled: users.autoTaggingEnabled })
               .from(users)
               .where(eq(users.id, job.userId))
               .get()?.enabled === false))
       ) {
-        update("cancelled");
+        update("cancelled", false);
         return false;
       }
-      if (state.localMode === "review") {
+      if (state.localOnly || state.localMode === "review") {
         update("local_review");
         return false;
       }
@@ -445,10 +506,75 @@ export function continueMediaCatalog(
   );
 }
 
+/** Reconcile attachment events after any job, without replaying cloud work. */
+export async function reconcileLocalMediaCatalog(db: DB, job: CatalogJob) {
+  const active = (state: MediaCatalogState) =>
+    ["pending", "checking_local", "processing"].includes(state.status);
+  const state = db
+    .select({ mediaAi: bookmarks.mediaAi })
+    .from(bookmarks)
+    .where(
+      and(eq(bookmarks.id, job.bookmarkId), eq(bookmarks.userId, job.userId)),
+    )
+    .get()?.mediaAi;
+  if (
+    !state ||
+    state.runId !== job.runId ||
+    active(state) ||
+    (!state.localOnly && !state.localRecheckRequested)
+  )
+    return;
+  await requestMediaCatalog(db, job.userId, job.bookmarkId, {
+    automatic: true,
+    localOnly: true,
+  });
+  // A deduplicated input or later opt-out consumes the intent as well. A failed
+  // enqueue keeps its durable recovery checkpoint instead of clearing it here.
+  db.transaction(
+    (tx) => {
+      const current = tx
+        .select()
+        .from(bookmarks)
+        .where(eq(bookmarks.id, job.bookmarkId))
+        .get()?.mediaAi;
+      if (
+        current?.runId === job.runId &&
+        current.localRecheckRequested &&
+        !active(current)
+      ) {
+        tx.update(bookmarks)
+          .set({ mediaAi: { ...current, localRecheckRequested: undefined } })
+          .where(eq(bookmarks.id, job.bookmarkId))
+          .run();
+      }
+    },
+    { behavior: "immediate" },
+  );
+}
+
 /** Recover only free local work. An uncertain cloud attempt is never replayed. */
 export async function recoverLocalMediaCatalog(db: DB, now = Date.now()) {
   if (!serverConfig.mediaAi.enabled || serverConfig.mediaAi.localMode === "off")
     return;
+  const followups = db
+    .select({
+      id: bookmarks.id,
+      userId: bookmarks.userId,
+      mediaAi: bookmarks.mediaAi,
+    })
+    .from(bookmarks)
+    .where(
+      sql`json_extract(${bookmarks.mediaAi}, '$.localRecheckRequested') = 1 AND json_extract(${bookmarks.mediaAi}, '$.status') NOT IN ('pending', 'checking_local', 'processing')`,
+    )
+    .limit(100)
+    .all();
+  for (const followup of followups) {
+    await reconcileLocalMediaCatalog(db, {
+      bookmarkId: followup.id,
+      userId: followup.userId,
+      runId: followup.mediaAi!.runId,
+    });
+  }
   const candidates = db
     .select({ id: bookmarks.id, userId: bookmarks.userId })
     .from(bookmarks)
@@ -578,7 +704,8 @@ export function finishMediaCatalog(
         );
         if (
           !fresh.input ||
-          catalogFingerprint(fresh.input, state.model) !== state.fingerprint
+          catalogFingerprint(fresh.input, state.model, state.localOnly) !==
+            state.fingerprint
         ) {
           status = "stale";
           applied = undefined;

@@ -19,6 +19,7 @@ import {
   startMediaCatalog,
   continueMediaCatalog,
   recoverLocalMediaCatalog,
+  reconcileLocalMediaCatalog,
 } from "@karakeep/trpc/models/mediaCatalog";
 import type { CatalogJob } from "@karakeep/trpc/models/mediaCatalog";
 import { RuleEngine } from "@karakeep/trpc/lib/ruleEngine";
@@ -125,12 +126,15 @@ export async function prepareCatalogImages(
 
 export async function runMediaCatalog(job: DequeuedJob<CatalogJob>) {
   const config = serverConfig.mediaAi;
-  if (!config.enabled || (!config.apiKey && config.localMode !== "review")) {
+  if (!config.enabled || (!config.apiKey && config.localMode === "off")) {
     finishMediaCatalog(db, job.data, "failed");
     return;
   }
   const started = startMediaCatalog(db, job.data);
-  if (!started) return;
+  if (!started) {
+    await reconcileLocalMediaCatalog(db, job.data).catch(() => undefined);
+    return;
+  }
   let attachedTagIds: string[] = [];
   let cloudStarted =
     !started.state.localMode || started.state.localMode === "off";
@@ -146,8 +150,9 @@ export async function runMediaCatalog(job: DequeuedJob<CatalogJob>) {
         return;
       }
       const local =
-        reusableLocalCheck(started.state.localCheck, images) ??
-        (await checkLocalMedia(images, job.abortSignal));
+        (started.state.localCheckFingerprint === started.state.fingerprint
+          ? reusableLocalCheck(started.state.localCheck, images)
+          : null) ?? (await checkLocalMedia(images, job.abortSignal));
       job.abortSignal.throwIfAborted();
       if (!continueMediaCatalog(db, job.data, local)) return;
       cloudStarted = true;
@@ -185,6 +190,9 @@ export async function runMediaCatalog(job: DequeuedJob<CatalogJob>) {
             ? error.kind
             : "failed",
     );
+  } finally {
+    // Includes manual/backfill jobs that overlapped an automatic attachment event.
+    await reconcileLocalMediaCatalog(db, job.data).catch(() => undefined);
   }
   // Downstream failures must never trigger another paid inference request.
   await Promise.allSettled([

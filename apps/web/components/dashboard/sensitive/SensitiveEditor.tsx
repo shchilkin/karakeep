@@ -6,6 +6,7 @@ import { useTRPC } from "@karakeep/shared-react/trpc";
 import { useUpdateBookmark } from "@karakeep/shared-react/hooks/bookmarks";
 import type { ZBookmark } from "@karakeep/shared/types/bookmarks";
 import { sensitiveCategories } from "@karakeep/shared/sensitiveContent";
+import { sensitiveAssessment } from "@karakeep/shared/sensitiveVisibility";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -30,6 +31,13 @@ function EditorForm({
   const [categories, setCategories] = useState<SensitiveCategory[]>(
     bookmark.sensitiveCategories ?? [],
   );
+  const [automatic, setAutomatic] = useState(
+    bookmark.sensitiveCategories == null,
+  );
+  const observation = sensitiveAssessment({
+    ...bookmark,
+    sensitiveCategories: null,
+  });
   const { mutate, isPending, error } = useUpdateBookmark({
     onSuccess: (updated) => {
       cache.setQueryData(
@@ -44,46 +52,66 @@ function EditorForm({
       <DialogTitle>{t("sensitive.edit")}</DialogTitle>
       <DialogDescription>{t("sensitive.edit_description")}</DialogDescription>
       <label className="flex items-center justify-between gap-4 font-medium">
-        {t("sensitive.mark")}
+        {t("sensitive.use_automatic")}
         <Switch
-          checked={categories.length > 0}
+          checked={automatic}
           disabled={isPending}
-          onCheckedChange={(on) => setCategories(on ? ["other"] : [])}
+          onCheckedChange={setAutomatic}
         />
       </label>
-      {categories.length > 0 && (
-        <fieldset
-          disabled={isPending}
-          className="grid max-h-[45dvh] gap-2 overflow-auto sm:grid-cols-2"
-        >
-          <legend className="sr-only">{t("sensitive.categories_label")}</legend>
-          {sensitiveCategories.map((category) => (
-            <label
-              key={category}
-              className="flex cursor-pointer items-center gap-2 rounded-lg border p-3 text-sm"
+      {observation.labels.length > 0 && (
+        <p className="text-sm text-muted-foreground">
+          {t("sensitive.detected")}:{" "}
+          {observation.labels.map((key) => t(key)).join(" · ")}
+        </p>
+      )}
+      {!automatic && (
+        <>
+          <label className="flex items-center justify-between gap-4 font-medium">
+            {t("sensitive.mark")}
+            <Switch
+              checked={categories.length > 0}
+              disabled={isPending}
+              onCheckedChange={(on) => setCategories(on ? ["other"] : [])}
+            />
+          </label>
+          {categories.length > 0 && (
+            <fieldset
+              disabled={isPending}
+              className="grid max-h-[45dvh] gap-2 overflow-auto sm:grid-cols-2"
             >
-              <input
-                type="checkbox"
-                checked={categories.includes(category)}
-                className="size-4 accent-primary"
-                onChange={(event) =>
-                  setCategories((previous) =>
-                    event.target.checked
-                      ? [
-                          ...previous.filter(
-                            (value) =>
-                              value !== "other" || category === "other",
-                          ),
-                          category,
-                        ]
-                      : previous.filter((value) => value !== category),
-                  )
-                }
-              />
-              {t(`sensitive.categories.${category}`)}
-            </label>
-          ))}
-        </fieldset>
+              <legend className="sr-only">
+                {t("sensitive.categories_label")}
+              </legend>
+              {sensitiveCategories.map((category) => (
+                <label
+                  key={category}
+                  className="flex cursor-pointer items-center gap-2 rounded-lg border p-3 text-sm"
+                >
+                  <input
+                    type="checkbox"
+                    checked={categories.includes(category)}
+                    className="size-4 accent-primary"
+                    onChange={(event) =>
+                      setCategories((previous) =>
+                        event.target.checked
+                          ? [
+                              ...previous.filter(
+                                (value) =>
+                                  value !== "other" || category === "other",
+                              ),
+                              category,
+                            ]
+                          : previous.filter((value) => value !== category),
+                      )
+                    }
+                  />
+                  {t(`sensitive.categories.${category}`)}
+                </label>
+              ))}
+            </fieldset>
+          )}
+        </>
       )}
       {error && (
         <p role="alert" className="text-sm text-destructive">
@@ -97,7 +125,10 @@ function EditorForm({
         <Button
           disabled={isPending}
           onClick={() =>
-            mutate({ bookmarkId: bookmark.id, sensitiveCategories: categories })
+            mutate({
+              bookmarkId: bookmark.id,
+              sensitiveCategories: automatic ? null : categories,
+            })
           }
         >
           {t(isPending ? "sensitive.saving" : "actions.save")}

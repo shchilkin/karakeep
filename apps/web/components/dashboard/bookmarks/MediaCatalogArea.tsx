@@ -116,6 +116,7 @@ export default function MediaCatalogArea({
               bookmarkId: bookmark.id,
               retry: !!state,
               allowPreview: input?.media.coverage === "preview_only",
+              localOnly: state?.localOnly,
             })
           }
         >

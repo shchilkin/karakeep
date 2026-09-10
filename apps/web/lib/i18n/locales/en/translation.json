@@ -1257,8 +1257,8 @@
       "all": "Show all"
     },
     "mode_help": {
-      "work": "Hide every marked category, including swimwear and suggestive imagery.",
-      "balanced": "Show swimwear and suggestive imagery. Hide nudity, explicit content and other sensitive categories.",
+      "work": "Hide every sensitive category and every item not manually reviewed. Sampled AI checks cannot confirm work suitability.",
+      "balanced": "Hide automatic detections and manually marked sensitive content. Manually marked swimwear and suggestive imagery remain visible. Unchecked items are visible.",
       "all": "Show every marked category in this browser."
     },
     "warning_title": "Show sensitive content?",
@@ -1267,9 +1267,9 @@
     "section_title": "Sensitive",
     "open_section": "Open Sensitive",
     "section_notice": "Sensitive section: marked previews are visible. Your feed mode still applies outside this section.",
-    "manual_only": "Only manually marked content is filtered. Automatic detection is not enabled yet.",
+    "manual_only": "Local detections affect previews. Your manual decision takes priority; AI checks cover sampled images only.",
     "edit": "Sensitive categories",
-    "edit_description": "Choose the categories yourself. This does not send the media for analysis. Unmarked content has not been verified as safe.",
+    "edit_description": "Use local detections, or choose a manual decision. Turning off the manual Sensitive switch explicitly allows this item in Work mode. No analysis is started here.",
     "mark": "Sensitive content",
     "categories_label": "Categories",
     "save_error": "Could not save. Please try again.",
@@ -1288,6 +1288,9 @@
       "hate_extremism": "Hate / extremism",
       "disturbing": "Disturbing",
       "other": "Other sensitive content"
-    }
+    },
+    "unreviewed": "Not reviewed for Work mode",
+    "use_automatic": "Use automatic detection",
+    "detected": "Local detection"
   }
 }
