@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { zLocalCheckMode, zLocalCheckResult } from "./mediaLocalCheck";
 
 import type { ZBookmark } from "./types/bookmarks";
 
@@ -26,10 +27,17 @@ export const zMediaCatalogState = z.object({
     "quota_exceeded",
     "stale",
     "cancelled",
+    "checking_local",
+    "local_review",
+    "local_only",
+    "local_failed",
   ]),
   updatedAt: z.string(),
   allowPreview: z.boolean(),
   automatic: z.boolean().optional(),
+  localMode: zLocalCheckMode.optional(),
+  localCheck: zLocalCheckResult.optional(),
+  localRecoveries: z.number().int().min(0).max(2).optional(),
   result: zMediaCatalogResult.optional(),
   suppressedTags: z.array(z.string()).optional(),
 });
@@ -38,8 +46,9 @@ export type MediaCatalogState = z.infer<typeof zMediaCatalogState>;
 export function catalogBusy(state: MediaCatalogState | null | undefined) {
   return (
     !!state &&
-    ["pending", "processing"].includes(state.status) &&
-    Date.now() - Date.parse(state.updatedAt) < 360_000
+    ["pending", "processing", "checking_local"].includes(state.status) &&
+    Date.now() - Date.parse(state.updatedAt) <
+      (state.localMode && state.localMode !== "off" ? 660_000 : 360_000)
   );
 }
 

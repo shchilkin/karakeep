@@ -1,4 +1,5 @@
 import { beforeEach, expect, test, vi } from "vitest";
+import { db } from "@karakeep/db";
 import { getAssetSize, readAsset } from "@karakeep/shared-server";
 import serverConfig from "@karakeep/shared/config";
 import { RuleEngine } from "@karakeep/trpc/lib/ruleEngine";
@@ -6,9 +7,16 @@ import {
   finishMediaCatalog,
   reindexMediaCatalog,
   startMediaCatalog,
+  continueMediaCatalog,
 } from "@karakeep/trpc/models/mediaCatalog";
 import { inferMediaCatalog } from "./mediaCatalogProvider";
 import { runMediaCatalog } from "./mediaCatalogWorker";
+import { checkLocalMedia } from "./mediaLocalProvider";
+
+vi.mock("./mediaLocalProvider", () => ({
+  checkLocalMedia: vi.fn(),
+  reusableLocalCheck: () => null,
+}));
 
 vi.mock("@karakeep/shared-server", async (original) => ({
   ...(await original<typeof import("@karakeep/shared-server")>()),
@@ -17,6 +25,7 @@ vi.mock("@karakeep/shared-server", async (original) => ({
 }));
 vi.mock("@karakeep/trpc/models/mediaCatalog", () => ({
   startMediaCatalog: vi.fn(),
+  continueMediaCatalog: vi.fn(),
   finishMediaCatalog: vi.fn(),
   reindexMediaCatalog: vi.fn(),
 }));
@@ -44,6 +53,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   Object.assign(serverConfig.mediaAi, {
     enabled: true,
+    localMode: "off",
     apiKey: "synthetic",
     provider: "xai",
   });
@@ -112,4 +122,17 @@ test("an unclaimed or cancelled job never prepares media or calls a provider", a
   await runMediaCatalog(job);
   expect(readAsset).not.toHaveBeenCalled();
   expect(inferMediaCatalog).not.toHaveBeenCalled();
+});
+
+test("a local service failure cannot reach cloud admission or inference", async () => {
+  serverConfig.mediaAi.localMode = "enforce";
+  const started = startMediaCatalog(db, job.data)!;
+  started.state.localMode = "enforce";
+  vi.mocked(startMediaCatalog).mockReturnValue(started);
+  vi.mocked(checkLocalMedia).mockRejectedValue(new Error("Unavailable"));
+  await runMediaCatalog(job);
+  expect(checkLocalMedia).toHaveBeenCalledOnce();
+  expect(continueMediaCatalog).not.toHaveBeenCalled();
+  expect(inferMediaCatalog).not.toHaveBeenCalled();
+  expect(vi.mocked(finishMediaCatalog).mock.calls[0][2]).toBe("local_failed");
 });

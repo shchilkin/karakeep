@@ -5,6 +5,8 @@ import { afterEach, expect, test, vi } from "vitest";
 import type { ZBookmark } from "@karakeep/shared/types/bookmarks";
 import { BookmarkTypes } from "@karakeep/shared/types/bookmarks";
 import SummarizeBookmarkArea from "./SummarizeBookmarkArea";
+import MediaCatalogArea from "./MediaCatalogArea";
+import { getBookmarkRefreshInterval } from "@karakeep/shared/utils/bookmarkUtils";
 
 const mocks = vi.hoisted(() => ({ summarize: vi.fn(), update: vi.fn() }));
 vi.mock("@/lib/clientConfig", () => ({
@@ -55,6 +57,7 @@ function article(overrides: Partial<ZBookmark> = {}): ZBookmark {
       type: BookmarkTypes.LINK,
       url: "https://example.test/article",
       imageAssetId: "preview",
+      crawlStatus: "success",
     },
     ...overrides,
   };
@@ -62,6 +65,54 @@ function article(overrides: Partial<ZBookmark> = {}): ZBookmark {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+});
+
+test("local checks keep polling and disable retries while running; test-mode completion stays visible", () => {
+  const bookmark = article({
+    mediaAi: {
+      runId: "local",
+      fingerprint: "pixels",
+      model: "grok-4.6",
+      status: "checking_local",
+      localMode: "review",
+      allowPreview: true,
+      updatedAt: new Date().toISOString(),
+    },
+  });
+  const { rerender } = render(
+    <MediaCatalogArea bookmark={bookmark} readOnly={false} />,
+  );
+  expect(screen.getByRole("status").textContent).toBe(
+    "media_ai.checking_local",
+  );
+  expect(
+    screen
+      .getByRole("button", { name: "media_ai.retry" })
+      .hasAttribute("disabled"),
+  ).toBe(true);
+  expect(getBookmarkRefreshInterval(bookmark)).toBe(2000);
+  bookmark.mediaAi!.status = "local_review";
+  rerender(<MediaCatalogArea bookmark={bookmark} readOnly={false} />);
+  expect(screen.getByRole("status").textContent).toBe("media_ai.local_review");
+  expect(getBookmarkRefreshInterval(bookmark)).toBe(false);
+});
+
+test("an interrupted local check continues polling for bounded recovery", () => {
+  const bookmark = article({
+    mediaAi: {
+      runId: "local",
+      fingerprint: "pixels",
+      model: "grok-4.6",
+      status: "local_failed",
+      localMode: "review",
+      allowPreview: true,
+      updatedAt: new Date(0).toISOString(),
+      localRecoveries: 1,
+    },
+  });
+  expect(getBookmarkRefreshInterval(bookmark)).toBe(10_000);
+  bookmark.mediaAi!.localRecoveries = 2;
+  expect(getBookmarkRefreshInterval(bookmark)).toBe(false);
 });
 
 test("articles with previews retain text summarization alongside explicit preview analysis", () => {

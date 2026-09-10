@@ -5,6 +5,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Sparkles } from "lucide-react";
 import { useTRPC } from "@karakeep/shared-react/trpc";
 import { catalogBusy, catalogInput } from "@karakeep/shared/mediaCatalog";
+import { localCheckCategoryKeys } from "@karakeep/shared/mediaLocalCheck";
 import type { ZBookmark } from "@karakeep/shared/types/bookmarks";
 
 export default function MediaCatalogArea({
@@ -32,7 +33,7 @@ export default function MediaCatalogArea({
   const input = catalogInput(bookmark, true);
   const interrupted =
     !!state &&
-    ["pending", "processing"].includes(state.status) &&
+    ["pending", "processing", "checking_local"].includes(state.status) &&
     !catalogBusy(state);
   const summary =
     (includeManualSummary ? bookmark.summary : null) ?? state?.result?.summary;
@@ -42,6 +43,9 @@ export default function MediaCatalogArea({
     !!input &&
     state?.status !== "success";
   const failureMessages = {
+    local_review: t("media_ai.local_review"),
+    local_only: t("media_ai.local_only"),
+    local_failed: t("media_ai.local_failed"),
     refused: t("media_ai.refused"),
     quota_exceeded: t("media_ai.quota"),
     timeout: t("media_ai.timeout"),
@@ -55,7 +59,11 @@ export default function MediaCatalogArea({
     : interrupted
       ? t("media_ai.interrupted")
       : busy
-        ? t("media_ai.processing")
+        ? t(
+            state?.status === "checking_local"
+              ? "media_ai.checking_local"
+              : "media_ai.processing",
+          )
         : state && state.status in failureMessages
           ? failureMessages[state.status as keyof typeof failureMessages]
           : null;
@@ -73,6 +81,23 @@ export default function MediaCatalogArea({
         <p className="whitespace-pre-line break-words text-sm leading-relaxed">
           {summary}
         </p>
+      )}
+      {state?.localCheck && (
+        <div className="space-y-1 text-xs text-muted-foreground">
+          <p>
+            {t("media_ai.local_scope", {
+              count: state.localCheck.frames.length,
+            })}
+          </p>
+          <p>
+            {localCheckCategoryKeys(state.localCheck)
+              .map((key) => t(key))
+              .join(", ")}
+          </p>
+          {state.localCheck.frames.some(
+            (frame) => frame.status === "unknown",
+          ) && <p>{t("media_ai.local_unknown")}</p>}
+        </div>
       )}
       <div
         role="status"

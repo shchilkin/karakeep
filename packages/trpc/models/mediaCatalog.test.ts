@@ -18,6 +18,7 @@ import {
   users,
 } from "@karakeep/db/schema";
 import serverConfig from "@karakeep/shared/config";
+import { MediaCatalogQueue } from "@karakeep/shared-server";
 import { BookmarkTypes } from "@karakeep/shared/types/bookmarks";
 import { getBookmarkTitle } from "@karakeep/shared/utils/bookmarkUtils";
 import { catalogInput } from "@karakeep/shared/mediaCatalog";
@@ -26,6 +27,8 @@ import {
   finishMediaCatalog,
   requestMediaCatalog,
   startMediaCatalog,
+  continueMediaCatalog,
+  recoverLocalMediaCatalog,
 } from "./mediaCatalog";
 import { getApiCaller } from "../testUtils";
 
@@ -69,6 +72,8 @@ beforeEach(() => {
     .run();
   Object.assign(serverConfig.mediaAi, {
     enabled: true,
+    localMode: "off",
+    apiKey: "synthetic",
     autoNew: true,
     model: "grok-4.6",
     dailyRequests: 20,
@@ -435,5 +440,216 @@ describe("media catalog lifecycle", () => {
     expect(
       catalogSnapshot(db, "u1", "b1").bookmark.mediaAi?.result,
     ).toBeUndefined();
+  });
+});
+
+import { zLocalCheckResult } from "@karakeep/shared/mediaLocalCheck";
+
+const localCheck = (categories: string[] = [], status = "complete") =>
+  zLocalCheckResult.parse({
+    scope: "outgoing_images_only" as const,
+    frames: [
+      {
+        model: "google/shieldgemma-2-4b-it" as const,
+        revision: "eaf60452b5fc41a911338a022e628b0c15283897" as const,
+        policy: "shieldgemma-native-v1" as const,
+        precision: "bf16" as const,
+        status,
+        categories,
+        scores:
+          status === "complete"
+            ? {
+                dangerous: categories.includes("dangerous") ? 0.9 : 0.01,
+                sexual: categories.includes("sexual") ? 0.9 : 0.01,
+                violence: categories.includes("violence") ? 0.9 : 0.01,
+              }
+            : null,
+        sha256: "a".repeat(64),
+      },
+    ],
+  });
+
+describe("local admission before cloud reservation", () => {
+  test.each([false, true])(
+    "runner-level failure preserves whether cloud was admitted: %s",
+    async (admitted) => {
+      serverConfig.mediaAi.localMode = "enforce";
+      const job = await queue();
+      startMediaCatalog(db, job);
+      if (admitted) continueMediaCatalog(db, job, localCheck());
+      finishMediaCatalog(db, job, "failed");
+      expect(catalogSnapshot(db, "u1", "b1").bookmark.mediaAi?.status).toBe(
+        admitted ? "failed" : "local_failed",
+      );
+      expect(db.select().from(mediaAiRequests).all()).toHaveLength(
+        admitted ? 1 : 0,
+      );
+    },
+  );
+
+  test("an initial enqueue failure leaves a recoverable local checkpoint", async () => {
+    serverConfig.mediaAi.localMode = "review";
+    vi.mocked(MediaCatalogQueue.enqueue).mockRejectedValueOnce(
+      new Error("queue offline"),
+    );
+    await expect(requestMediaCatalog(db, "u1", "b1")).rejects.toMatchObject({
+      code: "INTERNAL_SERVER_ERROR",
+    });
+    const state = catalogSnapshot(db, "u1", "b1").bookmark.mediaAi!;
+    expect(state.status).toBe("local_failed");
+    await recoverLocalMediaCatalog(db, Date.now() + 700_000);
+    const recovered = catalogSnapshot(db, "u1", "b1").bookmark.mediaAi!;
+    expect(recovered.status).toBe("pending");
+    expect(recovered.runId).not.toBe(state.runId);
+    expect(db.select().from(mediaAiRequests).all()).toHaveLength(0);
+  });
+
+  test("review runs without a cloud key and never consumes quota or applies manual categories", async () => {
+    Object.assign(serverConfig.mediaAi, {
+      localMode: "review",
+      apiKey: undefined,
+    });
+    const job = await queue();
+    expect(startMediaCatalog(db, job)).not.toBeNull();
+    expect(catalogSnapshot(db, "u1", "b1").bookmark.mediaAi?.status).toBe(
+      "checking_local",
+    );
+    expect(continueMediaCatalog(db, job, localCheck())).toBe(false);
+    const saved = catalogSnapshot(db, "u1", "b1").bookmark;
+    expect(saved.mediaAi?.status).toBe("local_review");
+    expect(saved.mediaAi?.localCheck?.frames).toHaveLength(1);
+    expect(saved.sensitiveCategories).toBeNull();
+    expect(db.select().from(mediaAiRequests).all()).toHaveLength(0);
+  });
+
+  test.each([["sexual"], ["dangerous"], ["violence"]])(
+    "marked %s never consumes cloud quota",
+    async (category) => {
+      serverConfig.mediaAi.localMode = "enforce";
+      const job = await queue();
+      startMediaCatalog(db, job);
+      expect(continueMediaCatalog(db, job, localCheck([category]))).toBe(false);
+      expect(catalogSnapshot(db, "u1", "b1").bookmark.mediaAi?.status).toBe(
+        "local_only",
+      );
+      expect(db.select().from(mediaAiRequests).all()).toHaveLength(0);
+    },
+  );
+
+  test("unknown and manual marks cannot be bypassed by a local clean result", async () => {
+    serverConfig.mediaAi.localMode = "enforce";
+    let job = await queue();
+    startMediaCatalog(db, job);
+    expect(continueMediaCatalog(db, job, localCheck([], "unknown"))).toBe(
+      false,
+    );
+    const retry = await requestMediaCatalog(db, "u1", "b1", { retry: true });
+    job = { ...job, runId: retry!.runId };
+    startMediaCatalog(db, job);
+    db.update(bookmarks)
+      .set({ sensitiveCategories: ["explicit_sexual"] })
+      .run();
+    expect(continueMediaCatalog(db, job, localCheck())).toBe(false);
+    expect(db.select().from(mediaAiRequests).all()).toHaveLength(0);
+  });
+
+  test("admitted frames reserve exactly once; saved checkpoint survives a cloud failure and manual retry", async () => {
+    serverConfig.mediaAi.localMode = "enforce";
+    const job = await queue();
+    startMediaCatalog(db, job);
+    expect(db.select().from(mediaAiRequests).all()).toHaveLength(0);
+    expect(continueMediaCatalog(db, job, localCheck())).toBe(true);
+    expect(continueMediaCatalog(db, job, localCheck())).toBe(false);
+    expect(db.select().from(mediaAiRequests).all()).toHaveLength(1);
+    finishMediaCatalog(db, job, "refused");
+    expect(finishMediaCatalog(db, job, "success", result)).toBe(false);
+    const retry = await requestMediaCatalog(db, "u1", "b1", { retry: true });
+    expect(retry?.localCheck?.frames[0].categories).toEqual([]);
+    expect(retry?.localCheck?.frames[0]).toHaveProperty("scores");
+  });
+
+  test("changing input or disabling auto analysis during the local stage prevents dispatch", async () => {
+    serverConfig.mediaAi.localMode = "enforce";
+    let job = await queue();
+    startMediaCatalog(db, job);
+    db.update(bookmarkLinks).set({ description: "New pixels context" }).run();
+    expect(continueMediaCatalog(db, job, localCheck())).toBe(false);
+    expect(catalogSnapshot(db, "u1", "b1").bookmark.mediaAi?.status).toBe(
+      "stale",
+    );
+    const retry = await requestMediaCatalog(db, "u1", "b1", { retry: true });
+    job = { ...job, runId: retry!.runId };
+    startMediaCatalog(db, job);
+    serverConfig.mediaAi.enabled = false;
+    expect(continueMediaCatalog(db, job, localCheck())).toBe(false);
+    expect(db.select().from(mediaAiRequests).all()).toHaveLength(0);
+  });
+
+  test("recovery rotates interrupted local runs and rejects their late completion, with a retry bound", async () => {
+    serverConfig.mediaAi.localMode = "enforce";
+    const old = await queue();
+    startMediaCatalog(db, old);
+    const expire = () => {
+      const current = catalogSnapshot(db, "u1", "b1").bookmark.mediaAi!;
+      db.update(bookmarks)
+        .set({ mediaAi: { ...current, updatedAt: new Date(0).toISOString() } })
+        .run();
+    };
+    expire();
+    await recoverLocalMediaCatalog(db);
+    expect(continueMediaCatalog(db, old, localCheck())).toBe(false);
+    expect(
+      catalogSnapshot(db, "u1", "b1").bookmark.mediaAi?.localRecoveries,
+    ).toBe(1);
+    const next = catalogSnapshot(db, "u1", "b1").bookmark.mediaAi!;
+    startMediaCatalog(db, { ...old, runId: next.runId });
+    expire();
+    await recoverLocalMediaCatalog(db);
+    const last = catalogSnapshot(db, "u1", "b1").bookmark.mediaAi!;
+    startMediaCatalog(db, { ...old, runId: last.runId });
+    expire();
+    await recoverLocalMediaCatalog(db);
+    expect(catalogSnapshot(db, "u1", "b1").bookmark.mediaAi?.status).toBe(
+      "local_failed",
+    );
+    expect(db.select().from(mediaAiRequests).all()).toHaveLength(0);
+  });
+
+  test("a long pending backlog retains its identity and does not consume local retries", async () => {
+    serverConfig.mediaAi.localMode = "review";
+    const job = await queue();
+    for (let scan = 0; scan < 4; scan++) {
+      const state = catalogSnapshot(db, "u1", "b1").bookmark.mediaAi!;
+      db.update(bookmarks)
+        .set({ mediaAi: { ...state, updatedAt: new Date(0).toISOString() } })
+        .run();
+      await recoverLocalMediaCatalog(db);
+      const waiting = catalogSnapshot(db, "u1", "b1").bookmark.mediaAi!;
+      expect(waiting).toMatchObject({ runId: job.runId, status: "pending" });
+      expect(waiting.localRecoveries ?? 0).toBe(0);
+    }
+    expect(startMediaCatalog(db, job)).not.toBeNull();
+    expect(continueMediaCatalog(db, job, localCheck())).toBe(false);
+    expect(catalogSnapshot(db, "u1", "b1").bookmark.mediaAi?.status).toBe(
+      "local_review",
+    );
+  });
+
+  test("recovery never repeats a paid cloud attempt after process loss", async () => {
+    serverConfig.mediaAi.localMode = "enforce";
+    const job = await queue();
+    startMediaCatalog(db, job);
+    continueMediaCatalog(db, job, localCheck());
+    const state = catalogSnapshot(db, "u1", "b1").bookmark.mediaAi!;
+    db.update(bookmarks)
+      .set({ mediaAi: { ...state, updatedAt: new Date(0).toISOString() } })
+      .run();
+    await recoverLocalMediaCatalog(db);
+    expect(catalogSnapshot(db, "u1", "b1").bookmark.mediaAi).toMatchObject({
+      status: "timeout",
+      runId: job.runId,
+    });
+    expect(db.select().from(mediaAiRequests).all()).toHaveLength(1);
+    expect(finishMediaCatalog(db, job, "success", result)).toBe(false);
   });
 });

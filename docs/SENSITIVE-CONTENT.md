@@ -1,6 +1,6 @@
 # Sensitive content display
 
-This first version uses **manual categories only**. There is no automatic classifier, archive backfill, or external moderation request. Unmarked items are visible; absence of a mark does not certify an item as safe.
+Display modes use **manual categories only**. The separate local classifier records observations for cloud admission; it does not apply display categories or backfill the archive. Unmarked items are visible; absence of a mark does not certify an item as safe.
 
 ## Display modes
 

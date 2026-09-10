@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { TRPCError } from "@trpc/server";
-import { and, count, eq } from "drizzle-orm";
+import { and, count, eq, sql } from "drizzle-orm";
 
 import type { DB, KarakeepDBTransaction } from "@karakeep/db";
 import {
@@ -33,6 +33,15 @@ import type {
 } from "@karakeep/shared/mediaCatalog";
 import { BookmarkTypes } from "@karakeep/shared/types/bookmarks";
 import { mapDBAssetTypeToUserType } from "../lib/attachments";
+
+import {
+  holdLocalMedia,
+  zCurrentLocalCheckResult,
+  LOCAL_CHECK_POLICY,
+  LOCAL_CHECK_REVISION,
+} from "@karakeep/shared/mediaLocalCheck";
+import type { LocalCheckResult } from "@karakeep/shared/mediaLocalCheck";
+import { shouldConcealSensitive } from "@karakeep/shared/sensitiveContent";
 
 type Connection = DB | KarakeepDBTransaction;
 export interface CatalogJob {
@@ -117,6 +126,15 @@ export function catalogFingerprint(input: CatalogInput, model: string) {
         provider: serverConfig.mediaAi.provider,
         model,
         input,
+        ...(serverConfig.mediaAi.localMode !== "off"
+          ? {
+              local: {
+                mode: serverConfig.mediaAi.localMode,
+                policy: LOCAL_CHECK_POLICY,
+                revision: LOCAL_CHECK_REVISION,
+              },
+            }
+          : {}),
       }),
     )
     .digest("hex");
@@ -182,6 +200,21 @@ export async function requestMediaCatalog(
         updatedAt: new Date().toISOString(),
         allowPreview: options.allowPreview ?? false,
         automatic: options.automatic ?? false,
+        localMode: config.localMode,
+        localCheck:
+          previous?.fingerprint === fingerprint &&
+          [
+            "failed",
+            "refused",
+            "timeout",
+            "rate_limited",
+            "quota_exceeded",
+          ].includes(previous.status) &&
+          previous.localCheck?.frames.every(
+            (frame) => frame.status === "complete",
+          )
+            ? previous.localCheck
+            : undefined,
         result: previous?.result,
         suppressedTags: previous?.suppressedTags,
       };
@@ -201,7 +234,11 @@ export async function requestMediaCatalog(
       idempotencyKey: state.runId,
     });
   } catch {
-    finishMediaCatalog(db, job, "failed");
+    finishMediaCatalog(
+      db,
+      job,
+      config.localMode === "off" ? "failed" : "local_failed",
+    );
     throw new TRPCError({
       code: "INTERNAL_SERVER_ERROR",
       message: "Could not queue media analysis",
@@ -258,6 +295,14 @@ export function startMediaCatalog(db: DB, job: CatalogJob) {
         update("stale");
         return null;
       }
+      if ((state.localMode ?? "off") !== serverConfig.mediaAi.localMode) {
+        update("cancelled");
+        return null;
+      }
+      if (state.localMode && state.localMode !== "off") {
+        update("checking_local");
+        return { input: snapshot.input, tags: snapshot.tags, state };
+      }
       const day = new Date().toISOString().slice(0, 10);
       const used = tx
         .select({ n: count() })
@@ -290,6 +335,199 @@ export function startMediaCatalog(db: DB, job: CatalogJob) {
   );
 }
 
+/** Persist the local checkpoint and reserve a paid attempt only after admission. */
+export function continueMediaCatalog(
+  db: DB,
+  job: CatalogJob,
+  unchecked: LocalCheckResult,
+) {
+  const localCheck = zCurrentLocalCheckResult.parse(unchecked);
+  return db.transaction(
+    (tx) => {
+      const snapshot = catalogSnapshot(tx, job.userId, job.bookmarkId, true);
+      const state = snapshot.bookmark.mediaAi;
+      if (
+        !state ||
+        state.runId !== job.runId ||
+        state.status !== "checking_local"
+      )
+        return false;
+      const update = (status: MediaCatalogState["status"]) =>
+        tx
+          .update(bookmarks)
+          .set({
+            mediaAi: {
+              ...state,
+              localCheck,
+              status,
+              updatedAt: new Date().toISOString(),
+            },
+          })
+          .where(eq(bookmarks.id, job.bookmarkId))
+          .run();
+      if (
+        !snapshot.input ||
+        catalogFingerprint(snapshot.input, state.model) !== state.fingerprint
+      ) {
+        update("stale");
+        return false;
+      }
+      const expected =
+        snapshot.input.assets.length === 1 &&
+        snapshot.input.media.kind === "video"
+          ? 3
+          : Math.min(3, snapshot.input.assets.length);
+      if (!expected || localCheck.frames.length !== expected) {
+        update("local_failed");
+        return false;
+      }
+      if (
+        !serverConfig.mediaAi.enabled ||
+        state.localMode !== serverConfig.mediaAi.localMode ||
+        (state.automatic &&
+          (!serverConfig.mediaAi.autoNew ||
+            tx
+              .select({ enabled: users.autoTaggingEnabled })
+              .from(users)
+              .where(eq(users.id, job.userId))
+              .get()?.enabled === false))
+      ) {
+        update("cancelled");
+        return false;
+      }
+      if (state.localMode === "review") {
+        update("local_review");
+        return false;
+      }
+      if (
+        holdLocalMedia(localCheck) ||
+        shouldConcealSensitive(
+          snapshot.bookmark.sensitiveCategories,
+          "balanced",
+        )
+      ) {
+        update("local_only");
+        return false;
+      }
+      if (!serverConfig.mediaAi.apiKey) {
+        update("failed");
+        return false;
+      }
+      const day = new Date().toISOString().slice(0, 10);
+      const used = tx
+        .select({ n: count() })
+        .from(mediaAiRequests)
+        .where(eq(mediaAiRequests.day, day))
+        .get()!.n;
+      if (used >= serverConfig.mediaAi.dailyRequests) {
+        update("quota_exceeded");
+        return null;
+      }
+      // Reservation is not refunded after a timeout or crash. No automatic replay.
+      const reserved = tx
+        .insert(mediaAiRequests)
+        .values({
+          id: job.runId,
+          bookmarkId: job.bookmarkId,
+          userId: job.userId,
+          day,
+        })
+        .onConflictDoNothing()
+        .run();
+      if (!reserved.changes) {
+        update("failed");
+        return null;
+      }
+      update("processing");
+      return true;
+    },
+    { behavior: "immediate" },
+  );
+}
+
+/** Recover only free local work. An uncertain cloud attempt is never replayed. */
+export async function recoverLocalMediaCatalog(db: DB, now = Date.now()) {
+  if (!serverConfig.mediaAi.enabled || serverConfig.mediaAi.localMode === "off")
+    return;
+  const candidates = db
+    .select({ id: bookmarks.id, userId: bookmarks.userId })
+    .from(bookmarks)
+    .where(
+      sql`json_extract(${bookmarks.mediaAi}, '$.localMode') IN ('review', 'enforce') AND json_extract(${bookmarks.mediaAi}, '$.status') IN ('pending', 'checking_local', 'processing', 'local_failed') AND (json_extract(${bookmarks.mediaAi}, '$.status') <> 'local_failed' OR coalesce(json_extract(${bookmarks.mediaAi}, '$.localRecoveries'), 0) < 2) AND json_extract(${bookmarks.mediaAi}, '$.updatedAt') <= ${new Date(now - 660_000).toISOString()}`,
+    )
+    .limit(100)
+    .all();
+  for (const candidate of candidates) {
+    const job = db.transaction(
+      (tx) => {
+        const bookmark = tx
+          .select()
+          .from(bookmarks)
+          .where(eq(bookmarks.id, candidate.id))
+          .get();
+        const state = bookmark?.mediaAi;
+        if (
+          !state ||
+          !["pending", "checking_local", "processing", "local_failed"].includes(
+            state.status,
+          ) ||
+          now - Date.parse(state.updatedAt) < 660_000
+        )
+          return null;
+        if (
+          state.status === "local_failed" &&
+          (state.localRecoveries ?? 0) >= 2
+        )
+          return null;
+        const paid = tx
+          .select({ id: mediaAiRequests.id })
+          .from(mediaAiRequests)
+          .where(eq(mediaAiRequests.id, state.runId))
+          .get();
+        const stop =
+          paid ||
+          state.status === "processing" ||
+          (state.status !== "pending" && (state.localRecoveries ?? 0) >= 2);
+        // A long backlog is not a failed attempt. Re-enqueue its existing key:
+        // the queue deduplicates a live job and repairs a lost enqueue.
+        const waiting = state.status === "pending" && !paid;
+        const next: MediaCatalogState = {
+          ...state,
+          runId: stop || waiting ? state.runId : randomUUID(),
+          status: stop
+            ? paid || state.status === "processing"
+              ? "timeout"
+              : "local_failed"
+            : "pending",
+          updatedAt: new Date(now).toISOString(),
+          localRecoveries:
+            stop || waiting
+              ? state.localRecoveries
+              : (state.localRecoveries ?? 0) + 1,
+        };
+        tx.update(bookmarks)
+          .set({ mediaAi: next })
+          .where(eq(bookmarks.id, candidate.id))
+          .run();
+        return stop
+          ? null
+          : {
+              bookmarkId: candidate.id,
+              userId: candidate.userId,
+              runId: next.runId,
+            };
+      },
+      { behavior: "immediate" },
+    );
+    // If enqueue fails, the persisted pending state is recovered on the next pass.
+    if (job)
+      await MediaCatalogQueue.enqueue(job, {
+        groupId: job.userId,
+        idempotencyKey: job.runId,
+      });
+  }
+}
+
 export function finishMediaCatalog(
   db: DB,
   job: CatalogJob,
@@ -309,9 +547,25 @@ export function finishMediaCatalog(
           ),
         )
         .get();
-      if (!current?.mediaAi || current.mediaAi.runId !== job.runId)
+      if (
+        !current?.mediaAi ||
+        current.mediaAi.runId !== job.runId ||
+        !["pending", "processing", "checking_local"].includes(
+          current.mediaAi.status,
+        )
+      )
         return false;
       const state = current.mediaAi;
+      // Runner-level aborts can beat the worker's catch handler. Preserve the
+      // free local recovery path, but never relabel an admitted cloud attempt.
+      if (
+        status === "failed" &&
+        !result &&
+        state.localMode &&
+        state.localMode !== "off" &&
+        state.status !== "processing"
+      )
+        status = "local_failed";
       const attachedTagIds: string[] = [];
       let applied = result;
       let suppressed = state.suppressedTags ?? [];
