@@ -90,7 +90,85 @@ or an in-memory list of running models.
    inference. A cloud request must never hold the local GPU lease.
 4. In a separately authorized model pilot, measure load/unload time, real VRAM
    reclamation, RAM pressure and cancellation behavior before choosing residency
-   limits. Test Jellyfin playback/coexistence separately. These results do not
-   establish GPU capacity, Linux/Docker behavior or production readiness.
+   limits. Test Jellyfin playback/coexistence separately. The initial macOS run
+   did not establish Linux/Docker behavior; the later checkpoint below covers
+   fake container lifecycle, still without GPU capacity or production evidence.
 
 Reference configuration: [v255 config example](https://github.com/mostlygeek/llama-swap/blob/v255/docs/config.example.yaml).
+
+## Linux container lifecycle checkpoint
+
+The owner accepted llama-swap plus the existing Karakeep queue on 2026-09-12.
+The same ten compatibility tests passed in a local Docker Linux amd64 container
+(Python 3.12.3), emulated on an arm64 Docker Desktop host. The ordinary child
+proxy SIGKILL orphan was reproduced there. These are CPU lifecycle results,
+not performance measurements or NVIDIA runtime evidence.
+
+`run_container_spike.py` checks the proposed **whole-container ownership**:
+llama-swap runs as PID 1, and both fake backends are children in that container's
+PID namespace. It verifies five behaviors:
+
+1. An independent container holding the shared FLOCK prevents model execution,
+   even though the proxy's `/health` returns 200.
+2. Dispatch succeeds after that owner exits and the lock is released.
+3. SIGKILL of the proxy at PID 1 stops the entire container and releases the lock.
+4. Restarting the container accepts the next model without replaying prior work.
+5. Graceful container stop also releases the lock.
+
+All five passed. The Linux kernel terminates other processes when their namespace
+init exits; see [pid_namespaces(7)](https://man7.org/linux/man-pages/man7/pid_namespaces.7.html).
+This result does not cover models started in sibling containers via `cmdStop`, a
+shell wrapper that stays alive after the manager exits, or a worker that restarts
+only the proxy inside a surviving container. Keep the tested lifecycle boundary.
+
+Run against an **existing** local image containing `/usr/bin/python3` and `ps`:
+
+```sh
+python3 tools/gpu-scheduling-spike/run_container_spike.py \
+  --context desktop-linux \
+  --image sha256:5b8f294aff9041b7191c34a4bab3ac270157a28774d4b0660e9743297b697e48 \
+  --binary /absolute/path/to/verified/linux-amd64/llama-swap \
+  --output /absolute/path/to/scratch/container-lifecycle.json
+```
+
+The image ID above was the already-installed Playwright v1.61.1-noble image;
+this script does not pull an image. It requires a pinned image ID, a local Unix
+Docker endpoint and the verified Linux amd64 v255 executable digest. The official
+archive SHA-256 was
+`84aa0df0cf3e302a8591e39de347f64c0c7dce1c3a948df68723a82e1fb4f1d4`;
+the extracted executable SHA-256 was
+`43e402d6c9f3e6001f5821c3cda35077676cec486a8dcf26d2b780ada01302eb`.
+
+Containers have no network, GPU devices, Docker socket or production data. Each
+is limited to one CPU and 384 MiB RAM with a read-only root. Only the script,
+contract helper files, binary and synthetic configuration are mounted read-only.
+The shared lock/events use a newly-created Docker-native volume, removed along
+with the two owned containers afterward. In this Docker Desktop environment a
+macOS bind-mounted directory did **not** demonstrate FLOCK exclusion, even between
+processes of one container. The native volume passed both same-container and
+cross-container probes. Do not treat Mac file sharing as proof of the production
+Linux host bind-mount semantics; verify the actual filesystem during the pilot.
+
+## Smallest application integration
+
+Existing `mediaLocalProvider.ts` and `mediaLocalCatalogProvider.ts` already accept
+complete configured URLs and validate pinned native results. For a future pilot,
+the existing settings can route to:
+
+```text
+MEDIA_AI_LOCAL_URL=http://<private-lifecycle-service>/upstream/shield/classify
+MEDIA_AI_LOCAL_CATALOG_URL=http://<private-lifecycle-service>/upstream/qwen/catalog
+```
+
+These are proposed addresses, not installed configuration. A second HTTP client
+or OpenAI-format conversion is unnecessary. Existing auth, redirect rejection,
+body limits and response validation should remain. The real servers still need
+the residency changes described above.
+
+The current providers collapse errors to `local_failed`; the hybrid worker may
+continue to Qwen after a failed classifier call. Consequently, wiring the URL
+alone does not implement `waiting_resource` or safe recovery. Application work
+must distinguish 429/resource waiting from uncertain execution, avoid counting
+waiting as a failure or advancing to another model, and apply results only after
+the shared revision/permit authority revalidates them. No endpoint or database
+mutation is implemented in this test-only checkpoint.
