@@ -62,7 +62,9 @@ export function getBookmarkRefreshInterval(
   if (
     state?.localMode &&
     state.localMode !== "off" &&
-    (["pending", "checking_local", "processing"].includes(state.status) ||
+    (["pending", "checking_local", "processing", "processing_local"].includes(
+      state.status,
+    ) ||
       (state.status === "local_failed" && (state.localRecoveries ?? 0) < 2))
   )
     return 10_000;

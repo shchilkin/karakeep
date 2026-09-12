@@ -1,5 +1,7 @@
 # Local check before cloud cataloging
 
+For the opt-in ShieldGemma → Qwen / cloud routing, see [Hybrid media catalog](https://github.com/shchilkin/karakeep/blob/main/deploy/local-catalog/README.md). Hybrid mode keeps Sensitive and unknown inputs local; the defaults described below remain unchanged until it is enabled.
+
 This branch builds on the manual Sensitive controls in PR #14. It is not enabled
 by default. No production environment or saved archive is changed by the code.
 

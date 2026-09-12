@@ -494,10 +494,13 @@ export async function crawlAndParseUrl(
       });
 
       // Delete the old assets if any
-      if (serverConfig.mediaAi.localAutoNew) {
+      if (
+        serverConfig.mediaAi.localAutoNew ||
+        (serverConfig.mediaAi.hybridEnabled && serverConfig.mediaAi.autoNew)
+      ) {
         await requestMediaCatalog(db, userId, bookmarkId, {
           automatic: true,
-          localOnly: true,
+          localOnly: serverConfig.mediaAi.localAutoNew,
         }).catch(() => undefined);
       }
       await Promise.all(

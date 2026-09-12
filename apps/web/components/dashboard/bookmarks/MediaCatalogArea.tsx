@@ -33,7 +33,9 @@ export default function MediaCatalogArea({
   const input = catalogInput(bookmark, true);
   const interrupted =
     !!state &&
-    ["pending", "processing", "checking_local"].includes(state.status) &&
+    ["pending", "processing", "checking_local", "processing_local"].includes(
+      state.status,
+    ) &&
     !catalogBusy(state);
   const summary =
     (includeManualSummary ? bookmark.summary : null) ?? state?.result?.summary;
@@ -62,7 +64,9 @@ export default function MediaCatalogArea({
         ? t(
             state?.status === "checking_local"
               ? "media_ai.checking_local"
-              : "media_ai.processing",
+              : state?.status === "processing_local"
+                ? "media_ai.processing_local"
+                : "media_ai.processing",
           )
         : state && state.status in failureMessages
           ? failureMessages[state.status as keyof typeof failureMessages]
@@ -82,6 +86,22 @@ export default function MediaCatalogArea({
           {summary}
         </p>
       )}
+      {state?.resultSource && state.result && !bookmark.summary && (
+        <p className="text-xs text-muted-foreground">
+          {state.resultSource.provider === "local"
+            ? t("media_ai.source_local")
+            : t("media_ai.source_cloud")}{" "}
+          · {state.resultSource.model}
+        </p>
+      )}
+      {state?.localCheckUnavailable &&
+        !state.localCheck?.frames.some(
+          (frame) => frame.status === "unknown",
+        ) && (
+          <p className="text-xs text-muted-foreground">
+            {t("media_ai.local_unknown")}
+          </p>
+        )}
       {state?.localCheck && (
         <div className="space-y-1 text-xs text-muted-foreground">
           <p>

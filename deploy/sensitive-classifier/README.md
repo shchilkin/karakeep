@@ -67,3 +67,7 @@ The service retains sequential requests, a 110-second hard process deadline and
 unloads after 120 idle seconds. Do not run another large model concurrently on the
 same 12 GiB GPU without a resource budget; this service does not coordinate other
 applications' GPU allocation.
+
+## Shared GPU with Qwen
+
+When `GPU_LOCK_FILE` is configured, the classifier acquires a cooperative file lock before loading, then unloads after **each request** before releasing the lock. The 120-second warm idle retention applies only without a lease. Use the shared bind mount and deployment procedure in [the hybrid catalog guide](../local-catalog/README.md). Deploying Qwen alongside an older classifier image does not provide mutual exclusion.

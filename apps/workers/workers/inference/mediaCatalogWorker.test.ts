@@ -1,3 +1,5 @@
+import { inferLocalCatalog } from "./mediaLocalCatalogProvider";
+vi.mock("./mediaLocalCatalogProvider", () => ({ inferLocalCatalog: vi.fn() }));
 import { beforeEach, expect, test, vi } from "vitest";
 import { db } from "@karakeep/db";
 import { getAssetSize, readAsset } from "@karakeep/shared-server";
@@ -54,6 +56,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   Object.assign(serverConfig.mediaAi, {
     enabled: true,
+    hybridEnabled: false,
     localMode: "off",
     apiKey: "synthetic",
     provider: "xai",
@@ -136,4 +139,68 @@ test("a local service failure cannot reach cloud admission or inference", async 
   expect(continueMediaCatalog).not.toHaveBeenCalled();
   expect(inferMediaCatalog).not.toHaveBeenCalled();
   expect(vi.mocked(finishMediaCatalog).mock.calls[0][2]).toBe("local_failed");
+});
+
+test.each(["held", "unavailable", "text"])(
+  "hybrid %s input invokes Qwen only",
+  async (kind) => {
+    serverConfig.mediaAi.hybridEnabled = true;
+    const started = startMediaCatalog(db, job.data)!;
+    started.state.hybrid = true;
+    started.state.localMode = "enforce";
+    if (kind === "text")
+      started.input = {
+        assets: [],
+        media: { kind: "text", coverage: "archived_text", asset_count: 0 },
+        source: { title: "", caption: "Synthetic", author: "" },
+      };
+    vi.mocked(startMediaCatalog).mockReturnValue(started);
+    vi.mocked(checkLocalMedia).mockRejectedValue(
+      new Error("synthetic failure"),
+    );
+    vi.mocked(continueMediaCatalog).mockReturnValue("local");
+    vi.mocked(inferLocalCatalog).mockResolvedValue({
+      title: "Title",
+      summary: "Summary",
+      tags: ["topic"],
+    });
+    await runMediaCatalog(job);
+    expect(inferLocalCatalog).toHaveBeenCalledOnce();
+    expect(inferMediaCatalog).not.toHaveBeenCalled();
+  },
+);
+
+test("Qwen timeout or malformed output never falls back to Grok", async () => {
+  const started = startMediaCatalog(db, job.data)!;
+  started.state.hybrid = true;
+  started.state.localMode = "enforce";
+  vi.mocked(startMediaCatalog).mockReturnValue(started);
+  vi.mocked(continueMediaCatalog).mockReturnValue("local");
+  vi.mocked(inferLocalCatalog).mockRejectedValue(
+    new Error("synthetic failure"),
+  );
+  await runMediaCatalog(job);
+  expect(inferMediaCatalog).not.toHaveBeenCalled();
+  expect(vi.mocked(finishMediaCatalog).mock.calls[0][2]).toBe("local_failed");
+});
+
+test("hybrid cloud payload contains checked bytes but no source text, IDs or old tags", async () => {
+  const started = startMediaCatalog(db, job.data)!;
+  started.state.hybrid = true;
+  started.state.localMode = "enforce";
+  started.input.source = {
+    title: "PRIVATE TITLE",
+    caption: "PRIVATE CAPTION",
+    author: "PRIVATE AUTHOR",
+  };
+  started.tags = ["PRIVATE TAG"];
+  vi.mocked(startMediaCatalog).mockReturnValue(started);
+  vi.mocked(continueMediaCatalog).mockReturnValue(true);
+  await runMediaCatalog(job);
+  const body = JSON.stringify(
+    vi.mocked(inferMediaCatalog).mock.calls[0][0].body,
+  );
+  expect(body).not.toContain("PRIVATE");
+  expect(body).toContain("data:image/jpeg;base64,");
+  expect(inferLocalCatalog).not.toHaveBeenCalled();
 });

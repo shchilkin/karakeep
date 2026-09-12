@@ -1,3 +1,4 @@
+import { inferLocalCatalog } from "./mediaLocalCatalogProvider";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -144,32 +145,51 @@ export async function runMediaCatalog(job: DequeuedJob<CatalogJob>) {
       started.input,
       job.abortSignal,
     );
+    let localRoute = false;
     if (started.state.localMode && started.state.localMode !== "off") {
-      if (!images.length) {
+      if (!images.length && !started.state.hybrid) {
         finishMediaCatalog(db, job.data, "local_only");
         return;
       }
-      const local =
-        (started.state.localCheckFingerprint === started.state.fingerprint
-          ? reusableLocalCheck(started.state.localCheck, images)
-          : null) ?? (await checkLocalMedia(images, job.abortSignal));
+      let local = null;
+      try {
+        if (images.length)
+          local =
+            (started.state.localCheckFingerprint === started.state.fingerprint
+              ? reusableLocalCheck(started.state.localCheck, images)
+              : null) ?? (await checkLocalMedia(images, job.abortSignal));
+      } catch (error) {
+        if (!started.state.hybrid) throw error;
+        // Missing/invalid admission is local-only, never an implicit pass.
+      }
       job.abortSignal.throwIfAborted();
-      if (!continueMediaCatalog(db, job.data, local)) return;
-      cloudStarted = true;
+      const route = continueMediaCatalog(db, job.data, local);
+      if (!route) return;
+      localRoute = route === "local";
+      cloudStarted = !localRoute;
     }
     job.abortSignal.throwIfAborted();
-    if (!config.apiKey) throw new CatalogFailure("failed");
-    const result = await inferMediaCatalog({
-      provider: config.provider,
-      apiKey: config.apiKey,
-      signal: job.abortSignal,
-      body: catalogRequest(
-        started.state.model,
-        started.input,
-        images,
-        started.tags,
-      ),
-    });
+    if (!localRoute && !config.apiKey) throw new CatalogFailure("failed");
+    const result = localRoute
+      ? await inferLocalCatalog(started.input, images, job.abortSignal)
+      : await inferMediaCatalog({
+          provider: config.provider,
+          apiKey: config.apiKey!,
+          signal: job.abortSignal,
+          body: catalogRequest(
+            started.state.model,
+            // ShieldGemma admits images only. Do not upload unexamined captions,
+            // author names or existing/locally generated tags alongside them.
+            started.state.hybrid
+              ? {
+                  ...started.input,
+                  source: { title: "", caption: "", author: "" },
+                }
+              : started.input,
+            images,
+            started.state.hybrid ? [] : started.tags,
+          ),
+        });
     const applied = finishMediaCatalog(
       db,
       job.data,
@@ -225,7 +245,11 @@ export class MediaCatalogWorker {
       {
         concurrency: 1,
         pollIntervalMs: 1000,
-        timeoutSecs: serverConfig.mediaAi.localMode === "off" ? 300 : 600,
+        timeoutSecs: serverConfig.mediaAi.hybridEnabled
+          ? 900
+          : serverConfig.mediaAi.localMode === "off"
+            ? 300
+            : 600,
       },
     );
     let timer: ReturnType<typeof setInterval> | undefined;

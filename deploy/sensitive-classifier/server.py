@@ -12,6 +12,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 from shieldgemma import MODEL, REVISION, POLICIES, POLICIES_SHA256, response, repair_output_head
+from gpu_lease import configured_lease
 MAX_BODY = 3 * 1024 * 1024
 os.environ.update(HF_HUB_OFFLINE='1', TRANSFORMERS_OFFLINE='1',
                   HF_HUB_DISABLE_TELEMETRY='1', TOKENIZERS_PARALLELISM='false')
@@ -91,6 +92,9 @@ class Server(HTTPServer):
     # One model invocation at a time, bounded TCP backlog and body read deadline.
     request_queue_size = 2
 
+    def handle_error(self, *_):
+        pass  # A disconnected client must not print request/traceback data.
+
     def service_actions(self):
         classifier = self.classifier
         if classifier.model is not None and time.monotonic() - classifier.last_used > 120:
@@ -126,6 +130,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         status = 200
         unload = False
+        lease = None
         try:
             if self.path != '/classify' or self.headers.get('Transfer-Encoding'):
                 raise ValueError('invalid_request')
@@ -138,6 +143,7 @@ class Handler(BaseHTTPRequestHandler):
             # Hard upper bound includes loading. A wedged CUDA process is killed;
             # the app retains a retryable local failure, never dispatches cloud.
             signal.alarm(110)
+            lease = configured_lease()
             result = self.server.classifier.classify(payload['image'])
         except (ValueError, TypeError):
             status, result = 400, {'error': 'invalid_request'}
@@ -145,12 +151,16 @@ class Handler(BaseHTTPRequestHandler):
             status, result = 503, {'error': 'local_unavailable'}
             unload = True
         finally:
-            signal.alarm(0)
             self.close_connection = True
         # Tracebacks can retain model/input tensors until the exception scope ends.
         # Release them before flushing CUDA and before a disconnected client writes.
-        if unload:
+        # Hybrid mode gives up residency after each request, including failures.
+        # The lease is held until CUDA cache and model tensors are released.
+        if unload or lease:
             self.server.classifier.unload()
+        if lease:
+            lease.close()
+        signal.alarm(0)
         self.send_json(status, result)
 
 

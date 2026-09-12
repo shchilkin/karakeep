@@ -1,5 +1,9 @@
 {
   "media_ai": {
+    "processing_local": "Analyzing locally with Qwen…",
+    "source_local": "Local analysis",
+    "source_cloud": "Cloud analysis",
+
     "native_categories": {
       "sexual": "Sexual content",
       "dangerous": "Dangerous activities",

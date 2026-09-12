@@ -192,6 +192,7 @@
                 "enum": [
                   "pending",
                   "processing",
+                  "processing_local",
                   "success",
                   "refused",
                   "failed",
@@ -217,6 +218,45 @@
               },
               "localOnly": {
                 "type": "boolean"
+              },
+              "hybrid": {
+                "type": "boolean"
+              },
+              "route": {
+                "type": "string",
+                "enum": [
+                  "local",
+                  "cloud"
+                ]
+              },
+              "localCheckUnavailable": {
+                "type": "boolean"
+              },
+              "resultSource": {
+                "type": "object",
+                "properties": {
+                  "provider": {
+                    "type": "string",
+                    "enum": [
+                      "local",
+                      "xai",
+                      "openai"
+                    ]
+                  },
+                  "model": {
+                    "type": "string"
+                  },
+                  "revision": {
+                    "type": "string"
+                  },
+                  "recipe": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "provider",
+                  "model"
+                ]
               },
               "localMode": {
                 "type": "string",
@@ -2046,6 +2086,7 @@
                           "enum": [
                             "pending",
                             "processing",
+                            "processing_local",
                             "success",
                             "refused",
                             "failed",
@@ -2071,6 +2112,45 @@
                         },
                         "localOnly": {
                           "type": "boolean"
+                        },
+                        "hybrid": {
+                          "type": "boolean"
+                        },
+                        "route": {
+                          "type": "string",
+                          "enum": [
+                            "local",
+                            "cloud"
+                          ]
+                        },
+                        "localCheckUnavailable": {
+                          "type": "boolean"
+                        },
+                        "resultSource": {
+                          "type": "object",
+                          "properties": {
+                            "provider": {
+                              "type": "string",
+                              "enum": [
+                                "local",
+                                "xai",
+                                "openai"
+                              ]
+                            },
+                            "model": {
+                              "type": "string"
+                            },
+                            "revision": {
+                              "type": "string"
+                            },
+                            "recipe": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "provider",
+                            "model"
+                          ]
                         },
                         "localMode": {
                           "type": "string",
@@ -2632,6 +2712,7 @@
                           "enum": [
                             "pending",
                             "processing",
+                            "processing_local",
                             "success",
                             "refused",
                             "failed",
@@ -2657,6 +2738,45 @@
                         },
                         "localOnly": {
                           "type": "boolean"
+                        },
+                        "hybrid": {
+                          "type": "boolean"
+                        },
+                        "route": {
+                          "type": "string",
+                          "enum": [
+                            "local",
+                            "cloud"
+                          ]
+                        },
+                        "localCheckUnavailable": {
+                          "type": "boolean"
+                        },
+                        "resultSource": {
+                          "type": "object",
+                          "properties": {
+                            "provider": {
+                              "type": "string",
+                              "enum": [
+                                "local",
+                                "xai",
+                                "openai"
+                              ]
+                            },
+                            "model": {
+                              "type": "string"
+                            },
+                            "revision": {
+                              "type": "string"
+                            },
+                            "recipe": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "provider",
+                            "model"
+                          ]
                         },
                         "localMode": {
                           "type": "string",
@@ -3129,6 +3249,7 @@
                           "enum": [
                             "pending",
                             "processing",
+                            "processing_local",
                             "success",
                             "refused",
                             "failed",
@@ -3154,6 +3275,45 @@
                         },
                         "localOnly": {
                           "type": "boolean"
+                        },
+                        "hybrid": {
+                          "type": "boolean"
+                        },
+                        "route": {
+                          "type": "string",
+                          "enum": [
+                            "local",
+                            "cloud"
+                          ]
+                        },
+                        "localCheckUnavailable": {
+                          "type": "boolean"
+                        },
+                        "resultSource": {
+                          "type": "object",
+                          "properties": {
+                            "provider": {
+                              "type": "string",
+                              "enum": [
+                                "local",
+                                "xai",
+                                "openai"
+                              ]
+                            },
+                            "model": {
+                              "type": "string"
+                            },
+                            "revision": {
+                              "type": "string"
+                            },
+                            "recipe": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "provider",
+                            "model"
+                          ]
                         },
                         "localMode": {
                           "type": "string",

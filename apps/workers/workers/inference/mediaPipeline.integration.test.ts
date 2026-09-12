@@ -19,12 +19,46 @@ test("real SQLite queue, asset storage, FFmpeg and local HTTP gate precede the s
   });
   let localCalls = 0;
   let cloudCalls = 0;
+  let catalogCalls = 0;
+  let catalogFails = false;
+  let admissionFails = false;
+  let hybrid = false;
   let categories: string[] = [];
   const service = createServer(async (request, response) => {
     const chunks = [];
     for await (const chunk of request) chunks.push(chunk);
     const body = JSON.parse(Buffer.concat(chunks).toString());
     expect(request.headers.authorization).toBe("Bearer synthetic-token");
+    if (request.url === "/catalog") {
+      catalogCalls++;
+      expect(body.images).toHaveLength(1);
+      expect(Object.keys(body).sort()).toEqual(["images", "media", "source"]);
+      response.setHeader("Content-Type", "application/json");
+      response.statusCode = catalogFails ? 503 : 200;
+      response.end(
+        JSON.stringify(
+          catalogFails
+            ? { error: "synthetic" }
+            : {
+                model: "Qwen/Qwen3.5-9B",
+                revision: "c202236235762e1c871ad0ccb60c8ee5ba337b9a",
+                recipe: "qwen35-nf4-catalog-v1",
+                result: {
+                  title: "Локальный серый квадрат",
+                  summary: "Синтетическая локальная проверка.",
+                  tags: ["геометрия"],
+                },
+              },
+        ),
+      );
+      return;
+    }
+    if (admissionFails) {
+      response.statusCode = 503;
+      response.end();
+      return;
+    }
+
     expect(Object.keys(body)).toEqual(["image"]);
     expect(
       Buffer.from(body.image, "base64").subarray(0, 2).toString("hex"),
@@ -62,6 +96,10 @@ test("real SQLite queue, asset storage, FFmpeg and local HTTP gate precede the s
       if (url !== "https://api.x.ai/v1/responses")
         throw new Error("Unexpected outbound request blocked by test");
       cloudCalls++;
+      if (hybrid) {
+        expect(init?.body).not.toContain("PRIVATE SOURCE");
+        expect(init?.body).not.toContain("Локальный серый квадрат");
+      }
       return Response.json({
         status: "completed",
         output: [
@@ -240,6 +278,50 @@ test("real SQLite queue, asset storage, FFmpeg and local HTTP gate precede the s
     expect(afterBackfill?.runId).not.toBe(manual!.runId);
     expect([localCalls, cloudCalls]).toEqual([7, 1]);
     expect(db.select().from(mediaAiRequests).all()).toHaveLength(1);
+
+    // Hybrid uses the same durable queue, real FFmpeg and both HTTP transports.
+    // The model endpoints return synthetic results; cloud fetch is always stubbed.
+    hybrid = true;
+    Object.assign(config.mediaAi, {
+      hybridEnabled: true,
+      localAutoNew: false,
+      localCatalogUrl: `http://127.0.0.1:${address.port}/catalog`,
+      localCatalogToken: "synthetic-token",
+    });
+    const ledgerBefore = db.select().from(mediaAiRequests).all().length;
+    categories = ["sexual"];
+    const local = await run();
+    expect(local).toMatchObject({
+      status: "success",
+      resultSource: { provider: "local" },
+    });
+    expect(catalogCalls).toBe(1);
+    expect(cloudCalls).toBe(1);
+    catalogFails = true;
+    db.update(bookmarkLinks).set({ description: "PRIVATE SOURCE 1" }).run();
+    expect((await run())?.status).toBe("local_failed");
+    expect(catalogCalls).toBe(2);
+    expect(cloudCalls).toBe(1);
+    expect(db.select().from(mediaAiRequests).all()).toHaveLength(ledgerBefore);
+    catalogFails = false;
+    categories = [];
+    db.update(bookmarkLinks).set({ description: "PRIVATE SOURCE 2" }).run();
+    expect((await run())?.resultSource?.provider).toBe("xai");
+    expect(cloudCalls).toBe(2);
+    expect(catalogCalls).toBe(2);
+    admissionFails = true;
+    db.update(bookmarkLinks).set({ description: "PRIVATE SOURCE 3" }).run();
+    const unknown = await run();
+    expect(unknown).toMatchObject({
+      status: "success",
+      localCheckUnavailable: true,
+      resultSource: { provider: "local" },
+    });
+    expect(cloudCalls).toBe(2);
+    expect(catalogCalls).toBe(3);
+    expect(db.select().from(mediaAiRequests).all()).toHaveLength(
+      ledgerBefore + 1,
+    );
   } finally {
     vi.unstubAllGlobals();
     service.close();

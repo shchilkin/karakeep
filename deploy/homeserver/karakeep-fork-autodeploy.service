@@ -1,0 +1,11 @@
+[Unit]
+Description=Deploy verified Karakeep main commits
+After=network-online.target
+
+[Service]
+Type=oneshot
+UMask=0077
+ExecStart=/usr/bin/python3 /srv/appdata/karakeep/autodeploy/poll.py
+TimeoutStartSec=90min
+MemoryMax=12G
+CPUQuota=300%
