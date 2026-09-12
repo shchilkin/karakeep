@@ -83,6 +83,9 @@ export default function AssetCard({
   bookmarkIndex?: number;
 }) {
   const { t } = useTranslation();
+  const importedPreview = bookmarkedAsset.importProcessing?.previewReady
+    ? bookmarkedAsset.importProcessing.previewAssetId
+    : null;
   return (
     <BookmarkLayoutAdaptingCard
       title={
@@ -101,7 +104,7 @@ export default function AssetCard({
       bookmarkIndex={bookmarkIndex}
       wrapTags={true}
       image={(layout, className) =>
-        bookmarkedAsset.processingPolicy === "deferred" ? (
+        bookmarkedAsset.processingPolicy === "deferred" && !importedPreview ? (
           <Link
             href={`/dashboard/preview/${bookmarkedAsset.id}`}
             className={cn(
@@ -116,15 +119,23 @@ export default function AssetCard({
             </span>
           </Link>
         ) : bookmarkedAsset.content.assetType === "image" &&
-          (layout === "masonry" || layout === "grid") ? (
+          (!!importedPreview || layout === "masonry" || layout === "grid") ? (
           <Link
             href={`/dashboard/preview/${bookmarkedAsset.id}`}
             className="block"
           >
             <BookmarkCardImage
               key={bookmarkedAsset.content.assetId}
-              src={getAssetThumbnailUrl(bookmarkedAsset.content.assetId)}
-              srcSet={getAssetThumbnailSrcSet(bookmarkedAsset.content.assetId)}
+              src={
+                importedPreview
+                  ? getAssetUrl(importedPreview)
+                  : getAssetThumbnailUrl(bookmarkedAsset.content.assetId)
+              }
+              srcSet={
+                importedPreview
+                  ? undefined
+                  : getAssetThumbnailSrcSet(bookmarkedAsset.content.assetId)
+              }
               alt={
                 bookmarkedAsset.title ?? bookmarkedAsset.content.fileName ?? ""
               }

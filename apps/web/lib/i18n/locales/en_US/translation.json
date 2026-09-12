@@ -1223,5 +1223,32 @@
     "deselect_all": "Deselect all",
     "show_help": "Show keyboard shortcuts",
     "focus_search_alt": "Focus search"
+  },
+  "import_processing": {
+    "paid_unconfirmed": "A cloud request started, but its result is unconfirmed. Resending is stopped to avoid charging twice.",
+    "title": "Imported item",
+    "preserved": "Your original file, title and source tags are preserved. Each step starts only when released.",
+    "request_failed": "Could not release this step. Refresh its status and check that processing is configured.",
+    "retry": "Retry this step",
+    "states": {
+      "held": "Not started",
+      "queued": "Queued",
+      "running": "Processing",
+      "waiting_ai": "Waiting for analysis",
+      "complete": "Ready",
+      "failed": "Step failed; original retained"
+    },
+    "stages": {
+      "preview": "Preview",
+      "search": "Search",
+      "local_check": "Sensitive check",
+      "catalog": "AI description"
+    },
+    "actions": {
+      "preview": "Create preview",
+      "search": "Add to search",
+      "local_check": "Check Sensitive locally",
+      "catalog": "Generate AI description"
+    }
   }
 }

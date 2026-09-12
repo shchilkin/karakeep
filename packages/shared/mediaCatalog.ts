@@ -39,6 +39,7 @@ export const zMediaCatalogState = z.object({
   allowPreview: z.boolean(),
   automatic: z.boolean().optional(),
   localOnly: z.boolean().optional(),
+  classificationOnly: z.boolean().optional(),
   hybrid: z.boolean().optional(),
   route: z.enum(["local", "cloud"]).optional(),
   localCheckUnavailable: z.boolean().optional(),

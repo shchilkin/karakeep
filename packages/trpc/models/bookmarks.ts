@@ -1,3 +1,4 @@
+import { importProcessingView } from "./importProcessing";
 import { assertBookmarkMutable } from "@karakeep/shared-server";
 import { createHash } from "node:crypto";
 
@@ -86,6 +87,7 @@ async function dummyDrizzleReturnType() {
       text: true,
       asset: true,
       assets: true,
+      importProcessing: true,
     },
   });
   if (!x) {
@@ -176,7 +178,15 @@ export class Bookmark extends BareBookmark {
     bookmark: BookmarkQueryReturnType,
     includeContent: boolean,
   ): Promise<ZBookmark> {
-    const { tagsOnBookmarks, link, text, asset, assets, ...rest } = bookmark;
+    const {
+      tagsOnBookmarks,
+      link,
+      text,
+      asset,
+      assets,
+      importProcessing,
+      ...rest
+    } = bookmark;
 
     let content: ZBookmarkContent = {
       type: BookmarkTypes.UNKNOWN,
@@ -259,9 +269,18 @@ export class Bookmark extends BareBookmark {
         id: a.id,
         assetType: mapDBAssetTypeToUserType(a.assetType),
         fileName: a.fileName,
-        width: a.width ?? undefined,
-        height: a.height ?? undefined,
+        width:
+          a.width ??
+          (a.id === asset?.assetId && importProcessing?.previewReady
+            ? (importProcessing.originalWidth ?? undefined)
+            : undefined),
+        height:
+          a.height ??
+          (a.id === asset?.assetId && importProcessing?.previewReady
+            ? (importProcessing.originalHeight ?? undefined)
+            : undefined),
       })),
+      importProcessing: importProcessingView(importProcessing),
       firstCreatedAt: bookmark.dbCreatedAt,
       ...rest,
     };
@@ -284,6 +303,7 @@ export class Bookmark extends BareBookmark {
         text: true,
         asset: true,
         assets: true,
+        importProcessing: true,
       },
     });
 
@@ -336,6 +356,7 @@ export class Bookmark extends BareBookmark {
           },
         },
         assets: true,
+        importProcessing: true,
       },
     });
 
@@ -830,7 +851,10 @@ export class Bookmark extends BareBookmark {
     const bookmark: ZBookmark = {
       ...this.bookmark,
       originalTitle: this.bookmark.title ?? null,
-      title: getBookmarkTitleOverride(this.bookmark),
+      title:
+        this.bookmark.processingPolicy === "deferred"
+          ? this.bookmark.title
+          : getBookmarkTitleOverride(this.bookmark),
       content:
         this.bookmark.content.type === BookmarkTypes.LINK && coverId
           ? { ...this.bookmark.content, imageAssetId: coverId }

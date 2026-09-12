@@ -1,3 +1,8 @@
+import { zReleaseImport } from "@karakeep/shared/types/importProcessing";
+import {
+  getImportProcessing,
+  releaseImportProcessing,
+} from "../models/importProcessing";
 import { z } from "zod";
 import { createScopedAuthedProcedure, router } from "..";
 import {
@@ -15,6 +20,14 @@ import {
 const read = createScopedAuthedProcedure("imports");
 const write = createScopedAuthedProcedure("imports");
 export const deferredImportRouter = router({
+  processing: read
+    .input(z.object({ id: z.string() }))
+    .query(({ ctx, input }) => getImportProcessing(ctx, input.id)),
+  release: write
+    .input(zReleaseImport.extend({ id: z.string() }))
+    .mutation(({ ctx, input }) =>
+      releaseImportProcessing(ctx, input.id, input),
+    ),
   capabilities: read.query(({ ctx }) => importCapabilities(ctx)),
   lookup: read
     .input(zImportReservation)

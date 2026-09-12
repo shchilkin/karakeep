@@ -8,7 +8,11 @@ import SummarizeBookmarkArea from "./SummarizeBookmarkArea";
 import MediaCatalogArea from "./MediaCatalogArea";
 import { getBookmarkRefreshInterval } from "@karakeep/shared/utils/bookmarkUtils";
 
-const mocks = vi.hoisted(() => ({ summarize: vi.fn(), update: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  summarize: vi.fn(),
+  update: vi.fn(),
+  release: vi.fn(),
+}));
 vi.mock("@/lib/clientConfig", () => ({
   useClientConfig: () => ({
     mediaAi: { enabled: true },
@@ -24,6 +28,13 @@ vi.mock("@karakeep/shared-react/hooks/bookmarks", () => ({
 }));
 vi.mock("@karakeep/shared-react/trpc", () => ({
   useTRPC: () => ({
+    deferredImport: {
+      processing: {
+        queryOptions: (_input: unknown, options: unknown) => options,
+      },
+      release: { mutationOptions: () => ({ isImportRelease: true }) },
+      pathKey: () => ["deferredImport"],
+    },
     bookmarks: {
       analyzeMedia: { mutationOptions: (options: unknown) => options },
       pathKey: () => ["bookmarks"],
@@ -31,7 +42,12 @@ vi.mock("@karakeep/shared-react/trpc", () => ({
   }),
 }));
 vi.mock("@tanstack/react-query", () => ({
-  useMutation: () => ({ mutate: vi.fn(), isPending: false, isError: false }),
+  useQuery: () => ({ data: undefined }),
+  useMutation: (options: { isImportRelease?: boolean }) => ({
+    mutate: options.isImportRelease ? mocks.release : vi.fn(),
+    isPending: false,
+    isError: false,
+  }),
   useQueryClient: () => ({ invalidateQueries: vi.fn() }),
 }));
 vi.mock("@/components/ui/markdown/markdown-readonly", () => ({
@@ -160,4 +176,66 @@ test("saved originals use the media workflow without the article summarizer", ()
     screen.queryByRole("button", { name: "actions.summarize_with_ai" }),
   ).toBeNull();
   expect(screen.getByRole("button", { name: "media_ai.analyze" })).toBeTruthy();
+});
+
+test("retained imports expose release progress and prevent resending an uncertain paid attempt", () => {
+  const base = article({
+    processingPolicy: "deferred",
+    importProcessing: {
+      sourceRevisionId: "retained-source",
+      stage: "preview",
+      state: "held",
+      generation: 0,
+      previewAssetId: null,
+      previewReady: false,
+      searchReady: false,
+      error: null,
+    },
+  });
+  const { rerender } = render(<SummarizeBookmarkArea bookmark={base} />);
+  fireEvent.click(
+    screen.getByRole("button", { name: "import_processing.actions.preview" }),
+  );
+  expect(mocks.release).toHaveBeenCalledWith(
+    expect.objectContaining({
+      id: "retained-source",
+      stage: "preview",
+      expectedGeneration: 0,
+      retry: false,
+    }),
+  );
+  rerender(
+    <SummarizeBookmarkArea
+      bookmark={{
+        ...base,
+        importProcessing: {
+          ...base.importProcessing!,
+          state: "waiting_ai",
+          stage: "catalog",
+          generation: 1,
+        },
+      }}
+    />,
+  );
+  expect(
+    screen.queryByRole("button", { name: "import_processing.retry" }),
+  ).toBeNull();
+  rerender(
+    <SummarizeBookmarkArea
+      bookmark={{
+        ...base,
+        importProcessing: {
+          ...base.importProcessing!,
+          state: "failed",
+          stage: "catalog",
+          generation: 1,
+          error: "analysis_paid_result_unconfirmed",
+        },
+      }}
+    />,
+  );
+  expect(screen.getByText("import_processing.paid_unconfirmed")).toBeTruthy();
+  expect(
+    screen.queryByRole("button", { name: "import_processing.retry" }),
+  ).toBeNull();
 });

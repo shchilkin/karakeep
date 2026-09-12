@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { rm } from "node:fs/promises";
 import { Hono } from "hono";
 import { beforeAll, afterAll, expect, test, vi } from "vitest";
@@ -17,6 +17,7 @@ const fixture = await vi.hoisted(async () => {
   return { dir };
 });
 import { db } from "@karakeep/db";
+import serverConfig from "@karakeep/shared/config";
 import {
   users,
   bookmarks,
@@ -172,7 +173,7 @@ test("real REST streaming upload, commit and authenticated full target+metadata 
   expect(await caps.json()).toMatchObject({
     contractVersion: "deferred-copy-v1",
     materialize: true,
-    stagePermits: false,
+    stagePermits: true,
   });
   const reserve = await api.request("/api/v1/import/reservations", {
     method: "POST",
@@ -279,4 +280,58 @@ test("real REST streaming upload, commit and authenticated full target+metadata 
       )
     ).status,
   ).toBe(401);
+  const processingUrl = `/api/v1/import/reservations/${item.operationId}/processing`;
+  const releaseUrl = `/api/v1/import/reservations/${item.operationId}/release`;
+  expect(await (await api.request(processingUrl)).json()).toMatchObject({
+    state: "held",
+    generation: 0,
+  });
+  expect((await other.request(processingUrl)).status).toBe(404);
+  const release = {
+    requestId: randomUUID(),
+    stage: "preview",
+    expectedGeneration: 0,
+  };
+  const request = (client: ReturnType<typeof app>, body = release) =>
+    client.request(releaseUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  expect((await request(other)).status).toBe(404);
+  expect((await request(app({ ...context, user: null }))).status).toBe(401);
+  expect(
+    (
+      await request(
+        app({
+          ...context,
+          auth: {
+            type: "apiKey",
+            keyId: "read-only",
+            scopes: ["imports:read"],
+          },
+        }),
+      )
+    ).status,
+  ).toBe(403);
+  const degraded = serverConfig.degradedMode;
+  Object.assign(serverConfig, { degradedMode: true });
+  try {
+    expect((await request(api)).status).toBe(403);
+  } finally {
+    Object.assign(serverConfig, { degradedMode: degraded });
+  }
+  const accepted = await request(api);
+  expect(accepted.status, await accepted.clone().text()).toBe(200);
+  const view = await accepted.json();
+  expect(view).toMatchObject({
+    state: "queued",
+    generation: 1,
+    stage: "preview",
+  });
+  expect(await (await request(api)).json()).toEqual(view);
+  expect(
+    (await request(api, { ...release, requestId: randomUUID() })).status,
+  ).toBe(409);
+  expect(fetch).not.toHaveBeenCalled();
 });

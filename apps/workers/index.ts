@@ -37,6 +37,11 @@ let feedRefreshingWorker:
   | undefined;
 
 const workerBuilders = {
+  importProcessing: async () => {
+    const { ImportProcessingWorker } =
+      await import("./workers/importProcessingWorker");
+    return ImportProcessingWorker.build();
+  },
   mediaCatalog: async () => {
     const { MediaCatalogWorker } =
       await import("./workers/inference/mediaCatalogWorker");

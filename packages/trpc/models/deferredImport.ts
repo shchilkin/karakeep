@@ -30,6 +30,7 @@ import {
   importReservations,
   importSourceAttachments,
   processingOutbox,
+  importProcessing,
   users,
 } from "@karakeep/db/schema";
 import serverConfig from "@karakeep/shared/config";
@@ -89,7 +90,9 @@ export function importCapabilities(ctx: AuthedContext) {
     maxFileBytes: MAX_IMPORT_FILE_BYTES,
     maxMetadataBytes: MAX_IMPORT_METADATA_BYTES,
     supportedMimeTypes: MIMES,
-    stagePermits: false,
+    stagePermits: guards,
+    processingStages: ["preview", "search", "local_check", "catalog"],
+    processingMimeTypes: MIMES.filter((mime) => mime.startsWith("image/")),
     historicalResolution: false,
   };
 }
@@ -931,6 +934,21 @@ export async function commitImport(
             size: stored.size,
           })
           .onConflictDoNothing()
+          .run();
+        tx.insert(importProcessing)
+          .values({
+            bookmarkId: row.bookmarkId,
+            sourceRevisionId: id,
+            userId: ctx.user.id,
+            requestId: randomUUID(),
+            stage: "preview",
+            state: "held",
+            generation: 0,
+            policyRevision: 1,
+            contentRevision: 1,
+            previewAssetId: randomUUID(),
+            updatedAt: Date.now(),
+          })
           .run();
         tx.insert(processingOutbox)
           .values({

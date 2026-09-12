@@ -83,6 +83,32 @@ class ClientTest(unittest.TestCase):
             run_pilot(manifest, self.source, self.target)
         self.assertEqual(self.fixture.calls[len(calls):], [("GET", BASE + "/capabilities", None)])
 
+    def test_released_mapping_accepts_only_additive_ai_tags(self):
+        receipt = {"bookmarkId": "released", "assets": [{"assetId": "original"}]}
+        payload = {"mapping": {"title": "Source title", "note": None, "sourceUrl": None,
+                              "savedAt": None, "tags": [" #Source "]}}
+        card = {"id": "released", "title": "Source title", "note": None,
+                "content": {"type": "asset", "assetId": "original", "sourceUrl": None},
+                "importProcessing": {"generation": 1},
+                "tags": [{"name": "Source", "attachedBy": "human"},
+                         {"name": "New AI tag", "attachedBy": "ai"}]}
+        with patch.object(self.target.http, "json", return_value=card):
+            self.target.verify_mapping(receipt, payload)
+        for mutation in [
+                lambda c: c["tags"].pop(0),
+                lambda c: c["tags"][0].update(name="Renamed source"),
+                lambda c: c["tags"][0].update(attachedBy="ai"),
+                lambda c: c["tags"][1].update(attachedBy="human"),
+                lambda c: c["tags"][1].pop("attachedBy"),
+                lambda c: c.update(title="AI title"),
+                lambda c: c["content"].update(assetId="preview"),
+                lambda c: c["importProcessing"].update(generation=0)]:
+            invalid = copy.deepcopy(card)
+            mutation(invalid)
+            with patch.object(self.target.http, "json", return_value=invalid):
+                with self.assertRaisesRegex(Failure, "target_mapping_mismatch"):
+                    self.target.verify_mapping(receipt, payload)
+
     def test_repeated_approved_pilot_never_expands_into_other_pending_sources(self):
         with self.journal() as manifest:
             approved = self.seed(manifest, 'approved-one')

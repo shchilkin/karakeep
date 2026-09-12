@@ -122,6 +122,7 @@ export default function SummarizeBookmarkArea({
   const clientConfig = useClientConfig();
   const hasSavedMedia = !!catalogInput(bookmark);
   const mediaArea =
+    bookmark.importProcessing ||
     bookmark.mediaAi ||
     (clientConfig.mediaAi?.enabled && catalogInput(bookmark, true)) ? (
       <MediaCatalogArea

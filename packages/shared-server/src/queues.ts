@@ -53,12 +53,12 @@ function createDeferredQueue<T>(name: string, options: QueueOptions): Queue<T> {
   return {
     opts: options,
     name: () => name,
-    shouldRun: async (payload: T) => automaticQueueAllowed(db, payload),
+    shouldRun: async (payload: T) => automaticQueueAllowed(db, payload, name),
     ensureInit: async () => {
       await ensureQueue();
     },
     async enqueue(payload: T, opts?: EnqueueOptions) {
-      if (!automaticQueueAllowed(db, payload)) return undefined;
+      if (!automaticQueueAllowed(db, payload, name)) return undefined;
       return (await ensureQueue()).enqueue(payload, opts);
     },
     async stats() {

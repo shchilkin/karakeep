@@ -61,7 +61,7 @@ export class SearchIndexingWorker {
   }
 }
 
-async function runIndex(
+export async function runIndex(
   searchClient: SearchIndexClient,
   bookmarkId: string,
   batch: boolean,
@@ -114,7 +114,10 @@ async function runIndex(
     ...(bookmark.text ? { content: bookmark.text.text } : {}),
     note: bookmark.note,
     summary: bookmark.summary ?? bookmark.mediaAi?.result?.summary,
-    title: getBookmarkTitleOverride(bookmark),
+    title:
+      bookmark.processingPolicy === "deferred"
+        ? bookmark.title
+        : getBookmarkTitleOverride(bookmark),
     createdAt: bookmark.createdAt.toISOString(),
     tags: bookmark.tagsOnBookmarks.map((t) => t.tag.name),
   };
