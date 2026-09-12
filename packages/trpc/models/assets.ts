@@ -114,10 +114,13 @@ export class Asset {
       .where(and(eq(assets.id, input.asset.id), eq(assets.userId, ctx.user.id)))
       .returning();
 
-    if (serverConfig.mediaAi.localAutoNew) {
+    if (
+      serverConfig.mediaAi.localAutoNew ||
+      (serverConfig.mediaAi.hybridEnabled && serverConfig.mediaAi.autoNew)
+    ) {
       await requestMediaCatalog(ctx.db, ctx.user.id, input.bookmarkId, {
         automatic: true,
-        localOnly: true,
+        localOnly: serverConfig.mediaAi.localAutoNew,
       }).catch(() => undefined);
     }
 
@@ -172,10 +175,13 @@ export class Asset {
       userId: ctx.user.id,
       assetId: input.oldAssetId,
     }).catch(() => ({}));
-    if (serverConfig.mediaAi.localAutoNew) {
+    if (
+      serverConfig.mediaAi.localAutoNew ||
+      (serverConfig.mediaAi.hybridEnabled && serverConfig.mediaAi.autoNew)
+    ) {
       await requestMediaCatalog(ctx.db, ctx.user.id, input.bookmarkId, {
         automatic: true,
-        localOnly: true,
+        localOnly: serverConfig.mediaAi.localAutoNew,
       }).catch(() => undefined);
     }
   }
@@ -215,10 +221,13 @@ export class Asset {
     await deleteAsset({ userId: ctx.user.id, assetId: input.assetId }).catch(
       () => ({}),
     );
-    if (serverConfig.mediaAi.localAutoNew) {
+    if (
+      serverConfig.mediaAi.localAutoNew ||
+      (serverConfig.mediaAi.hybridEnabled && serverConfig.mediaAi.autoNew)
+    ) {
       await requestMediaCatalog(ctx.db, ctx.user.id, input.bookmarkId, {
         automatic: true,
-        localOnly: true,
+        localOnly: serverConfig.mediaAi.localAutoNew,
       }).catch(() => undefined);
     }
   }

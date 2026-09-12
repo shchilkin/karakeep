@@ -91,6 +91,125 @@ async function queue() {
 }
 
 describe("media catalog lifecycle", () => {
+  test.each([false, true])(
+    "an API attachment after the archive tag queues with local-only intent %s",
+    async (localAutoNew) => {
+      Object.assign(serverConfig.mediaAi, {
+        hybridEnabled: true,
+        localMode: "enforce",
+        localAutoNew,
+      });
+      db.update(assets).set({ bookmarkId: null }).run();
+      const api = getApiCaller(db, "u1");
+      await api.bookmarks.updateTags({
+        bookmarkId: "b1",
+        attach: [{ tagName: "social-media-archived" }],
+        detach: [],
+      });
+      expect(catalogSnapshot(db, "u1", "b1").bookmark.mediaAi).toBeNull();
+      await api.assets.attachAsset({
+        bookmarkId: "b1",
+        asset: { id: "a1", assetType: "userUploaded" },
+      });
+      const state = catalogSnapshot(db, "u1", "b1").bookmark.mediaAi!;
+      expect(state).toMatchObject({
+        status: "pending",
+        automatic: true,
+        localOnly: localAutoNew,
+      });
+      expect(
+        startMediaCatalog(db, {
+          userId: "u1",
+          bookmarkId: "b1",
+          runId: state.runId,
+        }),
+      ).not.toBeNull();
+      expect(catalogSnapshot(db, "u1", "b1").bookmark.mediaAi?.status).toBe(
+        "checking_local",
+      );
+      expect(db.select().from(mediaAiRequests).all()).toHaveLength(0);
+    },
+  );
+  test.each(["attach", "replace", "detach"])(
+    "hybrid API %s while busy retains a local follow-up",
+    async (event) => {
+      Object.assign(serverConfig.mediaAi, {
+        hybridEnabled: true,
+        localMode: "enforce",
+      });
+      const api = getApiCaller(db, "u1");
+      db.insert(assets)
+        .values([
+          {
+            id: "a2",
+            userId: "u1",
+            bookmarkId: "b1",
+            assetType: AssetTypes.USER_UPLOADED,
+            fileName: "002.jpg",
+          },
+          {
+            id: "a3",
+            userId: "u1",
+            fileName: "003.jpg",
+            assetType: AssetTypes.UNKNOWN,
+          },
+        ])
+        .run();
+      await api.bookmarks.updateTags({
+        bookmarkId: "b1",
+        attach: [{ tagName: "social-media-archived" }],
+        detach: [],
+      });
+      const initial = catalogSnapshot(db, "u1", "b1").bookmark.mediaAi!;
+      startMediaCatalog(db, {
+        userId: "u1",
+        bookmarkId: "b1",
+        runId: initial.runId,
+      });
+      if (event === "attach")
+        await api.assets.attachAsset({
+          bookmarkId: "b1",
+          asset: { id: "a3", assetType: "userUploaded" },
+        });
+      else if (event === "replace")
+        await api.assets.replaceAsset({
+          bookmarkId: "b1",
+          oldAssetId: "a2",
+          newAssetId: "a3",
+        });
+      else await api.assets.detachAsset({ bookmarkId: "b1", assetId: "a2" });
+      expect(catalogSnapshot(db, "u1", "b1").bookmark.mediaAi).toMatchObject({
+        runId: initial.runId,
+        localRecheckRequested: true,
+      });
+      expect(db.select().from(mediaAiRequests).all()).toHaveLength(0);
+    },
+  );
+  test.each(["disabled", "opt-out"])(
+    "API attachments respect automatic analysis %s",
+    async (reason) => {
+      Object.assign(serverConfig.mediaAi, {
+        hybridEnabled: true,
+        localMode: "enforce",
+        autoNew: reason !== "disabled",
+      });
+      if (reason === "opt-out")
+        db.update(users).set({ autoTaggingEnabled: false }).run();
+      db.update(assets).set({ bookmarkId: null }).run();
+      const api = getApiCaller(db, "u1");
+      await api.bookmarks.updateTags({
+        bookmarkId: "b1",
+        attach: [{ tagName: "social-media-archived" }],
+        detach: [],
+      });
+      await api.assets.attachAsset({
+        bookmarkId: "b1",
+        asset: { id: "a1", assetType: "userUploaded" },
+      });
+      expect(catalogSnapshot(db, "u1", "b1").bookmark.mediaAi).toBeNull();
+      expect(db.select().from(mediaAiRequests).all()).toHaveLength(0);
+    },
+  );
   test("an explicit expired pending retry repairs the same cloud queue key without reserving twice", async () => {
     const job = await queue();
     const pending = catalogSnapshot(db, "u1", "b1").bookmark.mediaAi!;
