@@ -240,6 +240,13 @@ export const bookmarks = sqliteTable(
     userId: text("userId")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    processingPolicy: text("processingPolicy", {
+      enum: ["automatic", "deferred"],
+    })
+      .notNull()
+      .default("automatic"),
+    policyRevision: integer("policyRevision").notNull().default(1),
+    contentRevision: integer("contentRevision").notNull().default(1),
     taggingStatus: text("taggingStatus", {
       enum: ["pending", "failure", "success"],
     }).default("pending"),
@@ -388,6 +395,166 @@ export const assets = sqliteTable(
     index("assets_userId_idx").on(tb.userId),
   ],
 );
+
+// Hashes describe bytes read from storage at verifiedAt, never URL/title identity.
+export const assetContentHashes = sqliteTable(
+  "assetContentHashes",
+  {
+    assetId: text("assetId")
+      .primaryKey()
+      .references(() => assets.id, { onDelete: "cascade" }),
+    userId: text("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    sha256: text("sha256"),
+    size: integer("size").notNull(),
+    status: text("status", {
+      enum: ["verified", "unreadable", "too_large", "changed"],
+    }).notNull(),
+    verifiedAt: integer("verifiedAt", { mode: "timestamp_ms" }).notNull(),
+  },
+  (h) => [
+    index("assetContentHashes_owner_digest_idx").on(h.userId, h.sha256, h.size),
+  ],
+);
+
+export const duplicateGroups = sqliteTable(
+  "duplicateGroups",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => createId()),
+    userId: text("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    sha256: text("sha256").notNull(),
+    size: integer("size").notNull(),
+  },
+  (g) => [unique().on(g.userId, g.sha256, g.size)],
+);
+
+export const duplicateDecisions = sqliteTable("duplicateDecisions", {
+  groupId: text("groupId")
+    .primaryKey()
+    .references(() => duplicateGroups.id, { onDelete: "cascade" }),
+  evidenceVersion: text("evidenceVersion").notNull(),
+  decision: text("decision", {
+    enum: ["keep_both", "defer", "prefer_primary"],
+  }).notNull(),
+  primaryBookmarkId: text("primaryBookmarkId").references(() => bookmarks.id, {
+    onDelete: "set null",
+  }),
+  version: integer("version").notNull(),
+  updatedAt: integer("updatedAt", { mode: "timestamp_ms" }).notNull(),
+});
+
+// One CPU hash reader across server processes. The read deadline is shorter
+// than the lease; a fencing token prevents an expired reader publishing results.
+export const assetHashScanLease = sqliteTable("assetHashScanLease", {
+  id: integer("id").primaryKey(),
+  token: text("token").notNull(),
+  expiresAt: integer("expiresAt").notNull(),
+});
+
+// Immutable source identities and private staged receipts for the bounded copy pilot.
+export const importSourceObjects = sqliteTable(
+  "importSourceObjects",
+  {
+    id: text("id").primaryKey(),
+    userId: text("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull(),
+    accountScope: text("accountScope").notNull(),
+    objectId: text("objectId").notNull(),
+  },
+  (t) => [unique().on(t.userId, t.provider, t.accountScope, t.objectId)],
+);
+export const importSourceRevisions = sqliteTable(
+  "importSourceRevisions",
+  {
+    id: text("id").primaryKey(),
+    sourceObjectId: text("sourceObjectId")
+      .notNull()
+      .references(() => importSourceObjects.id, { onDelete: "cascade" }),
+    userId: text("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    revision: text("revision").notNull(),
+    payloadDigest: text("payloadDigest").notNull(),
+    payload: text("payload", { mode: "json" })
+      .$type<
+        import("@karakeep/shared/types/deferredImport").ImportReservationInput
+      >()
+      .notNull(),
+    metadataRaw: text("metadataRaw"),
+    state: text("state", {
+      enum: ["reserved", "verified", "hold", "committed"],
+    }).notNull(),
+    fencingToken: integer("fencingToken").notNull(),
+    leaseUntil: integer("leaseUntil").notNull(),
+    bookmarkId: text("bookmarkId").notNull(),
+    receipt: text("receipt", { mode: "json" }).$type<
+      import("@karakeep/shared/types/deferredImport").ImportReceipt
+    >(),
+    createdAt: createdAtMsField(),
+  },
+  (t) => [
+    unique().on(t.sourceObjectId, t.revision),
+    index("importSourceRevisions_owner_state_idx").on(t.userId, t.state),
+  ],
+);
+export const importReservations = sqliteTable(
+  "importReservations",
+  {
+    userId: text("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    idempotencyKey: text("idempotencyKey").notNull(),
+    payloadDigest: text("payloadDigest").notNull(),
+    sourceRevisionId: text("sourceRevisionId")
+      .notNull()
+      .references(() => importSourceRevisions.id, { onDelete: "cascade" }),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.idempotencyKey] })],
+);
+export const importSourceAttachments = sqliteTable(
+  "importSourceAttachments",
+  {
+    sourceRevisionId: text("sourceRevisionId")
+      .notNull()
+      .references(() => importSourceRevisions.id, { onDelete: "cascade" }),
+    slot: text("slot").notNull(),
+    assetId: text("assetId").notNull().unique(),
+    // Staged bytes remain outside asset-store enumeration. No automatic GC in v1.
+    stageName: text("stageName"),
+    state: text("state", { enum: ["pending", "verified", "hold"] }).notNull(),
+    detectedMime: text("detectedMime"),
+    storedSha256: text("storedSha256"),
+    storedSize: integer("storedSize"),
+    storageGeneration: text("storageGeneration"),
+    verifiedAt: integer("verifiedAt", { mode: "timestamp_ms" }),
+  },
+  (t) => [primaryKey({ columns: [t.sourceRevisionId, t.slot] })],
+);
+export const processingOutbox = sqliteTable("processingOutbox", {
+  id: text("id").primaryKey(),
+  userId: text("userId")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  sourceRevisionId: text("sourceRevisionId")
+    .notNull()
+    .references(() => importSourceRevisions.id, { onDelete: "cascade" })
+    .unique(),
+  bookmarkId: text("bookmarkId")
+    .notNull()
+    .references(() => bookmarks.id, { onDelete: "cascade" }),
+  kind: text("kind", { enum: ["import.committed"] }).notNull(),
+  state: text("state", { enum: ["held"] }).notNull(),
+  policyRevision: integer("policyRevision").notNull(),
+  contentRevision: integer("contentRevision").notNull(),
+  createdAt: createdAtMsField(),
+});
 
 export const highlights = sqliteTable(
   "highlights",

@@ -1,3 +1,4 @@
+import { isBookmarkDeferred } from "@karakeep/shared-server";
 import { createHash, randomUUID } from "node:crypto";
 import { TRPCError } from "@trpc/server";
 import { and, count, eq, sql } from "drizzle-orm";
@@ -181,6 +182,13 @@ export async function requestMediaCatalog(
     localOnly?: boolean;
   } = {},
 ) {
+  if (isBookmarkDeferred(db, bookmarkId)) {
+    if (options.automatic) return null;
+    throw new TRPCError({
+      code: "CONFLICT",
+      message: "Imported snapshot processing is deferred.",
+    });
+  }
   const config = serverConfig.mediaAi;
   const localOnly =
     options.localOnly ?? (!!options.automatic && config.localAutoNew);
@@ -330,6 +338,7 @@ export async function requestMediaCatalog(
 }
 
 export function startMediaCatalog(db: DB, job: CatalogJob) {
+  if (isBookmarkDeferred(db, job.bookmarkId)) return null;
   return db.transaction(
     (tx) => {
       const state = tx
@@ -432,6 +441,7 @@ export function continueMediaCatalog(
   job: CatalogJob,
   unchecked: LocalCheckResult | null,
 ) {
+  if (isBookmarkDeferred(db, job.bookmarkId)) return false;
   // Null represents unavailable/invalid admission or a text-only input. It can
   // select local cataloging, but can never authorize cloud or erase observations.
   const parsed = zCurrentLocalCheckResult.safeParse(unchecked);
@@ -572,6 +582,7 @@ export function continueMediaCatalog(
 
 /** Reconcile attachment events after any job, without replaying cloud work. */
 export async function reconcileLocalMediaCatalog(db: DB, job: CatalogJob) {
+  if (isBookmarkDeferred(db, job.bookmarkId)) return;
   const active = (state: MediaCatalogState) =>
     ["pending", "checking_local", "processing", "processing_local"].includes(
       state.status,
@@ -635,6 +646,7 @@ export async function recoverLocalMediaCatalog(db: DB, now = Date.now()) {
     .limit(100)
     .all();
   for (const followup of followups) {
+    if (isBookmarkDeferred(db, followup.id)) continue;
     await reconcileLocalMediaCatalog(db, {
       bookmarkId: followup.id,
       userId: followup.userId,
@@ -650,6 +662,7 @@ export async function recoverLocalMediaCatalog(db: DB, now = Date.now()) {
     .limit(100)
     .all();
   for (const candidate of candidates) {
+    if (isBookmarkDeferred(db, candidate.id)) continue;
     const job = db.transaction(
       (tx) => {
         const bookmark = tx
@@ -731,6 +744,7 @@ export function finishMediaCatalog(
   result?: MediaCatalogResult,
   initialTags: string[] = [],
 ) {
+  if (isBookmarkDeferred(db, job.bookmarkId)) return;
   return db.transaction(
     (tx) => {
       const current = tx

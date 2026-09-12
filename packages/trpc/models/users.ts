@@ -1,3 +1,4 @@
+import { importSourceRevisions } from "@karakeep/db/schema";
 import { randomBytes } from "crypto";
 import { TRPCError } from "@trpc/server";
 import { and, count, desc, eq, gte, lte, sql } from "drizzle-orm";
@@ -411,6 +412,19 @@ export class User {
 
   private static async deleteInternal(db: Context["db"], userId: string) {
     await User.assertNoActiveStripeSubscriptionForUser(db, userId);
+    if (
+      db
+        .select({ id: importSourceRevisions.id })
+        .from(importSourceRevisions)
+        .where(eq(importSourceRevisions.userId, userId))
+        .limit(1)
+        .get()
+    )
+      throw new TRPCError({
+        code: "CONFLICT",
+        message:
+          "Imported snapshots require retention-aware cleanup before account deletion.",
+      });
 
     const res = await db.delete(users).where(eq(users.id, userId));
 
@@ -418,7 +432,7 @@ export class User {
       throw new TRPCError({ code: "NOT_FOUND" });
     }
 
-    await deleteUserAssets({ userId: userId });
+    await deleteUserAssets({ userId: userId, database: db });
   }
 
   static async deleteAsAdmin(

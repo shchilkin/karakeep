@@ -196,6 +196,9 @@ export const zBookmarkTitleSourceSchema = z.enum([
 ]);
 
 export const zBareBookmarkSchema = z.object({
+  processingPolicy: z.enum(["automatic", "deferred"]).optional(),
+  policyRevision: z.number().int().optional(),
+  contentRevision: z.number().int().optional(),
   sensitiveCategories: zSensitiveCategories.nullish(),
   id: z.string(),
   // This is optional for backwards compatibility

@@ -73,6 +73,7 @@ export interface RunnerOptions<T> {
 
 export interface Queue<T> {
   opts: QueueOptions;
+  shouldRun?(payload: T): Promise<boolean>;
   ensureInit(): Promise<void>;
   name(): string;
   enqueue(payload: T, options?: EnqueueOptions): Promise<string | undefined>;
@@ -109,4 +110,42 @@ export async function getQueueClient(): Promise<QueueClient> {
     throw new Error("Failed to get queue client");
   }
   return client;
+}
+
+// The same durable gate runs at claim and callbacks, including old/replayed jobs.
+export type GuardedQueueResult<R> =
+  | { __karakeepPolicyGuard: 1; skipped: true }
+  | { __karakeepPolicyGuard: 1; skipped: false; value: R };
+export function guardQueueRunner<T, R>(
+  queue: Queue<T>,
+  funcs: RunnerFuncs<T, R>,
+): RunnerFuncs<T, GuardedQueueResult<R>> {
+  const allowed = async (payload: T) =>
+    !queue.shouldRun || (await queue.shouldRun(payload));
+  return {
+    run: async (job) =>
+      (await allowed(job.data))
+        ? {
+            __karakeepPolicyGuard: 1,
+            skipped: false,
+            value: await funcs.run(job),
+          }
+        : { __karakeepPolicyGuard: 1, skipped: true },
+    onComplete: async (job, result) => {
+      if (!(await allowed(job.data))) return;
+      if (
+        result &&
+        typeof result === "object" &&
+        result.__karakeepPolicyGuard === 1
+      ) {
+        if (!result.skipped) await funcs.onComplete?.(job, result.value);
+      } else {
+        // Restate may replay an onComplete journal from before the guard envelope.
+        await funcs.onComplete?.(job, result as R);
+      }
+    },
+    onError: async (job) => {
+      if (!job.data || (await allowed(job.data))) await funcs.onError?.(job);
+    },
+  };
 }

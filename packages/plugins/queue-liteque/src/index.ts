@@ -1,3 +1,5 @@
+import type { GuardedQueueResult } from "@karakeep/shared/queueing";
+import { guardQueueRunner } from "@karakeep/shared/queueing";
 import path from "node:path";
 import {
   buildDBClient,
@@ -105,10 +107,13 @@ class LitequeQueueClient implements QueueClient {
       throw new Error(`Queue ${name} not found`);
     }
 
+    const guarded = guardQueueRunner(queue, funcs);
     // Wrap the run function to translate QueueRetryAfterError to liteque's RetryAfterError
-    const wrappedRun = async (job: DequeuedJob<T>): Promise<R> => {
+    const wrappedRun = async (
+      job: DequeuedJob<T>,
+    ): Promise<GuardedQueueResult<R>> => {
       try {
-        return await funcs.run(job);
+        return await guarded.run(job);
       } catch (error) {
         if (error instanceof QueueRetryAfterError) {
           // Translate to liteque's native RetryAfterError
@@ -120,12 +125,12 @@ class LitequeQueueClient implements QueueClient {
       }
     };
 
-    const runner = new LQRunner<T, R>(
+    const runner = new LQRunner<T, GuardedQueueResult<R>>(
       wrapper._impl,
       {
         run: wrappedRun,
-        onComplete: funcs.onComplete,
-        onError: funcs.onError,
+        onComplete: guarded.onComplete,
+        onError: guarded.onError,
       },
       {
         pollIntervalMs: opts.pollIntervalMs ?? 1000,

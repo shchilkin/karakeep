@@ -1,3 +1,8 @@
+import type { DB } from "@karakeep/db";
+import { db } from "@karakeep/db";
+import { eq } from "drizzle-orm";
+import { importSourceRevisions } from "@karakeep/db/schema";
+import { isImportAssetRetained } from "./processingPolicy";
 import type { AssetMetadata, AssetStore } from "@karakeep/shared/assetdb";
 import { PluginManager, PluginType } from "@karakeep/shared/plugins";
 import type { QuotaApproved } from "@karakeep/shared/storageQuota";
@@ -52,6 +57,8 @@ export async function saveAsset({
     throw new Error("Asset size exceeds approved quota");
   }
 
+  if (isImportAssetRetained(db, assetId))
+    throw new Error("Imported original is retained and immutable");
   const store = await getAssetStore();
   return store.saveAsset({ userId, assetId, asset, metadata });
 }
@@ -73,6 +80,8 @@ export async function saveAssetFromFile({
     throw new Error("Quota approval is for a different user");
   }
 
+  if (isImportAssetRetained(db, assetId))
+    throw new Error("Imported original is retained and immutable");
   const store = await getAssetStore();
   return store.saveAssetFromFile({ userId, assetId, assetPath, metadata });
 }
@@ -145,11 +154,30 @@ export async function deleteAsset({
   userId: string;
   assetId: string;
 }) {
+  if (isImportAssetRetained(db, assetId))
+    throw new Error("Imported original is retained and immutable");
   const store = await getAssetStore();
   return store.deleteAsset({ userId, assetId });
 }
 
-export async function deleteUserAssets({ userId }: { userId: string }) {
+export async function deleteUserAssets({
+  userId,
+  database = db,
+}: {
+  userId: string;
+  database?: DB;
+}) {
+  if (
+    database
+      .select({ id: importSourceRevisions.id })
+      .from(importSourceRevisions)
+      .where(eq(importSourceRevisions.userId, userId))
+      .limit(1)
+      .get()
+  )
+    throw new Error(
+      "Imported snapshots require a retention-aware account cleanup",
+    );
   const store = await getAssetStore();
   return store.deleteUserAssets({ userId });
 }
