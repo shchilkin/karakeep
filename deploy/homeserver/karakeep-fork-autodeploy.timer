@@ -1,0 +1,11 @@
+[Unit]
+Description=Check Karakeep main after CI
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=5min
+RandomizedDelaySec=15s
+Unit=karakeep-fork-autodeploy.service
+
+[Install]
+WantedBy=timers.target

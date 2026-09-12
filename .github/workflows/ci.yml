@@ -64,6 +64,9 @@ jobs:
       - name: Setup
         uses: ./tooling/github/setup
 
+      - name: Deployment gate tests
+        run: python3 -m unittest discover -s deploy/homeserver -p 'test_*.py'
+
       - name: Local classifier contract tests
         run: python3 -m unittest discover -s deploy/sensitive-classifier -p 'test_*.py'
 

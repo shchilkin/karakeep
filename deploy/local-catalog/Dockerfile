@@ -10,4 +10,6 @@ RUN python -c "from pathlib import Path; import lmformatenforcer; p=Path(lmforma
 WORKDIR /app
 COPY local-catalog/ /app/
 COPY sensitive-classifier/gpu_lease.py /app/gpu_lease.py
+# Build contexts may be private (umask 077); the serving UID still needs code access.
+RUN chmod -R a+rX /app
 ENTRYPOINT ["python", "/app/server.py"]

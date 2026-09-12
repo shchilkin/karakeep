@@ -9,4 +9,6 @@ RUN pip install --no-cache-dir transformers==4.57.6 accelerate==1.12.0 \
     pillow==12.2.0 sentencepiece==0.2.1
 WORKDIR /app
 COPY . /app
+# Build contexts may be private (umask 077); the serving UID still needs code access.
+RUN chmod -R a+rX /app
 ENTRYPOINT ["python", "/app/server.py"]
