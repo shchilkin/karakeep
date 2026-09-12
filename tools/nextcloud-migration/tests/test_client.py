@@ -1,5 +1,7 @@
 import copy
+import contextlib
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -80,6 +82,77 @@ class ClientTest(unittest.TestCase):
         with self.journal() as manifest:
             run_pilot(manifest, self.source, self.target)
         self.assertEqual(self.fixture.calls[len(calls):], [("GET", BASE + "/capabilities", None)])
+
+    def test_repeated_approved_pilot_never_expands_into_other_pending_sources(self):
+        with self.journal() as manifest:
+            approved = self.seed(manifest, 'approved-one')
+            outside = self.seed(manifest, 'outside-approval')
+            run_pilot(manifest, self.source, self.target, item_keys=[approved])
+            run_pilot(manifest, self.source, self.target, item_keys=[approved])
+            self.assertEqual(manifest.get(approved)['phase'], 'verified')
+            self.assertEqual(manifest.get(outside)['phase'], 'discovered')
+            self.assertIsNone(manifest.get(outside)['stage'])
+            self.assertEqual(len(self.fixture.operations), 1)
+
+    def test_foundation_precondition_is_not_reported_as_source_change(self):
+        with self.journal() as manifest:
+            self.seed(manifest)
+            with patch.object(self.target.http, 'json', side_effect=Failure('remote_precondition_failed')):
+                with self.assertRaisesRegex(Failure, 'foundation_capabilities_unavailable'):
+                    run_pilot(manifest, self.source, self.target)
+            self.assertEqual(self.fixture.calls, [])
+
+    def cli_pilot_fixture(self, backup_state):
+        with self.journal() as manifest:
+            approved = self.seed(manifest, 'cli-approved')
+            outside = self.seed(manifest, 'cli-outside')
+            backup = {'state': backup_state, 'manifestDigest': manifest.snapshot_digest(),
+                      'offHost': False, 'temporaryBackup': {'state': 'local_other_disk_verified',
+                          'restoreMappingVerified': True, 'membersVerified': 20}}
+            backup_path, approval_path = self.root / 'cli-backup.json', self.root / 'cli-approval.json'
+            backup_path.write_bytes(canonical(backup))
+            approval_path.write_bytes(canonical({'phase': 'bounded-pilot', 'approvedByOwner': True,
+                'manifestDigest': manifest.snapshot_digest(), 'backupPlanDigest': digest(backup),
+                'targetOrigin': self.fixture.origin, 'maxItems': 1, 'maxBytes': len(PNG), 'itemKeys': [approved]}))
+            for path in [backup_path, approval_path]:
+                path.chmod(0o600)
+        config = {'stateDirectory': str(self.state), 'accountScope': 'synthetic',
+                  'source': {'origin': self.fixture.origin, 'user': 'fixture', 'root': 'MyMind'},
+                  'target': {'origin': self.fixture.origin}, 'backupPlanFile': str(backup_path)}
+        args = ['--config', 'synthetic-config', 'pilot', '--limit', '1', '--max-bytes', str(len(PNG)),
+                '--approval', str(approval_path)]
+        return config, args, approved, outside
+
+    def use_cli_namespace(self):
+        self.namespace = {'accountScope': 'synthetic', 'sourceOrigin': self.fixture.origin,
+                          'sourceUser': 'fixture', 'root': 'MyMind', 'targetOrigin': self.fixture.origin}
+
+    def test_cli_declared_backup_fails_before_connections_with_otherwise_valid_approval(self):
+        self.use_cli_namespace()
+        config, args, approved, outside = self.cli_pilot_fixture('destination_declared_needs_snapshot_restore')
+        with patch('migration_client.cli.load_config', return_value=config), \
+                patch('migration_client.cli.connections', side_effect=AssertionError('must not connect')) as connections, \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(main(args), 2)
+        connections.assert_not_called()
+        self.assertEqual(self.fixture.calls, [])
+        with self.journal() as manifest:
+            self.assertEqual(manifest.get(approved)['phase'], 'discovered')
+            self.assertEqual(manifest.get(outside)['phase'], 'discovered')
+
+    def test_cli_repeat_only_uses_exact_approved_keys(self):
+        self.use_cli_namespace()
+        config, args, approved, outside = self.cli_pilot_fixture('local_other_disk_verified')
+        with patch('migration_client.cli.load_config', return_value=config), \
+                patch('migration_client.cli.connections', return_value=(self.source, self.target)), \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(main(args), 0)
+            self.assertEqual(main(args), 0)
+        self.assertEqual(len(self.fixture.operations), 1)
+        with self.journal() as manifest:
+            self.assertEqual(manifest.get(approved)['phase'], 'verified')
+            self.assertEqual(manifest.get(outside)['phase'], 'discovered')
+            self.assertIsNone(manifest.get(outside)['stage'])
 
     def test_crash_resume_every_checkpoint_has_one_operation_and_occurrence(self):
         for phase in ["after_stage", "after_reserve", "after_upload", "after_commit", "after_readback"]:
@@ -204,6 +277,22 @@ class ClientTest(unittest.TestCase):
     def test_target_display_mapping_error_is_not_verified(self):
         self.fixture.corrupt_mapping = True
         self.assert_hold("target_mapping_mismatch")
+
+    def test_subsecond_source_timestamp_survives_exactly_in_metadata_and_payload(self):
+        with self.journal() as manifest:
+            doc = self.fixture.document('fractional-time')
+            doc['metadata']['originalRecord']['created'] = '2021-03-30T10:13:53.743900Z'
+            key = manifest.seed(doc)
+            run_pilot(manifest, self.source, self.target)
+            item = manifest.get(key)
+            self.assertEqual(item['phase'], 'verified')
+            op = self.fixture.operations[item['receipt']['operationId']]
+            self.assertEqual(op['payload']['mapping']['savedAt'], '2021-03-30T10:13:53.743900Z')
+            self.assertEqual(op['metadata'], canonical(doc))
+
+    def test_wrong_projected_timestamp_second_is_not_verified(self):
+        self.fixture.corrupt_date = True
+        self.assert_hold('target_date_mapping_mismatch')
 
     def test_reconciliation_is_read_only_and_detects_later_target_loss(self):
         with self.journal() as manifest:

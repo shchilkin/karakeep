@@ -3,6 +3,7 @@ import base64
 import copy
 import hashlib
 import json
+from datetime import datetime, timedelta
 import socket
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -27,6 +28,7 @@ class Fixture:
         self.corrupt_original = False
         self.corrupt_metadata = False
         self.corrupt_mapping = False
+        self.corrupt_date = False
         self.source_truncate_once = False
         self.materialize = True
         self.content_matches = []
@@ -174,9 +176,13 @@ class Fixture:
                         return self.send(value[:-1] + b"X" if fixture.corrupt_original else value)
                     if path == "/api/v1/bookmarks/" + receipt["bookmarkId"]:
                         mapping = op["payload"]["mapping"]
+                        projected_date = None
+                        if mapping['savedAt']:
+                            date = datetime.fromisoformat(mapping['savedAt'].replace('Z', '+00:00'))
+                            projected_date = (date.replace(microsecond=0) + timedelta(seconds=int(fixture.corrupt_date))).isoformat()
                         return self.send({"id": receipt["bookmarkId"],
                                           "title": "Wrong mapping" if fixture.corrupt_mapping else mapping["title"],
-                                          "note": mapping["note"], "createdAt": mapping["savedAt"],
+                                          "note": mapping["note"], "createdAt": projected_date,
                                           "tags": [{"name": tag.strip().lstrip("#").strip()} for tag in mapping["tags"]],
                                           "content": {"type": "asset", "assetId": receipt["assets"][0]["assetId"],
                                                       "sourceUrl": mapping["sourceUrl"]}})

@@ -99,8 +99,7 @@ class SnapshotTest(unittest.TestCase):
         destination = {'ownerApproved': True, 'kind': 'local_other_disk',
                        'separatePhysicalDisk': True, 'snapshotDirectory': str(self.snapshot)}
         with Manifest(self.root / 'client', 'synthetic') as manifest:
-            for doc in self.docs:
-                manifest.seed(doc)
+            keys = [manifest.seed(doc) for doc in self.docs]
             result = plan(manifest, destination)
             self.assertEqual(result['state'], 'local_other_disk_verified')
             self.assertFalse(result['independentBackupVerified'])
@@ -109,11 +108,12 @@ class SnapshotTest(unittest.TestCase):
             backup_path.write_bytes(canonical(result))
             approval_path.write_bytes(canonical({'phase': 'bounded-pilot',
                 'manifestDigest': manifest.snapshot_digest(), 'targetOrigin': 'http://synthetic.invalid',
-                'backupPlanDigest': digest(result), 'approvedByOwner': True, 'maxItems': 1, 'maxBytes': 1000}))
+                'backupPlanDigest': digest(result), 'approvedByOwner': True, 'maxItems': 1, 'maxBytes': 1000,
+                'itemKeys': [keys[0]]}))
             for path in [backup_path, approval_path]:
                 path.chmod(0o600)
             config = {'backupPlanFile': str(backup_path), 'target': {'origin': 'http://synthetic.invalid'}}
-            pilot_approval(manifest, config, str(approval_path), 1, 1000)
+            self.assertEqual(pilot_approval(manifest, config, str(approval_path), 1, 1000), [keys[0]])
             with self.assertRaises(Failure):
                 pilot_approval(manifest, config, str(approval_path), 2, 1000)
             (self.snapshot / 'originals/000001.bin').write_bytes(b'corrupted backup')

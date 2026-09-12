@@ -70,10 +70,14 @@ def pilot_approval(manifest, config, approval_path, limit, max_bytes):
     backup = read_json(private_file(config["backupPlanFile"]))
     # Owner accepted a verified temporary other-disk snapshot for preparation of
     # this bounded copy pilot. This does not grant cleanup or processing release.
-    backup_accepted = (backup.get("state") == "destination_declared_needs_snapshot_restore"
-                       or (backup.get("state") == "local_other_disk_verified"
-                           and backup.get("temporaryBackup", {}).get("restoreMappingVerified") is True
-                           and backup.get("offHost") is False))
+    temporary = backup.get("temporaryBackup")
+    backup_accepted = (backup.get("state") == "local_other_disk_verified"
+                       and isinstance(temporary, dict)
+                       and temporary.get("state") == "local_other_disk_verified"
+                       and temporary.get("restoreMappingVerified") is True
+                       and type(temporary.get("membersVerified")) is int
+                       and temporary["membersVerified"] > 0
+                       and backup.get("offHost") is False)
     if (not backup_accepted
             or backup.get("manifestDigest") != manifest.snapshot_digest()
             or approval.get("phase") != "bounded-pilot"
@@ -84,6 +88,15 @@ def pilot_approval(manifest, config, approval_path, limit, max_bytes):
             or type(approval.get("maxItems")) is not int or not limit <= approval["maxItems"] <= 12
             or type(approval.get("maxBytes")) is not int or not max_bytes <= approval["maxBytes"] <= 256 * 1024**2):
         raise Failure("pilot_approval_or_backup_plan_mismatch")
+    keys = approval.get("itemKeys")
+    if (not isinstance(keys, list) or not 1 <= len(keys) <= approval["maxItems"]
+            or any(not isinstance(key, str) for key in keys) or len(set(keys)) != len(keys)):
+        raise Failure("exact_pilot_selection_required")
+    selected = [manifest.get(key) for key in keys]
+    if (any(item["hold"] for item in selected)
+            or sum(item["document"]["observed"]["size"] for item in selected) > approval["maxBytes"]):
+        raise Failure("approved_pilot_selection_mismatch")
+    return keys
 
 
 def main(argv=None):
@@ -130,12 +143,13 @@ def main(argv=None):
                     return 2
             else:
                 if args.command == "pilot":
-                    pilot_approval(manifest, config, args.approval, args.limit, args.max_bytes)
+                    approved_keys = pilot_approval(manifest, config, args.approval, args.limit, args.max_bytes)
                 source, target = connections(config)
                 if args.command == "dry-run":
                     result = dry_run(manifest, source, target, args.limit)
                 elif args.command == "pilot":
-                    result = run_pilot(manifest, source, target, args.limit, args.max_bytes)
+                    result = run_pilot(manifest, source, target, args.limit, args.max_bytes,
+                                       item_keys=approved_keys)
                 else:
                     result = reconcile(manifest, source, target, args.limit)
         print(json.dumps(result, ensure_ascii=False, sort_keys=True))

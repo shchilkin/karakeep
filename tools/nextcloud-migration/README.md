@@ -37,6 +37,8 @@ source bytes. It has no AI invocation, processing release, cleanup or delete com
   own staged bytes and accepted formats.
 - Verification downloads the complete target original and raw metadata and
   checks the bookmark's title, note, tags, source URL, asset and saved timestamp.
+  The existing bookmark SQL column projects time to whole seconds; the exact
+  original fractional timestamp remains in raw metadata and the immutable payload.
   `reconcile` repeats bounded source PROPFIND/target GET checks for committed
   records, rotating by last check. It does not clear holds or reupload files.
 
@@ -100,12 +102,16 @@ a separate improvement. A mere destination declaration is not backup proof.
 ## Pilot approval and resume
 
 The owner accepted a verified temporary other-disk backup for preparing a bounded
-copy pilot. The pilot guard explicitly accepts that state as well as a declared
-off-host backup plan; the latter remains a plan, not a verified backup. Neither
-state authorizes a pilot by itself. An operator must prepare a private approval
+copy pilot. The pilot guard accepts the verified temporary snapshot. A declared
+off-host destination is only a plan and cannot pass this guard; no unimplemented
+off-host verification path is treated as backup proof. The temporary snapshot
+does not authorize a pilot by itself. An operator must prepare a private approval
 document with `phase="bounded-pilot"`, `approvedByOwner=true`, exact
 `manifestDigest`, exact `targetOrigin`, `backupPlanDigest`, `maxItems` (1–12), and
-`maxBytes` (1–268435456). Derive the digests from the frozen server manifest and
+`maxBytes` (1–268435456), and the exact `itemKeys` (1–12 unique journal keys).
+Those keys define the complete approved subset across every resume; rerunning
+the command cannot advance into other pending objects. Their combined bytes
+must fit the approved budget. Derive the digests from the frozen server manifest and
 backup-plan JSON using `migration_client.core.digest`; never fabricate approval.
 
 ```sh

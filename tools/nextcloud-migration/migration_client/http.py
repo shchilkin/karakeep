@@ -47,7 +47,7 @@ class Http:
                 if status == 404:
                     raise Failure("resource_unavailable")
                 if status == 412:
-                    raise Failure("source_changed")
+                    raise Failure("remote_precondition_failed")
                 if status == 409:
                     raise Failure("target_conflict")
                 if status == 413:

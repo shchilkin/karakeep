@@ -55,7 +55,12 @@ class Target:
         self.minimum_write_gap = minimum_write_gap
 
     def capabilities(self):
-        caps = self.http.json("GET", BASE + "/capabilities")
+        try:
+            caps = self.http.json("GET", BASE + "/capabilities")
+        except Failure as error:
+            if error.code == "remote_precondition_failed":
+                raise Failure("foundation_capabilities_unavailable") from None
+            raise
         if (caps.get("contractVersion") != CONTRACT or caps.get("storageMode") != "copy"
                 or caps.get("physicalReuse") is not False or caps.get("persistentDeferred") is not True
                 or caps.get("materialize") is not True or caps.get("maxAttachments") != 1
@@ -221,8 +226,9 @@ class Target:
                 actual = datetime.fromisoformat(bookmark["createdAt"].replace("Z", "+00:00"))
                 if expected.tzinfo is None or actual.tzinfo is None:
                     raise ValueError()
-                # The backend Date conversion may round down to milliseconds.
-                if int(expected.timestamp() * 1000) != int(actual.timestamp() * 1000):
+                # Existing Karakeep SQLite timestamp columns project whole seconds.
+                # Raw metadata and the immutable payload retain the exact source value.
+                if expected.replace(microsecond=0) != actual:
                     raise ValueError()
             except (ValueError, TypeError, KeyError):
                 raise Failure("target_date_mapping_mismatch") from None

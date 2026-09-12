@@ -4,12 +4,23 @@ from .core import Failure, canonical, check_file, inside
 from .target import reservation_payload
 
 
-def run_pilot(manifest, source, target, limit=1, max_bytes=256 * 1024 * 1024, fault=None):
+def run_pilot(manifest, source, target, limit=1, max_bytes=256 * 1024 * 1024, fault=None, item_keys=None):
     """Bounded client. Caller must establish operator/backup approval first."""
     if type(max_bytes) is not int or not 1 <= max_bytes <= 256 * 1024 * 1024:
         raise Failure("pilot_byte_limit")
     caps = target.capabilities()  # Before PROPFIND/GET/staging or any target mutation.
-    selected = manifest.items(limit)
+    if item_keys is None:
+        selected = manifest.items(limit)
+    else:
+        if (type(limit) is not int or not 1 <= limit <= 12
+                or not isinstance(item_keys, list) or not 1 <= len(item_keys) <= 12
+                or any(not isinstance(key, str) for key in item_keys)
+                or len(set(item_keys)) != len(item_keys)):
+            raise Failure("exact_pilot_selection_required")
+        approved = [manifest.get(key) for key in item_keys]
+        if any(item["hold"] for item in approved):
+            raise Failure("approved_item_held")
+        selected = [item for item in approved if item["phase"] != "verified"][:limit]
     total = sum(item["document"]["observed"]["size"] for item in selected)
     if total > max_bytes:
         raise Failure("pilot_byte_limit")
