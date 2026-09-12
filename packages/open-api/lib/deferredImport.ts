@@ -1,3 +1,7 @@
+import {
+  zReleaseImport,
+  zImportProcessingView,
+} from "@karakeep/shared/types/importProcessing";
 import { OpenAPIRegistry } from "@asteasolutions/zod-to-openapi";
 import { z } from "zod";
 import {
@@ -37,11 +41,11 @@ registry.registerPath({
   security,
   summary: "Read deferred copy import capabilities",
   description:
-    "Requires imports:read. Check contractVersion=deferred-copy-v1 and materialize=true before using the pilot. One original per revision, <=50 MiB, raw JSON metadata <=4 MiB. JPEG/PNG/GIF/WebP/PDF MIME signatures are accepted; no image decode or model is run. Historical resolution and stage permits are unavailable. Supported filesystem and all immutable-policy database barriers are required.",
+    "Requires imports:read. Check contractVersion=deferred-copy-v1 and materialize=true before using the pilot. One original per revision, <=50 MiB, raw JSON metadata <=4 MiB. JPEG/PNG/GIF/WebP/PDF MIME signatures are accepted; no image decode or model is run. Historical resolution remains unavailable. Processing release supports verified images. Supported filesystem and all immutable-policy database barriers are required.",
   responses: {
     200: {
       description:
-        "Contract version, materialize/persistentDeferred flags, storageMode=copy, physicalReuse=false, maxAttachments=1, maxFileBytes, maxMetadataBytes, supportedMimeTypes, stagePermits=false, historicalResolution=false.",
+        "Contract version, materialize/persistentDeferred flags, storageMode=copy, physicalReuse=false, maxAttachments=1, maxFileBytes, maxMetadataBytes, supportedMimeTypes, stagePermits=true, processingStages=[preview,search,local_check,catalog], historicalResolution=false.",
     },
     ...errors,
   },
@@ -197,6 +201,45 @@ registry.registerPath({
     200: {
       description:
         "ImportReceipt: operationId, sourceRevisionId, bookmarkId, assets[{slot,assetId,storedSha256,storedSize,storageGeneration}], metadataSha256, metadataSize, relative metadataUrl, processingPolicy=deferred, policyRevision=1, contentRevision=1, physicalReuse=false.",
+    },
+    ...errors,
+  },
+});
+
+registry.registerPath({
+  operationId: "getImportProcessing",
+  method: "get",
+  path: "/import/reservations/{id}/processing",
+  tags,
+  security,
+  summary: "Read the owner-controlled processing stage and progress",
+  request: { params: id },
+  responses: {
+    200: {
+      description:
+        "Held, queued, running, waiting_ai, complete or failed; derived preview only when ready.",
+      content: json(zImportProcessingView.nullable()),
+    },
+    ...errors,
+  },
+});
+registry.registerPath({
+  operationId: "releaseImportProcessing",
+  method: "post",
+  path: "/import/reservations/{id}/release",
+  tags,
+  security,
+  summary: "Release a verified image through an explicit cumulative stage",
+  description:
+    "Requires imports:readwrite. requestId is an immutable UUID for this request; expectedGeneration prevents stale transitions. Stages preview -> search -> local_check -> catalog preserve source fields and only add derived data. local_check runs local admission only; catalog requires enforced hybrid routing. Failed steps need an explicit retry. This does not enable ordinary crawler, OCR, embeddings, rules or webhooks. Read-only mode rejects writes.",
+  request: {
+    params: id,
+    body: { required: true, content: json(zReleaseImport) },
+  },
+  responses: {
+    200: {
+      description: "Durable intent; work is performed asynchronously.",
+      content: json(zImportProcessingView.nullable()),
     },
     ...errors,
   },

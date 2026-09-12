@@ -1,3 +1,4 @@
+import { zReleaseImport } from "@karakeep/shared/types/importProcessing";
 import { Readable } from "node:stream";
 import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 import { Hono } from "hono";
@@ -56,6 +57,25 @@ function fence(header: string | undefined) {
 }
 export default new Hono()
   .use(authMiddleware)
+  .get("/reservations/:id/processing", read, async (c) =>
+    c.json(
+      await c.var.api.deferredImport.processing({ id: c.req.param("id") }),
+    ),
+  )
+  .post(
+    "/reservations/:id/release",
+    write,
+    rejectMutationInReadOnlyMode,
+    manifestLimit,
+    zValidator("json", zReleaseImport),
+    async (c) =>
+      c.json(
+        await c.var.api.deferredImport.release({
+          id: c.req.param("id"),
+          ...c.req.valid("json"),
+        }),
+      ),
+  )
   .get("/capabilities", read, async (c) =>
     c.json(await c.var.api.deferredImport.capabilities()),
   )

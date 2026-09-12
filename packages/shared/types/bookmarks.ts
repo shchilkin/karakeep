@@ -1,3 +1,4 @@
+import { zImportProcessingView } from "./importProcessing";
 import { zSensitiveCategories } from "../sensitiveContent";
 import { z } from "zod";
 
@@ -196,6 +197,7 @@ export const zBookmarkTitleSourceSchema = z.enum([
 ]);
 
 export const zBareBookmarkSchema = z.object({
+  importProcessing: zImportProcessingView.nullish(),
   processingPolicy: z.enum(["automatic", "deferred"]).optional(),
   policyRevision: z.number().int().optional(),
   contentRevision: z.number().int().optional(),

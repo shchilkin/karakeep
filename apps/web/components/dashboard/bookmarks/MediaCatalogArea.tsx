@@ -1,3 +1,4 @@
+import ImportProcessingArea from "./ImportProcessingArea";
 import { Button } from "@/components/ui/button";
 import { useClientConfig } from "@/lib/clientConfig";
 import { useTranslation } from "@/lib/i18n/client";
@@ -40,6 +41,7 @@ export default function MediaCatalogArea({
   const summary =
     (includeManualSummary ? bookmark.summary : null) ?? state?.result?.summary;
   const canGenerate =
+    bookmark.processingPolicy !== "deferred" &&
     config.mediaAi?.enabled &&
     !readOnly &&
     !!input &&
@@ -73,6 +75,8 @@ export default function MediaCatalogArea({
         : state && state.status in failureMessages
           ? failureMessages[state.status as keyof typeof failureMessages]
           : null;
+  if (bookmark.processingPolicy === "deferred" && !state && !summary)
+    return <ImportProcessingArea bookmark={bookmark} readOnly={readOnly} />;
   if (!state && !summary && !canGenerate) return null;
   return (
     <section
@@ -83,6 +87,7 @@ export default function MediaCatalogArea({
         <Sparkles className="size-3.5" aria-hidden="true" />
         {t("media_ai.details")}
       </div>
+      <ImportProcessingArea bookmark={bookmark} readOnly={readOnly} />
       {summary && (
         <p className="whitespace-pre-line break-words text-sm leading-relaxed">
           {summary}

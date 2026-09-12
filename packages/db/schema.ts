@@ -537,6 +537,49 @@ export const importSourceAttachments = sqliteTable(
   },
   (t) => [primaryKey({ columns: [t.sourceRevisionId, t.slot] })],
 );
+export const importProcessing = sqliteTable(
+  "importProcessing",
+  {
+    bookmarkId: text("bookmarkId")
+      .primaryKey()
+      .references(() => bookmarks.id, { onDelete: "cascade" }),
+    sourceRevisionId: text("sourceRevisionId")
+      .notNull()
+      .unique()
+      .references(() => importSourceRevisions.id),
+    userId: text("userId")
+      .notNull()
+      .references(() => users.id),
+    requestId: text("requestId").notNull(),
+    stage: text("stage", {
+      enum: ["preview", "search", "local_check", "catalog"],
+    }).notNull(),
+    state: text("state", {
+      enum: ["held", "queued", "running", "waiting_ai", "complete", "failed"],
+    }).notNull(),
+    generation: integer("generation").notNull(),
+    policyRevision: integer("policyRevision").notNull(),
+    contentRevision: integer("contentRevision").notNull(),
+    previewAssetId: text("previewAssetId").notNull().unique(),
+    originalWidth: integer("originalWidth"),
+    originalHeight: integer("originalHeight"),
+    previewReady: integer("previewReady", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    searchReady: integer("searchReady", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    aiRunId: text("aiRunId"),
+    leaseToken: text("leaseToken"),
+    leaseUntil: integer("leaseUntil").notNull().default(0),
+    error: text("error"),
+    updatedAt: integer("updatedAt").notNull(),
+  },
+  (t) => [
+    index("importProcessing_state_updatedAt_idx").on(t.state, t.updatedAt),
+    index("importProcessing_leaseUntil_idx").on(t.leaseUntil),
+  ],
+);
 export const processingOutbox = sqliteTable("processingOutbox", {
   id: text("id").primaryKey(),
   userId: text("userId")
@@ -1254,6 +1297,10 @@ export const userRelations = relations(users, ({ many, one }) => ({
 }));
 
 export const bookmarkRelations = relations(bookmarks, ({ many, one }) => ({
+  importProcessing: one(importProcessing, {
+    fields: [bookmarks.id],
+    references: [importProcessing.bookmarkId],
+  }),
   user: one(users, {
     fields: [bookmarks.userId],
     references: [users.id],

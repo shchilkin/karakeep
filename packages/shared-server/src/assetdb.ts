@@ -1,7 +1,11 @@
 import type { DB } from "@karakeep/db";
 import { db } from "@karakeep/db";
-import { eq } from "drizzle-orm";
-import { importSourceRevisions } from "@karakeep/db/schema";
+import { and, eq, gt } from "drizzle-orm";
+import {
+  importSourceRevisions,
+  importProcessing,
+  importSourceAttachments,
+} from "@karakeep/db/schema";
 import { isImportAssetRetained } from "./processingPolicy";
 import type { AssetMetadata, AssetStore } from "@karakeep/shared/assetdb";
 import { PluginManager, PluginType } from "@karakeep/shared/plugins";
@@ -35,6 +39,48 @@ async function getAssetStore(): Promise<AssetStore> {
 
 export function newAssetId() {
   return crypto.randomUUID();
+}
+
+/** Dedicated write path for an authorized, unfinished derived preview. Ordinary
+ * save/delete paths continue to reject retained originals and previews. */
+export async function saveImportPreview(
+  database: DB,
+  claim: { bookmarkId: string; generation: number; leaseToken: string },
+  asset: Buffer,
+  quotaApproved: QuotaApproved,
+) {
+  const current = database
+    .select()
+    .from(importProcessing)
+    .where(
+      and(
+        eq(importProcessing.bookmarkId, claim.bookmarkId),
+        eq(importProcessing.generation, claim.generation),
+        eq(importProcessing.leaseToken, claim.leaseToken),
+        gt(importProcessing.leaseUntil, Date.now()),
+        eq(importProcessing.previewReady, false),
+        eq(importProcessing.state, "running"),
+      ),
+    )
+    .get();
+  if (
+    !current ||
+    quotaApproved.userId !== current.userId ||
+    quotaApproved.approvedSize < asset.length ||
+    database
+      .select()
+      .from(importSourceAttachments)
+      .where(eq(importSourceAttachments.assetId, current.previewAssetId))
+      .get()
+  )
+    throw new Error("Import preview write is not authorized");
+  const store = await getAssetStore();
+  return store.saveAsset({
+    userId: current.userId,
+    assetId: current.previewAssetId,
+    asset,
+    metadata: { contentType: "image/webp", fileName: "import-preview.webp" },
+  });
 }
 
 export async function saveAsset({

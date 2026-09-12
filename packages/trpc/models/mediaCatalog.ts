@@ -1,4 +1,8 @@
-import { isBookmarkDeferred } from "@karakeep/shared-server";
+import {
+  isBookmarkDeferred,
+  isImportCatalogBlocked,
+  importProcessingPermit,
+} from "@karakeep/shared-server";
 import { QueueRetryAfterError } from "@karakeep/shared/queueing";
 import { createHash, randomUUID } from "node:crypto";
 import { TRPCError } from "@trpc/server";
@@ -13,6 +17,7 @@ import {
   bookmarks,
   bookmarkTags,
   mediaAiRequests,
+  importProcessing,
   tagsOnBookmarks,
   users,
 } from "@karakeep/db/schema";
@@ -181,9 +186,14 @@ export async function requestMediaCatalog(
     allowPreview?: boolean;
     automatic?: boolean;
     localOnly?: boolean;
+    importRelease?: boolean;
+    classificationOnly?: boolean;
   } = {},
 ) {
-  if (isBookmarkDeferred(db, bookmarkId)) {
+  if (
+    isBookmarkDeferred(db, bookmarkId) &&
+    (!options.importRelease || isImportCatalogBlocked(db, bookmarkId))
+  ) {
     if (options.automatic) return null;
     throw new TRPCError({
       code: "CONFLICT",
@@ -275,6 +285,7 @@ export async function requestMediaCatalog(
       )
         return null;
       const next: MediaCatalogState = {
+        classificationOnly: options.classificationOnly,
         runId: randomUUID(),
         fingerprint,
         model: config.model,
@@ -309,6 +320,22 @@ export async function requestMediaCatalog(
         resultSource: previous?.resultSource,
         suppressedTags: previous?.suppressedTags,
       };
+      if (isBookmarkDeferred(tx, bookmarkId)) {
+        const permit = importProcessingPermit(
+          tx,
+          bookmarkId,
+          options.classificationOnly ? "local_check" : "catalog",
+        );
+        if (!permit || !options.importRelease)
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "Import processing permission changed.",
+          });
+        tx.update(importProcessing)
+          .set({ aiRunId: next.runId })
+          .where(eq(importProcessing.bookmarkId, bookmarkId))
+          .run();
+      }
       tx.update(bookmarks)
         .set({ mediaAi: next })
         .where(eq(bookmarks.id, bookmarkId))
@@ -323,7 +350,7 @@ export async function requestMediaCatalog(
     await MediaCatalogQueue.enqueue(job, {
       groupId: userId,
       idempotencyKey: state.runId,
-      priority: state.automatic ? 10 : 0,
+      priority: options.importRelease ? 50 : state.automatic ? 10 : 0,
     });
   } catch {
     finishMediaCatalog(
@@ -340,10 +367,10 @@ export async function requestMediaCatalog(
 }
 
 export function startMediaCatalog(db: DB, job: CatalogJob) {
-  if (isBookmarkDeferred(db, job.bookmarkId)) return null;
+  if (isImportCatalogBlocked(db, job.bookmarkId)) return null;
   return db.transaction(
     (tx) => {
-      if (isBookmarkDeferred(tx, job.bookmarkId)) return null;
+      if (isImportCatalogBlocked(tx, job.bookmarkId)) return null;
       const state = tx
         .select()
         .from(bookmarks)
@@ -462,14 +489,14 @@ export function continueMediaCatalog(
   job: CatalogJob,
   unchecked: LocalCheckResult | null,
 ) {
-  if (isBookmarkDeferred(db, job.bookmarkId)) return false;
+  if (isImportCatalogBlocked(db, job.bookmarkId)) return false;
   // Null represents unavailable/invalid admission or a text-only input. It can
   // select local cataloging, but can never authorize cloud or erase observations.
   const parsed = zCurrentLocalCheckResult.safeParse(unchecked);
   const localCheck = parsed.success ? parsed.data : null;
   return db.transaction(
     (tx) => {
-      if (isBookmarkDeferred(tx, job.bookmarkId)) return false;
+      if (isImportCatalogBlocked(tx, job.bookmarkId)) return false;
       const snapshot = catalogSnapshot(tx, job.userId, job.bookmarkId, true);
       const state = snapshot.bookmark.mediaAi;
       if (
@@ -545,6 +572,13 @@ export function continueMediaCatalog(
         update("cancelled", false);
         return false;
       }
+      if (state.classificationOnly) {
+        update(
+          validCoverage && !unknown ? "local_review" : "local_failed",
+          validCoverage,
+        );
+        return false;
+      }
       if ((!state.hybrid && state.localOnly) || state.localMode === "review") {
         update("local_review");
         return false;
@@ -610,7 +644,7 @@ export function waitForMediaCatalogResource(
 ) {
   return db.transaction(
     (tx) => {
-      if (isBookmarkDeferred(tx, job.bookmarkId)) return false;
+      if (isImportCatalogBlocked(tx, job.bookmarkId)) return false;
       const current = tx
         .select()
         .from(bookmarks)
@@ -656,6 +690,7 @@ export function waitForMediaCatalogResource(
 /** Reconcile attachment events after any job, without replaying cloud work. */
 export async function reconcileLocalMediaCatalog(db: DB, job: CatalogJob) {
   if (isBookmarkDeferred(db, job.bookmarkId)) return;
+  if (isImportCatalogBlocked(db, job.bookmarkId)) return;
   const active = (state: MediaCatalogState) =>
     [
       "pending",
@@ -725,7 +760,7 @@ export async function recoverLocalMediaCatalog(db: DB, now = Date.now()) {
     .all();
   for (const item of waiting) {
     if (
-      isBookmarkDeferred(db, item.id) ||
+      isImportCatalogBlocked(db, item.id) ||
       !item.mediaAi ||
       db
         .select({ id: mediaAiRequests.id })
@@ -739,7 +774,11 @@ export async function recoverLocalMediaCatalog(db: DB, now = Date.now()) {
       {
         groupId: item.userId,
         idempotencyKey: item.mediaAi.runId,
-        priority: item.mediaAi.automatic ? 10 : 0,
+        priority: isBookmarkDeferred(db, item.id)
+          ? 50
+          : item.mediaAi.automatic
+            ? 10
+            : 0,
       },
     );
   }
@@ -756,7 +795,7 @@ export async function recoverLocalMediaCatalog(db: DB, now = Date.now()) {
     .limit(100)
     .all();
   for (const followup of followups) {
-    if (isBookmarkDeferred(db, followup.id)) continue;
+    if (isImportCatalogBlocked(db, followup.id)) continue;
     await reconcileLocalMediaCatalog(db, {
       bookmarkId: followup.id,
       userId: followup.userId,
@@ -772,7 +811,7 @@ export async function recoverLocalMediaCatalog(db: DB, now = Date.now()) {
     .limit(100)
     .all();
   for (const candidate of candidates) {
-    if (isBookmarkDeferred(db, candidate.id)) continue;
+    if (isImportCatalogBlocked(db, candidate.id)) continue;
     const job = db.transaction(
       (tx) => {
         const bookmark = tx
@@ -824,6 +863,12 @@ export async function recoverLocalMediaCatalog(db: DB, now = Date.now()) {
               ? state.localRecoveries
               : (state.localRecoveries ?? 0) + 1,
         };
+        if (isBookmarkDeferred(tx, candidate.id)) {
+          tx.update(importProcessing)
+            .set({ aiRunId: next.runId })
+            .where(eq(importProcessing.bookmarkId, candidate.id))
+            .run();
+        }
         tx.update(bookmarks)
           .set({ mediaAi: next })
           .where(eq(bookmarks.id, candidate.id))
@@ -854,10 +899,10 @@ export function finishMediaCatalog(
   result?: MediaCatalogResult,
   initialTags: string[] = [],
 ) {
-  if (isBookmarkDeferred(db, job.bookmarkId)) return;
+  if (isImportCatalogBlocked(db, job.bookmarkId)) return;
   return db.transaction(
     (tx) => {
-      if (isBookmarkDeferred(tx, job.bookmarkId)) return false;
+      if (isImportCatalogBlocked(tx, job.bookmarkId)) return false;
       const current = tx
         .select()
         .from(bookmarks)

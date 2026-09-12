@@ -212,10 +212,18 @@ class Target:
         got_tags = bookmark.get("tags")
         if not isinstance(got_tags, list) or any(not isinstance(tag, dict) for tag in got_tags):
             raise Failure("target_mapping_mismatch")
+        # Released imports may have additive AI tags. Source associations remain human
+        # and must still match exactly; raw source metadata is independently hashed.
+        processing = bookmark.get("importProcessing")
+        mapped_tags = got_tags
+        if isinstance(processing, dict) and processing.get("generation", 0) > 0:
+            if any(tag.get("attachedBy") not in ("human", "ai") for tag in got_tags):
+                raise Failure("target_mapping_mismatch")
+            mapped_tags = [tag for tag in got_tags if tag.get("attachedBy") == "human"]
         content = bookmark.get("content", {})
         if (bookmark.get("id") != receipt["bookmarkId"] or bookmark.get("title") != mapping["title"]
                 or bookmark.get("note") != mapping["note"]
-                or {tag.get("name") for tag in got_tags} != normalized_tags
+                or {tag.get("name") for tag in mapped_tags} != normalized_tags
                 or not isinstance(content, dict) or content.get("type") != "asset"
                 or content.get("assetId") != receipt["assets"][0]["assetId"]
                 or content.get("sourceUrl") != mapping["sourceUrl"]):
