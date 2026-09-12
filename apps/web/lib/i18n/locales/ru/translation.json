@@ -1,5 +1,9 @@
 {
   "media_ai": {
+    "processing_local": "Локальный анализ Qwen…",
+    "source_local": "Локальный анализ",
+    "source_cloud": "Облачный анализ",
+
     "native_categories": {
       "sexual": "Сексуальный контент",
       "dangerous": "Опасные действия",

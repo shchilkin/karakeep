@@ -19,6 +19,7 @@ export const zMediaCatalogState = z.object({
   status: z.enum([
     "pending",
     "processing",
+    "processing_local",
     "success",
     "refused",
     "failed",
@@ -36,6 +37,17 @@ export const zMediaCatalogState = z.object({
   allowPreview: z.boolean(),
   automatic: z.boolean().optional(),
   localOnly: z.boolean().optional(),
+  hybrid: z.boolean().optional(),
+  route: z.enum(["local", "cloud"]).optional(),
+  localCheckUnavailable: z.boolean().optional(),
+  resultSource: z
+    .object({
+      provider: z.enum(["local", "xai", "openai"]),
+      model: z.string(),
+      revision: z.string().optional(),
+      recipe: z.string().optional(),
+    })
+    .optional(),
   localMode: zLocalCheckMode.optional(),
   localCheck: zLocalCheckResult.optional(),
   localCheckFingerprint: z.string().optional(),
@@ -49,9 +61,15 @@ export type MediaCatalogState = z.infer<typeof zMediaCatalogState>;
 export function catalogBusy(state: MediaCatalogState | null | undefined) {
   return (
     !!state &&
-    ["pending", "processing", "checking_local"].includes(state.status) &&
+    ["pending", "processing", "checking_local", "processing_local"].includes(
+      state.status,
+    ) &&
     Date.now() - Date.parse(state.updatedAt) <
-      (state.localMode && state.localMode !== "off" ? 660_000 : 360_000)
+      (state.hybrid
+        ? 960_000
+        : state.localMode && state.localMode !== "off"
+          ? 660_000
+          : 360_000)
   );
 }
 

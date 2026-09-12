@@ -207,6 +207,8 @@ const buildOpenAIClient = (config: OpenAIEmbeddingConfig) =>
 
 export class InferenceClientFactory {
   static build(): InferenceClient | null {
+    // Legacy title/summary/chat paths do not have per-payload admission.
+    if (serverConfig.mediaAi.hybridEnabled) return null;
     if (serverConfig.inference.openAIApiKey) {
       return OpenAIInferenceClient.fromConfig();
     }
@@ -220,6 +222,8 @@ export class InferenceClientFactory {
 
 export class EmbeddingClientFactory {
   static build(): EmbeddingClient | null {
+    // Derived local descriptions and tags must not bypass hybrid admission.
+    if (serverConfig.mediaAi.hybridEnabled) return null;
     if (
       serverConfig.embedding.openAIApiKey ||
       serverConfig.embedding.openAIBaseUrl

@@ -67,6 +67,9 @@ jobs:
       - name: Local classifier contract tests
         run: python3 -m unittest discover -s deploy/sensitive-classifier -p 'test_*.py'
 
+      - name: Local catalog contract tests
+        run: python3 -m unittest discover -s deploy/local-catalog -p 'test_*.py'
+
       - name: Shared Package Tests
         working-directory: packages/shared
         run: pnpm test

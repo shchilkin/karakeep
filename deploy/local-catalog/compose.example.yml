@@ -1,0 +1,50 @@
+# Isolated example. Merge with the existing worker deployment only after review.
+services:
+  sensitive-classifier:
+    image: karakeep-sensitive-classifier:hybrid-review
+    restart: unless-stopped
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    cpus: 2
+    mem_limit: 12g
+    memswap_limit: 12g
+    pids_limit: 256
+    devices: [nvidia.com/gpu=0]
+    environment:
+      GPU_LOCK_FILE: /gpu-lease/gpu.lock
+      HF_HOME: /tmp/hf
+      CUDA_CACHE_PATH: /tmp/cuda-cache
+      PYTHONDONTWRITEBYTECODE: "1"
+    tmpfs: [/tmp:rw, nosuid, size=512m]
+    volumes:
+      - /srv/appdata/karakeep/models/shieldgemma:/models:ro
+      - /srv/appdata/karakeep/secrets/local-token:/run/secrets/local_token:ro
+      - /srv/appdata/karakeep/gpu-lease:/gpu-lease
+    networks: [media-local]
+  local-catalog:
+    image: karakeep-local-catalog:hybrid-review
+    restart: unless-stopped
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    cpus: 2
+    mem_limit: 12g
+    memswap_limit: 12g
+    pids_limit: 256
+    devices: [nvidia.com/gpu=0]
+    environment:
+      GPU_LOCK_FILE: /gpu-lease/gpu.lock
+      HF_HOME: /tmp/hf
+      CUDA_CACHE_PATH: /tmp/cuda-cache
+    tmpfs: [/tmp:rw, nosuid, size=512m]
+    volumes:
+      - /srv/appdata/karakeep/models/qwen35-9b:/models:ro
+      - /srv/appdata/karakeep/secrets/catalog-token:/run/secrets/local_token:ro
+      - /srv/appdata/karakeep/gpu-lease:/gpu-lease
+    networks: [media-local]
+networks:
+  media-local:
+    internal: true

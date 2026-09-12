@@ -1,5 +1,7 @@
 # AI details for saved media
 
+For the opt-in ShieldGemma → Qwen / cloud routing, see [Hybrid media catalog](https://github.com/shchilkin/karakeep/blob/main/deploy/local-catalog/README.md). Hybrid mode keeps Sensitive and unknown inputs local; the defaults described below remain unchanged until it is enabled.
+
 This fork can generate a title, tags and a short Russian description from saved
 images or video frames in one background request. Grok 4.6 is the default. This
 is separate from Karakeep's text tagging, summarization and embedding settings.

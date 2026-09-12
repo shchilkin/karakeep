@@ -41,6 +41,11 @@ import {
   LOCAL_CHECK_REVISION,
 } from "@karakeep/shared/mediaLocalCheck";
 import type { LocalCheckResult } from "@karakeep/shared/mediaLocalCheck";
+import {
+  LOCAL_CATALOG_MODEL,
+  LOCAL_CATALOG_REVISION,
+  LOCAL_CATALOG_RECIPE,
+} from "@karakeep/shared/mediaLocalCatalog";
 import { shouldConcealSensitive } from "@karakeep/shared/sensitiveContent";
 
 type Connection = DB | KarakeepDBTransaction;
@@ -133,6 +138,15 @@ export function catalogFingerprint(
         provider: serverConfig.mediaAi.provider,
         model,
         input,
+        ...(serverConfig.mediaAi.hybridEnabled
+          ? {
+              hybrid: {
+                model: LOCAL_CATALOG_MODEL,
+                revision: LOCAL_CATALOG_REVISION,
+                recipe: LOCAL_CATALOG_RECIPE,
+              },
+            }
+          : {}),
         ...(localOnly ? { localOnly: true } : {}),
         ...(serverConfig.mediaAi.localMode !== "off"
           ? {
@@ -162,6 +176,13 @@ export async function requestMediaCatalog(
   const config = serverConfig.mediaAi;
   const localOnly =
     options.localOnly ?? (!!options.automatic && config.localAutoNew);
+  if (config.hybridEnabled && config.localMode === "off") {
+    if (options.automatic) return null;
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Hybrid analysis requires local admission",
+    });
+  }
   const automaticEnabled = localOnly ? config.localAutoNew : config.autoNew;
   if (!config.enabled || (options.automatic && !automaticEnabled)) return null;
   if (localOnly && config.localMode === "off") {
@@ -219,7 +240,7 @@ export async function requestMediaCatalog(
           if (
             previous &&
             options.automatic &&
-            localOnly &&
+            (localOnly || config.hybridEnabled) &&
             previous.fingerprint !== fingerprint
           ) {
             tx.update(bookmarks)
@@ -246,6 +267,7 @@ export async function requestMediaCatalog(
         automatic: options.automatic ?? false,
         localOnly,
         localMode: config.localMode,
+        hybrid: config.hybridEnabled,
         // Retain positive observations while replacement media is checked. The
         // worker may reuse bytes only for the matching original fingerprint.
         localCheck: previous?.localCheck,
@@ -262,6 +284,7 @@ export async function requestMediaCatalog(
             ? previous.localCheckFingerprint
             : undefined,
         result: previous?.result,
+        resultSource: previous?.resultSource,
         suppressedTags: previous?.suppressedTags,
       };
       tx.update(bookmarks)
@@ -344,7 +367,11 @@ export function startMediaCatalog(db: DB, job: CatalogJob) {
         update("stale");
         return null;
       }
-      if ((state.localMode ?? "off") !== serverConfig.mediaAi.localMode) {
+      if (
+        (state.localMode ?? "off") !== serverConfig.mediaAi.localMode ||
+        !!state.hybrid !== serverConfig.mediaAi.hybridEnabled ||
+        (state.hybrid && state.localMode === "off")
+      ) {
         update("cancelled");
         return null;
       }
@@ -392,9 +419,12 @@ export function startMediaCatalog(db: DB, job: CatalogJob) {
 export function continueMediaCatalog(
   db: DB,
   job: CatalogJob,
-  unchecked: LocalCheckResult,
+  unchecked: LocalCheckResult | null,
 ) {
-  const localCheck = zCurrentLocalCheckResult.parse(unchecked);
+  // Null represents unavailable/invalid admission or a text-only input. It can
+  // select local cataloging, but can never authorize cloud or erase observations.
+  const parsed = zCurrentLocalCheckResult.safeParse(unchecked);
+  const localCheck = parsed.success ? parsed.data : null;
   return db.transaction(
     (tx) => {
       const snapshot = catalogSnapshot(tx, job.userId, job.bookmarkId, true);
@@ -405,6 +435,11 @@ export function continueMediaCatalog(
         state.status !== "checking_local"
       )
         return false;
+      const unknown =
+        !localCheck ||
+        localCheck.frames.some((frame) => frame.status === "unknown");
+      const retainPriorHold =
+        unknown && !!state.localCheck && holdLocalMedia(state.localCheck);
       const update = (
         status: MediaCatalogState["status"],
         acceptObservation = true,
@@ -414,9 +449,18 @@ export function continueMediaCatalog(
           .set({
             mediaAi: {
               ...state,
-              ...(acceptObservation
+              ...(acceptObservation && localCheck && !retainPriorHold
                 ? { localCheck, localCheckFingerprint: state.fingerprint }
                 : {}),
+              localCheckUnavailable:
+                unknown ||
+                (status === "processing_local" && !acceptObservation),
+              route:
+                status === "processing_local"
+                  ? "local"
+                  : status === "processing"
+                    ? "cloud"
+                    : state.route,
               status,
               updatedAt: new Date().toISOString(),
             },
@@ -436,13 +480,17 @@ export function continueMediaCatalog(
         snapshot.input.media.kind === "video"
           ? 3
           : Math.min(3, snapshot.input.assets.length);
-      if (!expected || localCheck.frames.length !== expected) {
+      const validCoverage =
+        !!expected && localCheck?.frames.length === expected;
+      if (!validCoverage && !state.hybrid) {
         update("local_failed", false);
         return false;
       }
       if (
         !serverConfig.mediaAi.enabled ||
         state.localMode !== serverConfig.mediaAi.localMode ||
+        !!state.hybrid !== serverConfig.mediaAi.hybridEnabled ||
+        (state.hybrid && state.localMode === "off") ||
         (state.automatic &&
           (!(state.localOnly
             ? serverConfig.mediaAi.localAutoNew
@@ -456,17 +504,24 @@ export function continueMediaCatalog(
         update("cancelled", false);
         return false;
       }
-      if (state.localOnly || state.localMode === "review") {
+      if ((!state.hybrid && state.localOnly) || state.localMode === "review") {
         update("local_review");
         return false;
       }
       if (
+        !validCoverage ||
+        !localCheck ||
+        (state.hybrid && state.localOnly) ||
         holdLocalMedia(localCheck) ||
         shouldConcealSensitive(
           snapshot.bookmark.sensitiveCategories,
-          "balanced",
+          state.hybrid ? "work" : "balanced",
         )
       ) {
+        if (state.hybrid) {
+          update("processing_local", validCoverage);
+          return "local" as const;
+        }
         update("local_only");
         return false;
       }
@@ -509,7 +564,9 @@ export function continueMediaCatalog(
 /** Reconcile attachment events after any job, without replaying cloud work. */
 export async function reconcileLocalMediaCatalog(db: DB, job: CatalogJob) {
   const active = (state: MediaCatalogState) =>
-    ["pending", "checking_local", "processing"].includes(state.status);
+    ["pending", "checking_local", "processing", "processing_local"].includes(
+      state.status,
+    );
   const state = db
     .select({ mediaAi: bookmarks.mediaAi })
     .from(bookmarks)
@@ -564,7 +621,7 @@ export async function recoverLocalMediaCatalog(db: DB, now = Date.now()) {
     })
     .from(bookmarks)
     .where(
-      sql`json_extract(${bookmarks.mediaAi}, '$.localRecheckRequested') = 1 AND json_extract(${bookmarks.mediaAi}, '$.status') NOT IN ('pending', 'checking_local', 'processing')`,
+      sql`json_extract(${bookmarks.mediaAi}, '$.localRecheckRequested') = 1 AND json_extract(${bookmarks.mediaAi}, '$.status') NOT IN ('pending', 'checking_local', 'processing', 'processing_local')`,
     )
     .limit(100)
     .all();
@@ -579,7 +636,7 @@ export async function recoverLocalMediaCatalog(db: DB, now = Date.now()) {
     .select({ id: bookmarks.id, userId: bookmarks.userId })
     .from(bookmarks)
     .where(
-      sql`json_extract(${bookmarks.mediaAi}, '$.localMode') IN ('review', 'enforce') AND json_extract(${bookmarks.mediaAi}, '$.status') IN ('pending', 'checking_local', 'processing', 'local_failed') AND (json_extract(${bookmarks.mediaAi}, '$.status') <> 'local_failed' OR coalesce(json_extract(${bookmarks.mediaAi}, '$.localRecoveries'), 0) < 2) AND json_extract(${bookmarks.mediaAi}, '$.updatedAt') <= ${new Date(now - 660_000).toISOString()}`,
+      sql`json_extract(${bookmarks.mediaAi}, '$.localMode') IN ('review', 'enforce') AND json_extract(${bookmarks.mediaAi}, '$.status') IN ('pending', 'checking_local', 'processing', 'processing_local', 'local_failed') AND (json_extract(${bookmarks.mediaAi}, '$.status') <> 'local_failed' OR coalesce(json_extract(${bookmarks.mediaAi}, '$.localRecoveries'), 0) < 2) AND json_extract(${bookmarks.mediaAi}, '$.updatedAt') <= ${new Date(now - 660_000).toISOString()}`,
     )
     .limit(100)
     .all();
@@ -594,10 +651,14 @@ export async function recoverLocalMediaCatalog(db: DB, now = Date.now()) {
         const state = bookmark?.mediaAi;
         if (
           !state ||
-          !["pending", "checking_local", "processing", "local_failed"].includes(
-            state.status,
-          ) ||
-          now - Date.parse(state.updatedAt) < 660_000
+          ![
+            "pending",
+            "checking_local",
+            "processing",
+            "processing_local",
+            "local_failed",
+          ].includes(state.status) ||
+          now - Date.parse(state.updatedAt) < (state.hybrid ? 960_000 : 660_000)
         )
           return null;
         if (
@@ -676,9 +737,12 @@ export function finishMediaCatalog(
       if (
         !current?.mediaAi ||
         current.mediaAi.runId !== job.runId ||
-        !["pending", "processing", "checking_local"].includes(
-          current.mediaAi.status,
-        )
+        ![
+          "pending",
+          "processing",
+          "checking_local",
+          "processing_local",
+        ].includes(current.mediaAi.status)
       )
         return false;
       const state = current.mediaAi;
@@ -774,6 +838,19 @@ export function finishMediaCatalog(
             ...state,
             status,
             result: applied ?? state.result,
+            resultSource: applied
+              ? state.route === "local"
+                ? {
+                    provider: "local",
+                    model: LOCAL_CATALOG_MODEL,
+                    revision: LOCAL_CATALOG_REVISION,
+                    recipe: LOCAL_CATALOG_RECIPE,
+                  }
+                : {
+                    provider: serverConfig.mediaAi.provider,
+                    model: state.model,
+                  }
+              : state.resultSource,
             suppressedTags: suppressed,
             updatedAt: new Date().toISOString(),
           },

@@ -74,6 +74,7 @@ beforeEach(() => {
     .run();
   Object.assign(serverConfig.mediaAi, {
     enabled: true,
+    hybridEnabled: false,
     localMode: "off",
     apiKey: "synthetic",
     autoNew: true,
@@ -878,5 +879,149 @@ describe("automatic local-only display checks", () => {
     await expect(
       getApiCaller(db, "u1").bookmarks.backfillLocalMedia({ limit: 201 }),
     ).rejects.toThrow();
+  });
+});
+
+describe("hybrid routing", () => {
+  beforeEach(() =>
+    Object.assign(serverConfig.mediaAi, {
+      hybridEnabled: true,
+      localMode: "enforce",
+    }),
+  );
+
+  test.each(["sexual", "dangerous", "violence", "unknown", "unavailable"])(
+    "%s admission selects Qwen without a paid reservation",
+    async (kind) => {
+      const job = await queue();
+      startMediaCatalog(db, job);
+      const check =
+        kind === "unavailable"
+          ? null
+          : kind === "unknown"
+            ? localCheck([], "unknown")
+            : localCheck([kind]);
+      expect(continueMediaCatalog(db, job, check)).toBe("local");
+      expect(db.select().from(mediaAiRequests).all()).toHaveLength(0);
+      expect(catalogSnapshot(db, "u1", "b1").bookmark.mediaAi).toMatchObject({
+        status: "processing_local",
+        route: "local",
+      });
+      finishMediaCatalog(db, job, "success", result);
+      expect(catalogSnapshot(db, "u1", "b1").bookmark.mediaAi).toMatchObject({
+        status: "success",
+        resultSource: { provider: "local", model: "Qwen/Qwen3.5-9B" },
+      });
+    },
+  );
+
+  test("clean sampled frames authorize exactly one cloud request", async () => {
+    const job = await queue();
+    startMediaCatalog(db, job);
+    expect(continueMediaCatalog(db, job, localCheck())).toBe(true);
+    expect(continueMediaCatalog(db, job, localCheck())).toBe(false);
+    expect(db.select().from(mediaAiRequests).all()).toHaveLength(1);
+    finishMediaCatalog(db, job, "success", result);
+    expect(
+      catalogSnapshot(db, "u1", "b1").bookmark.mediaAi?.resultSource?.provider,
+    ).toBe("xai");
+  });
+
+  test("text-only and invalid coverage stay local", async () => {
+    db.update(bookmarkLinks)
+      .set({
+        url: "https://x.com/author/status/12345",
+        description: "Synthetic source",
+      })
+      .run();
+    db.update(assets)
+      .set({
+        fileName: "x_12345_999_abcdef123456.txt",
+        contentType: "text/plain",
+      })
+      .run();
+    const job = await queue();
+    startMediaCatalog(db, job);
+    expect(continueMediaCatalog(db, job, null)).toBe("local");
+    expect(db.select().from(mediaAiRequests).all()).toHaveLength(0);
+  });
+
+  test("manual categories hold admission; a manual clear cannot override ShieldGemma", async () => {
+    db.update(bookmarks)
+      .set({ sensitiveCategories: ["revealing_clothing"] })
+      .run();
+    const first = await queue();
+    startMediaCatalog(db, first);
+    expect(continueMediaCatalog(db, first, localCheck())).toBe("local");
+    finishMediaCatalog(db, first, "local_failed");
+    db.update(bookmarks).set({ sensitiveCategories: [] }).run();
+    const next = await requestMediaCatalog(db, "u1", "b1", { retry: true });
+    const job = { ...first, runId: next!.runId };
+    startMediaCatalog(db, job);
+    expect(continueMediaCatalog(db, job, localCheck(["sexual"]))).toBe("local");
+    expect(db.select().from(mediaAiRequests).all()).toHaveLength(0);
+  });
+
+  test("explicit local-only intent never becomes a cloud request even with clean frames", async () => {
+    const state = await requestMediaCatalog(db, "u1", "b1", {
+      localOnly: true,
+    });
+    const job = { bookmarkId: "b1", userId: "u1", runId: state!.runId };
+    startMediaCatalog(db, job);
+    expect(continueMediaCatalog(db, job, localCheck())).toBe("local");
+    expect(db.select().from(mediaAiRequests).all()).toHaveLength(0);
+  });
+
+  test("a lost Qwen worker is recovered with a new key and late results are discarded", async () => {
+    const job = await queue();
+    startMediaCatalog(db, job);
+    continueMediaCatalog(db, job, null);
+    const now = Date.now();
+    await recoverLocalMediaCatalog(db, now + 700_000);
+    expect(catalogSnapshot(db, "u1", "b1").bookmark.mediaAi?.runId).toBe(
+      job.runId,
+    );
+    await recoverLocalMediaCatalog(db, now + 1000_000);
+    const recovered = catalogSnapshot(db, "u1", "b1").bookmark.mediaAi!;
+    expect(recovered.status).toBe("pending");
+    expect(recovered.runId).not.toBe(job.runId);
+    expect(finishMediaCatalog(db, job, "success", result)).toBe(false);
+    expect(db.select().from(mediaAiRequests).all()).toHaveLength(0);
+  });
+
+  test("unknown admission preserves positive observations and old result provenance on failure", async () => {
+    const first = await queue();
+    startMediaCatalog(db, first);
+    continueMediaCatalog(db, first, localCheck());
+    finishMediaCatalog(db, first, "success", result);
+    db.update(bookmarkLinks).set({ description: "Changed" }).run();
+    const next = await queue();
+    startMediaCatalog(db, next);
+    continueMediaCatalog(db, next, localCheck(["sexual"]));
+    finishMediaCatalog(db, next, "local_failed");
+    const retry = await requestMediaCatalog(db, "u1", "b1", { retry: true });
+    const third = { ...next, runId: retry!.runId };
+    startMediaCatalog(db, third);
+    continueMediaCatalog(db, third, localCheck([], "unknown"));
+    finishMediaCatalog(db, third, "local_failed");
+    const state = catalogSnapshot(db, "u1", "b1").bookmark.mediaAi!;
+    expect(state.localCheck?.frames[0].categories).toContain("sexual");
+    expect(state.resultSource?.provider).toBe("xai");
+    expect(state.result).toEqual(result);
+  });
+
+  test("old queued jobs are not upgraded when hybrid is enabled", async () => {
+    serverConfig.mediaAi.hybridEnabled = false;
+    const old = await queue();
+    serverConfig.mediaAi.hybridEnabled = true;
+    expect(startMediaCatalog(db, old)).toBeNull();
+    expect(db.select().from(mediaAiRequests).all()).toHaveLength(0);
+  });
+
+  test("turning admission off never restores direct cloud while hybrid is enabled", async () => {
+    serverConfig.mediaAi.localMode = "off";
+    await expect(requestMediaCatalog(db, "u1", "b1")).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+    });
   });
 });

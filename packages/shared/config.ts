@@ -80,6 +80,9 @@ const allEnv = z.object({
   MEDIA_AI_MODEL: z.string().default("grok-4.6"),
   MEDIA_AI_PROVIDER: z.enum(["xai", "openai"]).default("xai"),
   MEDIA_AI_DAILY_REQUESTS: z.coerce.number().int().min(1).max(1000).default(20),
+  MEDIA_AI_HYBRID_ENABLED: stringBool("false"),
+  MEDIA_AI_LOCAL_CATALOG_URL: z.string().url().optional(),
+  MEDIA_AI_LOCAL_CATALOG_TOKEN: z.string().optional(),
   MEDIA_AI_LOCAL_MODE: z.enum(["off", "review", "enforce"]).default("off"),
   MEDIA_AI_LOCAL_URL: z.string().url().optional(),
   MEDIA_AI_LOCAL_TOKEN: z.string().optional(),
@@ -347,6 +350,9 @@ const serverConfigSchema = allEnv.transform((val, ctx) => {
         val.MEDIA_AI_ENABLED &&
         (!!val.MEDIA_AI_API_KEY || val.MEDIA_AI_LOCAL_MODE !== "off"),
       autoNew: val.MEDIA_AI_AUTO_NEW,
+      hybridEnabled: val.MEDIA_AI_HYBRID_ENABLED,
+      localCatalogUrl: val.MEDIA_AI_LOCAL_CATALOG_URL,
+      localCatalogToken: val.MEDIA_AI_LOCAL_CATALOG_TOKEN,
       localAutoNew: val.MEDIA_AI_LOCAL_AUTO_NEW,
       apiKey: val.MEDIA_AI_API_KEY,
       provider: val.MEDIA_AI_PROVIDER,
@@ -357,7 +363,9 @@ const serverConfigSchema = allEnv.transform((val, ctx) => {
       localToken: val.MEDIA_AI_LOCAL_TOKEN,
     },
     inference: {
-      isConfigured: !!val.OPENAI_API_KEY || !!val.OLLAMA_BASE_URL,
+      isConfigured:
+        !val.MEDIA_AI_HYBRID_ENABLED &&
+        (!!val.OPENAI_API_KEY || !!val.OLLAMA_BASE_URL),
       numWorkers: val.INFERENCE_NUM_WORKERS,
       jobTimeoutSec: val.INFERENCE_JOB_TIMEOUT_SEC,
       fetchTimeoutSec: val.INFERENCE_FETCH_TIMEOUT_SEC,
