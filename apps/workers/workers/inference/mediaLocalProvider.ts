@@ -6,6 +6,11 @@ import {
 } from "@karakeep/shared/mediaLocalCheck";
 import type { LocalCheckResult } from "@karakeep/shared/mediaLocalCheck";
 import { CatalogFailure } from "./mediaCatalogProvider";
+import {
+  checkLocalStatus,
+  LocalExecutorUnavailable,
+  LocalResourceWait,
+} from "./localResource";
 
 /** Only this private service receives the prepared pixels before cloud dispatch. */
 export async function checkLocalMedia(
@@ -14,6 +19,7 @@ export async function checkLocalMedia(
   request = fetch,
 ): Promise<LocalCheckResult> {
   const { localUrl, localToken } = serverConfig.mediaAi;
+  let dispatched = false;
   try {
     if (!localUrl || !localToken || images.length < 1 || images.length > 3)
       throw new Error("configuration");
@@ -31,6 +37,7 @@ export async function checkLocalMedia(
       signal.throwIfAborted();
       if (!image.length || image.length > 2 * 1024 * 1024)
         throw new Error("image_limit");
+      dispatched = true;
       const response = await request(url, {
         method: "POST",
         redirect: "error",
@@ -43,6 +50,7 @@ export async function checkLocalMedia(
       });
       if (!response.ok) {
         await response.body?.cancel();
+        checkLocalStatus(response.status);
         throw new Error("local_service");
       }
       const reader = response.body?.getReader();
@@ -69,7 +77,13 @@ export async function checkLocalMedia(
       });
     }
     return { scope: "outgoing_images_only", frames };
-  } catch {
+  } catch (error) {
+    if (
+      error instanceof LocalResourceWait ||
+      error instanceof LocalExecutorUnavailable
+    )
+      throw error;
+    if (dispatched) throw new LocalExecutorUnavailable();
     // Never log pixels, raw model output, headers, tokens or transport bodies.
     throw new CatalogFailure("local_failed");
   }

@@ -1,0 +1,31 @@
+{
+  "logLevel": "error",
+  "captureBuffer": 0,
+  "performance": { "disabled": true },
+  "healthCheckTimeout": 15,
+  "models": {
+    "shield": {
+      "cmd": "/opt/shield-python/bin/python /opt/deploy/gpu-runtime/managed_server.py --kind shield --port 8091",
+      "proxy": "http://127.0.0.1:8091",
+      "env": ["PYTHONHOME=/opt/shield-python", "MODEL_DIR=/models/shieldgemma", "TOKEN_FILE=/run/secrets/shield_token"],
+      "checkEndpoint": "/health",
+      "ttl": 15,
+      "unloadTimeout": 15,
+      "concurrencyLimit": 1,
+      "timeouts": {"connect": 5, "responseHeader": 115, "idleConn": 30}
+    },
+    "qwen": {
+      "cmd": "/usr/local/bin/python /opt/deploy/gpu-runtime/managed_server.py --kind qwen --port 8092",
+      "proxy": "http://127.0.0.1:8092",
+      "env": ["MODEL_DIR=/models/qwen35-9b", "TOKEN_FILE=/run/secrets/catalog_token"],
+      "checkEndpoint": "/health",
+      "ttl": 15,
+      "unloadTimeout": 15,
+      "concurrencyLimit": 1,
+      "timeouts": {"connect": 5, "responseHeader": 470, "idleConn": 30}
+    }
+  },
+  "routing": {"router": {"use": "group", "settings": {"groups": {
+    "heavy": {"swap": true, "exclusive": true, "members": ["shield", "qwen"]}
+  }}}}
+}

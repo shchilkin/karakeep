@@ -10,10 +10,12 @@ import {
   reindexMediaCatalog,
   startMediaCatalog,
   continueMediaCatalog,
+  waitForMediaCatalogResource,
 } from "@karakeep/trpc/models/mediaCatalog";
 import { inferMediaCatalog } from "./mediaCatalogProvider";
 import { runMediaCatalog } from "./mediaCatalogWorker";
 import { checkLocalMedia } from "./mediaLocalProvider";
+import { LocalResourceWait, LocalExecutorUnavailable } from "./localResource";
 
 vi.mock("./mediaLocalProvider", () => ({
   checkLocalMedia: vi.fn(),
@@ -29,6 +31,7 @@ vi.mock("@karakeep/trpc/models/mediaCatalog", () => ({
   startMediaCatalog: vi.fn(),
   continueMediaCatalog: vi.fn(),
   finishMediaCatalog: vi.fn(),
+  waitForMediaCatalogResource: vi.fn(),
   reindexMediaCatalog: vi.fn(),
   reconcileLocalMediaCatalog: vi.fn().mockResolvedValue(undefined),
 }));
@@ -126,6 +129,60 @@ test("an unclaimed or cancelled job never prepares media or calls a provider", a
   await runMediaCatalog(job);
   expect(readAsset).not.toHaveBeenCalled();
   expect(inferMediaCatalog).not.toHaveBeenCalled();
+});
+
+test.each(["classifier", "catalog"])(
+  "busy %s parks the same operation without another model or paid call",
+  async (stage) => {
+    Object.assign(serverConfig.mediaAi, {
+      hybridEnabled: true,
+      localMode: "enforce",
+    });
+    const started = startMediaCatalog(db, job.data)!;
+    Object.assign(started.state, { hybrid: true, localMode: "enforce" });
+    vi.mocked(waitForMediaCatalogResource).mockReturnValue(true);
+    if (stage === "classifier") {
+      vi.mocked(checkLocalMedia).mockRejectedValue(new LocalResourceWait());
+    } else {
+      vi.mocked(checkLocalMedia).mockResolvedValue({
+        scope: "outgoing_images_only",
+        frames: [],
+      });
+      vi.mocked(continueMediaCatalog).mockReturnValue("local");
+      vi.mocked(inferLocalCatalog).mockRejectedValue(new LocalResourceWait());
+    }
+    await expect(runMediaCatalog(job)).rejects.toMatchObject({
+      name: "QueueRetryAfterError",
+      delayMs: 30_000,
+    });
+    expect(waitForMediaCatalogResource).toHaveBeenCalledWith(
+      db,
+      job.data,
+      30_000,
+    );
+    expect(inferMediaCatalog).not.toHaveBeenCalled();
+    expect(finishMediaCatalog).not.toHaveBeenCalled();
+    if (stage === "classifier") {
+      expect(inferLocalCatalog).not.toHaveBeenCalled();
+      expect(continueMediaCatalog).not.toHaveBeenCalled();
+    }
+  },
+);
+
+test("unavailable classifier stops the hybrid run instead of dispatching Qwen", async () => {
+  Object.assign(serverConfig.mediaAi, {
+    hybridEnabled: true,
+    localMode: "enforce",
+  });
+  Object.assign(startMediaCatalog(db, job.data)!.state, {
+    hybrid: true,
+    localMode: "enforce",
+  });
+  vi.mocked(checkLocalMedia).mockRejectedValue(new LocalExecutorUnavailable());
+  await runMediaCatalog(job);
+  expect(inferLocalCatalog).not.toHaveBeenCalled();
+  expect(inferMediaCatalog).not.toHaveBeenCalled();
+  expect(finishMediaCatalog).toHaveBeenCalledWith(db, job.data, "local_failed");
 });
 
 test("a local service failure cannot reach cloud admission or inference", async () => {

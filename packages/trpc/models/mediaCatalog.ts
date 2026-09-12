@@ -1,3 +1,5 @@
+import { isBookmarkDeferred } from "@karakeep/shared-server";
+import { QueueRetryAfterError } from "@karakeep/shared/queueing";
 import { createHash, randomUUID } from "node:crypto";
 import { TRPCError } from "@trpc/server";
 import { and, count, eq, sql } from "drizzle-orm";
@@ -181,6 +183,13 @@ export async function requestMediaCatalog(
     localOnly?: boolean;
   } = {},
 ) {
+  if (isBookmarkDeferred(db, bookmarkId)) {
+    if (options.automatic) return null;
+    throw new TRPCError({
+      code: "CONFLICT",
+      message: "Imported snapshot processing is deferred.",
+    });
+  }
   const config = serverConfig.mediaAi;
   const localOnly =
     options.localOnly ?? (!!options.automatic && config.localAutoNew);
@@ -314,6 +323,7 @@ export async function requestMediaCatalog(
     await MediaCatalogQueue.enqueue(job, {
       groupId: userId,
       idempotencyKey: state.runId,
+      priority: state.automatic ? 10 : 0,
     });
   } catch {
     finishMediaCatalog(
@@ -330,8 +340,10 @@ export async function requestMediaCatalog(
 }
 
 export function startMediaCatalog(db: DB, job: CatalogJob) {
+  if (isBookmarkDeferred(db, job.bookmarkId)) return null;
   return db.transaction(
     (tx) => {
+      if (isBookmarkDeferred(tx, job.bookmarkId)) return null;
       const state = tx
         .select()
         .from(bookmarks)
@@ -342,8 +354,21 @@ export function startMediaCatalog(db: DB, job: CatalogJob) {
           ),
         )
         .get()?.mediaAi;
-      if (!state || state.runId !== job.runId || state.status !== "pending")
+      if (
+        !state ||
+        state.runId !== job.runId ||
+        !["pending", "waiting_resource"].includes(state.status)
+      )
         return null;
+      if (state.status === "waiting_resource") {
+        const delay =
+          Date.parse(state.resourceWaitUntil ?? state.updatedAt) - Date.now();
+        if (delay > 0)
+          throw new QueueRetryAfterError(
+            "waiting_resource",
+            Math.min(delay, 300_000),
+          );
+      }
       const snapshot = catalogSnapshot(
         tx,
         job.userId,
@@ -354,7 +379,12 @@ export function startMediaCatalog(db: DB, job: CatalogJob) {
         tx
           .update(bookmarks)
           .set({
-            mediaAi: { ...state, status, updatedAt: new Date().toISOString() },
+            mediaAi: {
+              ...state,
+              status,
+              resourceWaitUntil: undefined,
+              updatedAt: new Date().toISOString(),
+            },
           })
           .where(eq(bookmarks.id, job.bookmarkId))
           .run();
@@ -432,12 +462,14 @@ export function continueMediaCatalog(
   job: CatalogJob,
   unchecked: LocalCheckResult | null,
 ) {
+  if (isBookmarkDeferred(db, job.bookmarkId)) return false;
   // Null represents unavailable/invalid admission or a text-only input. It can
   // select local cataloging, but can never authorize cloud or erase observations.
   const parsed = zCurrentLocalCheckResult.safeParse(unchecked);
   const localCheck = parsed.success ? parsed.data : null;
   return db.transaction(
     (tx) => {
+      if (isBookmarkDeferred(tx, job.bookmarkId)) return false;
       const snapshot = catalogSnapshot(tx, job.userId, job.bookmarkId, true);
       const state = snapshot.bookmark.mediaAi;
       if (
@@ -570,12 +602,68 @@ export function continueMediaCatalog(
   );
 }
 
+/** Park the same local operation; this is not a failed/paid attempt or a new intent. */
+export function waitForMediaCatalogResource(
+  db: DB,
+  job: CatalogJob,
+  delayMs = 30_000,
+) {
+  return db.transaction(
+    (tx) => {
+      if (isBookmarkDeferred(tx, job.bookmarkId)) return false;
+      const current = tx
+        .select()
+        .from(bookmarks)
+        .where(
+          and(
+            eq(bookmarks.id, job.bookmarkId),
+            eq(bookmarks.userId, job.userId),
+          ),
+        )
+        .get();
+      const state = current?.mediaAi;
+      if (
+        !state ||
+        state.runId !== job.runId ||
+        !["checking_local", "processing_local"].includes(state.status) ||
+        tx
+          .select({ id: mediaAiRequests.id })
+          .from(mediaAiRequests)
+          .where(eq(mediaAiRequests.id, job.runId))
+          .get()
+      )
+        return false;
+      const now = Date.now();
+      tx.update(bookmarks)
+        .set({
+          mediaAi: {
+            ...state,
+            status: "waiting_resource",
+            updatedAt: new Date(now).toISOString(),
+            resourceWaitUntil: new Date(
+              now + Math.max(1000, Math.min(300_000, delayMs)),
+            ).toISOString(),
+          },
+        })
+        .where(eq(bookmarks.id, job.bookmarkId))
+        .run();
+      return true;
+    },
+    { behavior: "immediate" },
+  );
+}
+
 /** Reconcile attachment events after any job, without replaying cloud work. */
 export async function reconcileLocalMediaCatalog(db: DB, job: CatalogJob) {
+  if (isBookmarkDeferred(db, job.bookmarkId)) return;
   const active = (state: MediaCatalogState) =>
-    ["pending", "checking_local", "processing", "processing_local"].includes(
-      state.status,
-    );
+    [
+      "pending",
+      "checking_local",
+      "processing",
+      "processing_local",
+      "waiting_resource",
+    ].includes(state.status);
   const state = db
     .select({ mediaAi: bookmarks.mediaAi })
     .from(bookmarks)
@@ -622,6 +710,39 @@ export async function reconcileLocalMediaCatalog(db: DB, job: CatalogJob) {
 export async function recoverLocalMediaCatalog(db: DB, now = Date.now()) {
   if (!serverConfig.mediaAi.enabled || serverConfig.mediaAi.localMode === "off")
     return;
+  // Repair a lost delivery while preserving the semantic run and local checkpoint.
+  const waiting = db
+    .select({
+      id: bookmarks.id,
+      userId: bookmarks.userId,
+      mediaAi: bookmarks.mediaAi,
+    })
+    .from(bookmarks)
+    .where(
+      sql`json_extract(${bookmarks.mediaAi}, '$.status') = 'waiting_resource' AND coalesce(json_extract(${bookmarks.mediaAi}, '$.resourceWaitUntil'), json_extract(${bookmarks.mediaAi}, '$.updatedAt')) <= ${new Date(now).toISOString()}`,
+    )
+    .limit(100)
+    .all();
+  for (const item of waiting) {
+    if (
+      isBookmarkDeferred(db, item.id) ||
+      !item.mediaAi ||
+      db
+        .select({ id: mediaAiRequests.id })
+        .from(mediaAiRequests)
+        .where(eq(mediaAiRequests.id, item.mediaAi.runId))
+        .get()
+    )
+      continue;
+    await MediaCatalogQueue.enqueue(
+      { bookmarkId: item.id, userId: item.userId, runId: item.mediaAi.runId },
+      {
+        groupId: item.userId,
+        idempotencyKey: item.mediaAi.runId,
+        priority: item.mediaAi.automatic ? 10 : 0,
+      },
+    );
+  }
   const followups = db
     .select({
       id: bookmarks.id,
@@ -630,11 +751,12 @@ export async function recoverLocalMediaCatalog(db: DB, now = Date.now()) {
     })
     .from(bookmarks)
     .where(
-      sql`json_extract(${bookmarks.mediaAi}, '$.localRecheckRequested') = 1 AND json_extract(${bookmarks.mediaAi}, '$.status') NOT IN ('pending', 'checking_local', 'processing', 'processing_local')`,
+      sql`json_extract(${bookmarks.mediaAi}, '$.localRecheckRequested') = 1 AND json_extract(${bookmarks.mediaAi}, '$.status') NOT IN ('pending', 'checking_local', 'processing', 'processing_local', 'waiting_resource')`,
     )
     .limit(100)
     .all();
   for (const followup of followups) {
+    if (isBookmarkDeferred(db, followup.id)) continue;
     await reconcileLocalMediaCatalog(db, {
       bookmarkId: followup.id,
       userId: followup.userId,
@@ -650,6 +772,7 @@ export async function recoverLocalMediaCatalog(db: DB, now = Date.now()) {
     .limit(100)
     .all();
   for (const candidate of candidates) {
+    if (isBookmarkDeferred(db, candidate.id)) continue;
     const job = db.transaction(
       (tx) => {
         const bookmark = tx
@@ -731,8 +854,10 @@ export function finishMediaCatalog(
   result?: MediaCatalogResult,
   initialTags: string[] = [],
 ) {
+  if (isBookmarkDeferred(db, job.bookmarkId)) return;
   return db.transaction(
     (tx) => {
+      if (isBookmarkDeferred(tx, job.bookmarkId)) return false;
       const current = tx
         .select()
         .from(bookmarks)

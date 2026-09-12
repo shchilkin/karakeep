@@ -1,3 +1,4 @@
+import { guardQueueRunner } from "@karakeep/shared/queueing";
 import { format } from "node:util";
 
 import * as restate from "@restatedev/restate-sdk";
@@ -204,7 +205,12 @@ export class RestateQueueClient implements QueueClient {
     if (wrapper) {
       throw new Error(`Queue ${name} already exists`);
     }
-    const services = buildRestateServices(queue, funcs, opts, queue.opts);
+    const services = buildRestateServices(
+      queue,
+      guardQueueRunner(queue, funcs),
+      opts,
+      queue.opts,
+    );
     const svc = new RestateRunnerWrapper<T>(
       services.dispatcher,
       services.runner,

@@ -1,0 +1,33 @@
+# Integration template; no host ports and no Docker socket.
+# Existing individual GPU service containers must be stopped during cutover.
+services:
+  gpu-lifecycle:
+    image: karakeep-gpu-lifecycle:review
+    platform: linux/amd64
+    restart: unless-stopped
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    cpus: 2
+    mem_limit: 12g
+    memswap_limit: 12g
+    pids_limit: 256
+    devices: [nvidia.com/gpu=0]
+    stop_grace_period: 20s
+    environment:
+      GPU_LOCK_FILE: /gpu-lease/gpu.lock
+      HF_HOME: /tmp/hf
+      CUDA_CACHE_PATH: /tmp/cuda-cache
+    tmpfs:
+      - /tmp:rw,nosuid,size=512m
+    volumes:
+      - /srv/appdata/karakeep/models/shieldgemma:/models/shieldgemma:ro
+      - /srv/appdata/karakeep/models/qwen35-9b:/models/qwen35-9b:ro
+      - /srv/appdata/karakeep/secrets/local-token:/run/secrets/shield_token:ro
+      - /srv/appdata/karakeep/secrets/catalog-token:/run/secrets/catalog_token:ro
+      - /srv/appdata/karakeep/gpu-lease:/gpu-lease
+    networks: [media-local]
+networks:
+  media-local:
+    internal: true

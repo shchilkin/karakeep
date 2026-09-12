@@ -1,3 +1,4 @@
+import { assertBookmarkMutable } from "@karakeep/shared-server";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -82,6 +83,8 @@ const app = new Hono()
       const assetId = c.req.param("assetId");
       const asset = await Asset.fromId(c.var.ctx, assetId);
       await asset.ensureCanView();
+      if (asset.asset.bookmarkId)
+        assertBookmarkMutable(c.var.ctx.db, asset.asset.bookmarkId);
       return serveThumbnail(
         c,
         assetId,
@@ -97,6 +100,8 @@ const app = new Hono()
       const assetId = c.req.param("assetId");
       const asset = await Asset.fromId(c.var.ctx, assetId);
       await asset.ensureCanView();
+      if (asset.asset.bookmarkId)
+        assertBookmarkMutable(c.var.ctx.db, asset.asset.bookmarkId);
       return serveHoverClip(c, assetId, asset.asset.userId);
     },
   )

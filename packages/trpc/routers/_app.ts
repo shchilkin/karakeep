@@ -1,3 +1,4 @@
+import { deferredImportRouter } from "./deferredImport";
 import { router } from "../index";
 import { adminAppRouter } from "./admin";
 import { apiKeysAppRouter } from "./apiKeys";
@@ -5,6 +6,7 @@ import { assetsAppRouter } from "./assets";
 import { backupsAppRouter } from "./backups";
 import { bookmarksAppRouter } from "./bookmarks";
 import { configAppRouter } from "./config";
+import { duplicatesAppRouter } from "./duplicates";
 import { feedsAppRouter } from "./feeds";
 import { highlightsAppRouter } from "./highlights";
 import { importSessionsRouter } from "./importSessions";
@@ -37,6 +39,8 @@ export const appRouter = router({
   publicBookmarks: publicBookmarks,
   subscriptions: subscriptionsRouter,
   config: configAppRouter,
+  duplicates: duplicatesAppRouter,
+  deferredImport: deferredImportRouter,
 });
 // export type definition of API
 export type AppRouter = typeof appRouter;

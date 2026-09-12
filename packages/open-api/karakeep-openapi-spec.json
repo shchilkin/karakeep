@@ -3,9 +3,17 @@
   "info": {
     "version": "1.0.0",
     "title": "Karakeep API",
-    "description": "Karakeep is a self-hostable bookmarking and read-it-later service. This API allows you to manage bookmarks, lists, tags, highlights, feeds, assets, and backups programmatically.\n\n## Authentication\n\nAll endpoints require a Bearer token passed in the `Authorization` header. You can generate an API key from the Karakeep web UI under **Settings > API Keys**.\n\n## Pagination\n\nList endpoints support cursor-based pagination via `cursor` and `limit` query parameters. The response includes a `nextCursor` field — pass it as the `cursor` parameter to fetch the next page. A `null` value for `nextCursor` indicates there are no more results.\n\n## Bookmark Types\n\nBookmarks can be one of three types:\n- **link** — A URL bookmark with optional crawled metadata.\n- **text** — A plain text note.\n- **asset** — An uploaded file (image or PDF).\n\n## Rate Limiting\n\nWhen rate limiting is enabled, the API enforces per-IP request limits. If you exceed the allowed number of requests within the time window, the API returns a `429 Too Many Requests` response with a message indicating how many seconds to wait before retrying."
+    "description": "Karakeep is a self-hostable bookmarking and read-it-later service. This API allows you to manage bookmarks, lists, tags, highlights, feeds, assets, and backups programmatically.\n\n## Authentication\n\nEndpoints accept a Bearer token passed in the `Authorization` header; duplicate file scanning requires an owner web session. You can generate an API key from the Karakeep web UI under **Settings > API Keys**.\n\n## Pagination\n\nList endpoints support cursor-based pagination via `cursor` and `limit` query parameters. The response includes a `nextCursor` field — pass it as the `cursor` parameter to fetch the next page. A `null` value for `nextCursor` indicates there are no more results.\n\n## Bookmark Types\n\nBookmarks can be one of three types:\n- **link** — A URL bookmark with optional crawled metadata.\n- **text** — A plain text note.\n- **asset** — An uploaded file (image or PDF).\n\n## Rate Limiting\n\nWhen rate limiting is enabled, the API enforces per-IP request limits. If you exceed the allowed number of requests within the time window, the API returns a `429 Too Many Requests` response with a message indicating how many seconds to wait before retrying."
   },
   "tags": [
+    {
+      "name": "Deferred imports",
+      "description": "Bounded source-revision copy import with exact metadata and immutable deferred processing."
+    },
+    {
+      "name": "Duplicates",
+      "description": "Index original file bytes, compare owner-scoped exact matches and retain review decisions without changing media."
+    },
     {
       "name": "Bookmarks",
       "description": "Manage bookmarks — create, retrieve, update, delete, search, and organize bookmarks with tags, lists, highlights, and assets."
@@ -60,6 +68,12 @@
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "JWT"
+      },
+      "OwnerSession": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "next-auth.session-token",
+        "description": "An authenticated owner web session. Secure deployments use the __Secure-next-auth.session-token cookie."
       }
     },
     "schemas": {
@@ -121,6 +135,19 @@
       "Bookmark": {
         "type": "object",
         "properties": {
+          "processingPolicy": {
+            "type": "string",
+            "enum": [
+              "automatic",
+              "deferred"
+            ]
+          },
+          "policyRevision": {
+            "type": "integer"
+          },
+          "contentRevision": {
+            "type": "integer"
+          },
           "sensitiveCategories": {
             "type": "array",
             "nullable": true,
@@ -193,6 +220,7 @@
                   "pending",
                   "processing",
                   "processing_local",
+                  "waiting_resource",
                   "success",
                   "refused",
                   "failed",
@@ -209,6 +237,10 @@
               },
               "updatedAt": {
                 "type": "string"
+              },
+              "resourceWaitUntil": {
+                "type": "string",
+                "format": "date-time"
               },
               "allowPreview": {
                 "type": "boolean"
@@ -2015,6 +2047,19 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "processingPolicy": {
+                      "type": "string",
+                      "enum": [
+                        "automatic",
+                        "deferred"
+                      ]
+                    },
+                    "policyRevision": {
+                      "type": "integer"
+                    },
+                    "contentRevision": {
+                      "type": "integer"
+                    },
                     "sensitiveCategories": {
                       "type": "array",
                       "nullable": true,
@@ -2087,6 +2132,7 @@
                             "pending",
                             "processing",
                             "processing_local",
+                            "waiting_resource",
                             "success",
                             "refused",
                             "failed",
@@ -2103,6 +2149,10 @@
                         },
                         "updatedAt": {
                           "type": "string"
+                        },
+                        "resourceWaitUntil": {
+                          "type": "string",
+                          "format": "date-time"
                         },
                         "allowPreview": {
                           "type": "boolean"
@@ -2641,6 +2691,19 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "processingPolicy": {
+                      "type": "string",
+                      "enum": [
+                        "automatic",
+                        "deferred"
+                      ]
+                    },
+                    "policyRevision": {
+                      "type": "integer"
+                    },
+                    "contentRevision": {
+                      "type": "integer"
+                    },
                     "sensitiveCategories": {
                       "type": "array",
                       "nullable": true,
@@ -2713,6 +2776,7 @@
                             "pending",
                             "processing",
                             "processing_local",
+                            "waiting_resource",
                             "success",
                             "refused",
                             "failed",
@@ -2729,6 +2793,10 @@
                         },
                         "updatedAt": {
                           "type": "string"
+                        },
+                        "resourceWaitUntil": {
+                          "type": "string",
+                          "format": "date-time"
                         },
                         "allowPreview": {
                           "type": "boolean"
@@ -3178,6 +3246,19 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "processingPolicy": {
+                      "type": "string",
+                      "enum": [
+                        "automatic",
+                        "deferred"
+                      ]
+                    },
+                    "policyRevision": {
+                      "type": "integer"
+                    },
+                    "contentRevision": {
+                      "type": "integer"
+                    },
                     "sensitiveCategories": {
                       "type": "array",
                       "nullable": true,
@@ -3250,6 +3331,7 @@
                             "pending",
                             "processing",
                             "processing_local",
+                            "waiting_resource",
                             "success",
                             "refused",
                             "failed",
@@ -3266,6 +3348,10 @@
                         },
                         "updatedAt": {
                           "type": "string"
+                        },
+                        "resourceWaitUntil": {
+                          "type": "string",
+                          "format": "date-time"
                         },
                         "allowPreview": {
                           "type": "boolean"
@@ -7151,6 +7237,1518 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/duplicates/status": {
+      "get": {
+        "operationId": "getDuplicateIndexStatus",
+        "tags": [
+          "Duplicates"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Get original-file index coverage",
+        "description": "Returns only the owner's attached original occurrences. This read does not start indexing. Requires bookmarks:read.",
+        "responses": {
+          "200": {
+            "description": "Current owner index coverage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "originals": {
+                      "type": "number"
+                    },
+                    "verified": {
+                      "type": "number"
+                    },
+                    "needsIndex": {
+                      "type": "number"
+                    },
+                    "errors": {
+                      "type": "number"
+                    },
+                    "maxFileBytes": {
+                      "type": "number"
+                    },
+                    "physicalReuse": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    }
+                  },
+                  "required": [
+                    "originals",
+                    "verified",
+                    "needsIndex",
+                    "errors",
+                    "maxFileBytes",
+                    "physicalReuse"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized — the Bearer token is missing, invalid, or expired.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "example": "Unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The authenticated caller lacks the required bookmark scope, or a mutation is disabled in read-only mode."
+          }
+        }
+      }
+    },
+    "/duplicates": {
+      "get": {
+        "operationId": "listDuplicateGroups",
+        "tags": [
+          "Duplicates"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "List exact-byte duplicate groups",
+        "description": "Requires bookmarks:read. Cursors page through candidate groups before applying the decision filter. An empty page may still have a nextCursor; continue until it is null. All hashes and groups are owner-scoped.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "nullable": true
+            },
+            "required": false,
+            "name": "cursor",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "reviewed",
+                "all"
+              ],
+              "default": "pending"
+            },
+            "required": false,
+            "name": "view",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of groups with at least two currently indexed original occurrences.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "groups": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "files": {
+                            "type": "number"
+                          },
+                          "cards": {
+                            "type": "number"
+                          },
+                          "size": {
+                            "type": "number"
+                          },
+                          "copyBytes": {
+                            "type": "number"
+                          },
+                          "decision": {
+                            "type": "string",
+                            "nullable": true,
+                            "enum": [
+                              "keep_both",
+                              "defer",
+                              "prefer_primary",
+                              null
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "files",
+                          "cards",
+                          "size",
+                          "copyBytes",
+                          "decision"
+                        ]
+                      }
+                    },
+                    "nextCursor": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "groups",
+                    "nextCursor"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized — the Bearer token is missing, invalid, or expired.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "example": "Unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The authenticated caller lacks the required bookmark scope, or a mutation is disabled in read-only mode."
+          }
+        }
+      }
+    },
+    "/duplicates/{groupId}": {
+      "get": {
+        "operationId": "getDuplicateGroup",
+        "tags": [
+          "Duplicates"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Compare originals and their owning cards",
+        "description": "Requires bookmarks:read. Returns id, evidenceVersion, decisionVersion, current decision or null, all matching members with asset metadata and verifiedAt, the first 50 cards, cardContext (originalCount and visible lists), truncated, and size. Decisions apply to the exact membership version; a changed membership reopens review. A shared file is not evidence that entire cards are equivalent.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "groupId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Owner-only comparison and optimistic concurrency tokens."
+          },
+          "401": {
+            "description": "Unauthorized — the Bearer token is missing, invalid, or expired.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "example": "Unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The authenticated caller lacks the required bookmark scope, or a mutation is disabled in read-only mode."
+          },
+          "404": {
+            "description": "Group unavailable to this owner or fewer than two valid originals remain."
+          }
+        }
+      }
+    },
+    "/duplicates/scan-next": {
+      "post": {
+        "operationId": "scanNextDuplicateOriginal",
+        "tags": [
+          "Duplicates"
+        ],
+        "security": [
+          {
+            "OwnerSession": []
+          }
+        ],
+        "summary": "Hash one original file",
+        "description": "Owner web session only; API keys are rejected. Reads one original, capped at 512 MiB and 20 seconds. A durable global lease permits one reader at a time. Pass nextCursor as afterId until done is true. recheck=false skips indexed occurrences; recheck=true revisits prior successes and errors. No media decode, AI call, media mutation or automatic scan occurs.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "afterId": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "recheck": {
+                    "type": "boolean",
+                    "default": false
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "One bounded scan step or end of scan.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "done": {
+                      "type": "boolean"
+                    },
+                    "nextCursor": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "status": {
+                      "type": "string",
+                      "nullable": true,
+                      "enum": [
+                        "verified",
+                        "unreadable",
+                        "too_large",
+                        "changed",
+                        null
+                      ]
+                    }
+                  },
+                  "required": [
+                    "done",
+                    "nextCursor",
+                    "status"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized — the Bearer token is missing, invalid, or expired.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "example": "Unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The authenticated caller lacks the required bookmark scope, or a mutation is disabled in read-only mode."
+          },
+          "409": {
+            "description": "Another file reader holds the lease; retry later."
+          }
+        }
+      }
+    },
+    "/duplicates/decisions": {
+      "post": {
+        "operationId": "saveDuplicateDecision",
+        "tags": [
+          "Duplicates"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Save or undo a review decision",
+        "description": "Requires bookmarks:readwrite. Submit the evidenceVersion and decisionVersion from the comparison as expectedDecisionVersion. prefer_primary requires a member card's ID. decision=null undoes the decision while advancing its revision. This organizes review only: all cards, notes and files remain saved and no storage is reclaimed.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "groupId": {
+                    "type": "string"
+                  },
+                  "evidenceVersion": {
+                    "type": "string"
+                  },
+                  "expectedDecisionVersion": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "decision": {
+                    "type": "string",
+                    "nullable": true,
+                    "enum": [
+                      "keep_both",
+                      "defer",
+                      "prefer_primary",
+                      null
+                    ]
+                  },
+                  "primaryBookmarkId": {
+                    "type": "string",
+                    "nullable": true,
+                    "default": null
+                  }
+                },
+                "required": [
+                  "groupId",
+                  "evidenceVersion",
+                  "expectedDecisionVersion",
+                  "decision"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved decision revision.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "version": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "version"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid primary card or request."
+          },
+          "401": {
+            "description": "Unauthorized — the Bearer token is missing, invalid, or expired.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "example": "Unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The authenticated caller lacks the required bookmark scope, or a mutation is disabled in read-only mode."
+          },
+          "404": {
+            "description": "Group unavailable."
+          },
+          "409": {
+            "description": "Membership or decision changed. Refresh the group before saving again."
+          }
+        }
+      }
+    },
+    "/import/capabilities": {
+      "get": {
+        "operationId": "getDeferredImportCapabilities",
+        "tags": [
+          "Deferred imports"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Read deferred copy import capabilities",
+        "description": "Requires imports:read. Check contractVersion=deferred-copy-v1 and materialize=true before using the pilot. One original per revision, <=50 MiB, raw JSON metadata <=4 MiB. JPEG/PNG/GIF/WebP/PDF MIME signatures are accepted; no image decode or model is run. Historical resolution and stage permits are unavailable. Supported filesystem and all immutable-policy database barriers are required.",
+        "responses": {
+          "200": {
+            "description": "Contract version, materialize/persistentDeferred flags, storageMode=copy, physicalReuse=false, maxAttachments=1, maxFileBytes, maxMetadataBytes, supportedMimeTypes, stagePermits=false, historicalResolution=false."
+          },
+          "401": {
+            "description": "Unauthorized — the Bearer token is missing, invalid, or expired.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "example": "Unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing imports scope or mutations disabled in read-only mode."
+          },
+          "404": {
+            "description": "Operation is not available to this owner."
+          },
+          "409": {
+            "description": "Busy, expired fence, conflicting payload, incomplete evidence or held source. Read the operation status before retrying."
+          },
+          "412": {
+            "description": "Filesystem storage or required database policy barriers are unavailable."
+          },
+          "413": {
+            "description": "Declared or streamed byte limit exceeded."
+          },
+          "429": {
+            "description": "Staging capacity is full."
+          }
+        }
+      }
+    },
+    "/import/lookup": {
+      "post": {
+        "operationId": "lookupDeferredImport",
+        "tags": [
+          "Deferred imports"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Look up source identity and exact owner file matches",
+        "description": "Read-only advisory lookup with imports:read. Requires the same body as reservation. Returns sourceMatch (new_source/same_revision/source_conflict), canonical operationId or null, at most 20 owner-only contentMatches, physicalReuse=false. Matching bytes never move an existing asset or overwrite a prior card.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "contractVersion": {
+                    "type": "string",
+                    "enum": [
+                      "deferred-copy-v1"
+                    ]
+                  },
+                  "source": {
+                    "type": "object",
+                    "properties": {
+                      "provider": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 512
+                      },
+                      "accountScope": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 512
+                      },
+                      "objectId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 512
+                      },
+                      "revision": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 512
+                      },
+                      "revisionKind": {
+                        "type": "string",
+                        "enum": [
+                          "current",
+                          "historical"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "provider",
+                      "accountScope",
+                      "objectId",
+                      "revision",
+                      "revisionKind"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "metadata": {
+                    "type": "object",
+                    "properties": {
+                      "sha256": {
+                        "type": "string",
+                        "pattern": "^[a-f0-9]{64}$"
+                      },
+                      "size": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "exclusiveMinimum": true,
+                        "maximum": 4194304
+                      }
+                    },
+                    "required": [
+                      "sha256",
+                      "size"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "mapping": {
+                    "type": "object",
+                    "properties": {
+                      "title": {
+                        "type": "string",
+                        "nullable": true,
+                        "maxLength": 2000
+                      },
+                      "note": {
+                        "type": "string",
+                        "nullable": true,
+                        "maxLength": 100000
+                      },
+                      "sourceUrl": {
+                        "type": "string",
+                        "nullable": true,
+                        "maxLength": 8192,
+                        "format": "uri"
+                      },
+                      "savedAt": {
+                        "type": "string",
+                        "nullable": true,
+                        "format": "date-time"
+                      },
+                      "tags": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "maxItems": 100
+                      }
+                    },
+                    "required": [
+                      "title",
+                      "note",
+                      "sourceUrl",
+                      "savedAt",
+                      "tags"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "completeness": {
+                    "type": "string",
+                    "enum": [
+                      "unknown",
+                      "partial",
+                      "complete"
+                    ]
+                  },
+                  "attachments": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "slot": {
+                          "type": "string",
+                          "pattern": "^[a-zA-Z0-9_-]{1,64}$"
+                        },
+                        "ordinal": {
+                          "type": "number",
+                          "enum": [
+                            0
+                          ]
+                        },
+                        "role": {
+                          "type": "string",
+                          "enum": [
+                            "original"
+                          ]
+                        },
+                        "originalName": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 1024
+                        },
+                        "observed": {
+                          "type": "object",
+                          "properties": {
+                            "sha256": {
+                              "type": "string",
+                              "pattern": "^[a-f0-9]{64}$"
+                            },
+                            "size": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "exclusiveMinimum": true,
+                              "maximum": 52428800
+                            }
+                          },
+                          "required": [
+                            "sha256",
+                            "size"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "exported": {
+                          "type": "object",
+                          "nullable": true,
+                          "properties": {
+                            "sha256": {
+                              "type": "string",
+                              "pattern": "^[a-f0-9]{64}$"
+                            },
+                            "size": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "exclusiveMinimum": true,
+                              "maximum": 52428800
+                            }
+                          },
+                          "required": [
+                            "sha256",
+                            "size"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "transport": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "nullable": true
+                          }
+                        }
+                      },
+                      "required": [
+                        "slot",
+                        "ordinal",
+                        "role",
+                        "originalName",
+                        "observed",
+                        "exported",
+                        "transport"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "processingPolicy": {
+                    "type": "string",
+                    "enum": [
+                      "deferred"
+                    ]
+                  },
+                  "storageMode": {
+                    "type": "string",
+                    "enum": [
+                      "copy"
+                    ]
+                  }
+                },
+                "required": [
+                  "contractVersion",
+                  "source",
+                  "metadata",
+                  "mapping",
+                  "completeness",
+                  "attachments",
+                  "processingPolicy",
+                  "storageMode"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Advisory source and content matches."
+          },
+          "401": {
+            "description": "Unauthorized — the Bearer token is missing, invalid, or expired.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "example": "Unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing imports scope or mutations disabled in read-only mode."
+          },
+          "404": {
+            "description": "Operation is not available to this owner."
+          },
+          "409": {
+            "description": "Busy, expired fence, conflicting payload, incomplete evidence or held source. Read the operation status before retrying."
+          },
+          "412": {
+            "description": "Filesystem storage or required database policy barriers are unavailable."
+          },
+          "413": {
+            "description": "Declared or streamed byte limit exceeded."
+          },
+          "429": {
+            "description": "Staging capacity is full."
+          }
+        }
+      }
+    },
+    "/import/reservations": {
+      "post": {
+        "operationId": "reserveDeferredImport",
+        "tags": [
+          "Deferred imports"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Reserve an immutable source revision",
+        "description": "Requires imports:readwrite. Stable Idempotency-Key plus canonical-json-v1 payload identity: recursively sorted object keys, array order retained, UTF-8 JSON without Unicode normalization. The same source revision and payload returns its canonical operation even with another transport key. Conflict never updates the old source. Nonterminal expired leases renew fencingToken. Staging capacity is 16 nonterminal operations per owner and 64 globally; retained staging and metadata count toward quota. Raw reservation JSON is capped at 256 KiB.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "required": true,
+            "name": "Idempotency-Key",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "contractVersion": {
+                    "type": "string",
+                    "enum": [
+                      "deferred-copy-v1"
+                    ]
+                  },
+                  "source": {
+                    "type": "object",
+                    "properties": {
+                      "provider": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 512
+                      },
+                      "accountScope": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 512
+                      },
+                      "objectId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 512
+                      },
+                      "revision": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 512
+                      },
+                      "revisionKind": {
+                        "type": "string",
+                        "enum": [
+                          "current",
+                          "historical"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "provider",
+                      "accountScope",
+                      "objectId",
+                      "revision",
+                      "revisionKind"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "metadata": {
+                    "type": "object",
+                    "properties": {
+                      "sha256": {
+                        "type": "string",
+                        "pattern": "^[a-f0-9]{64}$"
+                      },
+                      "size": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "exclusiveMinimum": true,
+                        "maximum": 4194304
+                      }
+                    },
+                    "required": [
+                      "sha256",
+                      "size"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "mapping": {
+                    "type": "object",
+                    "properties": {
+                      "title": {
+                        "type": "string",
+                        "nullable": true,
+                        "maxLength": 2000
+                      },
+                      "note": {
+                        "type": "string",
+                        "nullable": true,
+                        "maxLength": 100000
+                      },
+                      "sourceUrl": {
+                        "type": "string",
+                        "nullable": true,
+                        "maxLength": 8192,
+                        "format": "uri"
+                      },
+                      "savedAt": {
+                        "type": "string",
+                        "nullable": true,
+                        "format": "date-time"
+                      },
+                      "tags": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "maxItems": 100
+                      }
+                    },
+                    "required": [
+                      "title",
+                      "note",
+                      "sourceUrl",
+                      "savedAt",
+                      "tags"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "completeness": {
+                    "type": "string",
+                    "enum": [
+                      "unknown",
+                      "partial",
+                      "complete"
+                    ]
+                  },
+                  "attachments": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "slot": {
+                          "type": "string",
+                          "pattern": "^[a-zA-Z0-9_-]{1,64}$"
+                        },
+                        "ordinal": {
+                          "type": "number",
+                          "enum": [
+                            0
+                          ]
+                        },
+                        "role": {
+                          "type": "string",
+                          "enum": [
+                            "original"
+                          ]
+                        },
+                        "originalName": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 1024
+                        },
+                        "observed": {
+                          "type": "object",
+                          "properties": {
+                            "sha256": {
+                              "type": "string",
+                              "pattern": "^[a-f0-9]{64}$"
+                            },
+                            "size": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "exclusiveMinimum": true,
+                              "maximum": 52428800
+                            }
+                          },
+                          "required": [
+                            "sha256",
+                            "size"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "exported": {
+                          "type": "object",
+                          "nullable": true,
+                          "properties": {
+                            "sha256": {
+                              "type": "string",
+                              "pattern": "^[a-f0-9]{64}$"
+                            },
+                            "size": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "exclusiveMinimum": true,
+                              "maximum": 52428800
+                            }
+                          },
+                          "required": [
+                            "sha256",
+                            "size"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "transport": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "nullable": true
+                          }
+                        }
+                      },
+                      "required": [
+                        "slot",
+                        "ordinal",
+                        "role",
+                        "originalName",
+                        "observed",
+                        "exported",
+                        "transport"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "processingPolicy": {
+                    "type": "string",
+                    "enum": [
+                      "deferred"
+                    ]
+                  },
+                  "storageMode": {
+                    "type": "string",
+                    "enum": [
+                      "copy"
+                    ]
+                  }
+                },
+                "required": [
+                  "contractVersion",
+                  "source",
+                  "metadata",
+                  "mapping",
+                  "completeness",
+                  "attachments",
+                  "processingPolicy",
+                  "storageMode"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Operation status with operationId=sourceRevisionId, state (reserved/verified/hold/committed), payloadDigest, fencingToken, leaseUntil as epoch milliseconds, metadataVerified, files and optional immutable receipt."
+          },
+          "401": {
+            "description": "Unauthorized — the Bearer token is missing, invalid, or expired.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "example": "Unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing imports scope or mutations disabled in read-only mode."
+          },
+          "404": {
+            "description": "Operation is not available to this owner."
+          },
+          "409": {
+            "description": "Busy, expired fence, conflicting payload, incomplete evidence or held source. Read the operation status before retrying."
+          },
+          "412": {
+            "description": "Filesystem storage or required database policy barriers are unavailable."
+          },
+          "413": {
+            "description": "Declared or streamed byte limit exceeded."
+          },
+          "429": {
+            "description": "Staging capacity is full."
+          }
+        }
+      }
+    },
+    "/import/reservations/{id}": {
+      "get": {
+        "operationId": "getDeferredImportStatus",
+        "tags": [
+          "Deferred imports"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Recover an operation after a lost response",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Owner-only operation status and prior commit receipt. No private storage paths are exposed."
+          },
+          "401": {
+            "description": "Unauthorized — the Bearer token is missing, invalid, or expired.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "example": "Unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing imports scope or mutations disabled in read-only mode."
+          },
+          "404": {
+            "description": "Operation is not available to this owner."
+          },
+          "409": {
+            "description": "Busy, expired fence, conflicting payload, incomplete evidence or held source. Read the operation status before retrying."
+          },
+          "412": {
+            "description": "Filesystem storage or required database policy barriers are unavailable."
+          },
+          "413": {
+            "description": "Declared or streamed byte limit exceeded."
+          },
+          "429": {
+            "description": "Staging capacity is full."
+          }
+        }
+      }
+    },
+    "/import/reservations/{id}/metadata": {
+      "put": {
+        "operationId": "uploadDeferredImportMetadata",
+        "tags": [
+          "Deferred imports"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Store the exact raw source metadata envelope",
+        "description": "Requires imports:readwrite. Upload raw UTF-8 JSON bytes matching the reserved SHA-256 and size, up to 4 MiB. Whitespace, field names, unknown fields and byte representation are retained; no lossy mapping replaces the envelope. X-Import-Fence must match the live operation lease.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*$"
+            },
+            "required": true,
+            "name": "X-Import-Fence",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated operation status."
+          },
+          "401": {
+            "description": "Unauthorized — the Bearer token is missing, invalid, or expired.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "example": "Unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing imports scope or mutations disabled in read-only mode."
+          },
+          "404": {
+            "description": "Operation is not available to this owner."
+          },
+          "409": {
+            "description": "Busy, expired fence, conflicting payload, incomplete evidence or held source. Read the operation status before retrying."
+          },
+          "412": {
+            "description": "Filesystem storage or required database policy barriers are unavailable."
+          },
+          "413": {
+            "description": "Declared or streamed byte limit exceeded."
+          },
+          "429": {
+            "description": "Staging capacity is full."
+          }
+        }
+      },
+      "get": {
+        "operationId": "readDeferredImportMetadata",
+        "tags": [
+          "Deferred imports"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Download the exact verified metadata bytes",
+        "description": "Requires imports:read. The receipt's metadataUrl is this relative owner-authenticated route. Download is private/no-store and remains available after commit.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Original envelope bytes as an application/octet-stream attachment."
+          },
+          "401": {
+            "description": "Unauthorized — the Bearer token is missing, invalid, or expired.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "example": "Unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing imports scope or mutations disabled in read-only mode."
+          },
+          "404": {
+            "description": "Operation is not available to this owner."
+          },
+          "409": {
+            "description": "Busy, expired fence, conflicting payload, incomplete evidence or held source. Read the operation status before retrying."
+          },
+          "412": {
+            "description": "Filesystem storage or required database policy barriers are unavailable."
+          },
+          "413": {
+            "description": "Declared or streamed byte limit exceeded."
+          },
+          "429": {
+            "description": "Staging capacity is full."
+          }
+        }
+      }
+    },
+    "/import/reservations/{id}/files/{slot}": {
+      "put": {
+        "operationId": "uploadDeferredImportFile",
+        "tags": [
+          "Deferred imports"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Stream one original into private staging",
+        "description": "Requires imports:readwrite. Server computes SHA-256/count, detects MIME signature, fsyncs and rereads the staged bytes. One shared I/O lease, 20-second stream deadlines, <=50 MiB. A declared historical revision, source/export mismatch or unsupported MIME remains held. Never creates a fake image or URL. An incomplete .part is not a verified file; no model, decoder, crawler or source URL fetch occurs.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slot",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*$"
+            },
+            "required": true,
+            "name": "X-Import-Fence",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated operation status; inspect state and per-file verification before committing."
+          },
+          "401": {
+            "description": "Unauthorized — the Bearer token is missing, invalid, or expired.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "example": "Unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing imports scope or mutations disabled in read-only mode."
+          },
+          "404": {
+            "description": "Operation is not available to this owner."
+          },
+          "409": {
+            "description": "Busy, expired fence, conflicting payload, incomplete evidence or held source. Read the operation status before retrying."
+          },
+          "412": {
+            "description": "Filesystem storage or required database policy barriers are unavailable."
+          },
+          "413": {
+            "description": "Declared or streamed byte limit exceeded."
+          },
+          "429": {
+            "description": "Staging capacity is full."
+          }
+        }
+      }
+    },
+    "/import/reservations/{id}/verify": {
+      "post": {
+        "operationId": "verifyDeferredImport",
+        "tags": [
+          "Deferred imports"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Reread staged bytes and metadata",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "fencingToken": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "exclusiveMinimum": true
+                  }
+                },
+                "required": [
+                  "fencingToken"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Verified operation status, or the already committed status."
+          },
+          "401": {
+            "description": "Unauthorized — the Bearer token is missing, invalid, or expired.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "example": "Unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing imports scope or mutations disabled in read-only mode."
+          },
+          "404": {
+            "description": "Operation is not available to this owner."
+          },
+          "409": {
+            "description": "Busy, expired fence, conflicting payload, incomplete evidence or held source. Read the operation status before retrying."
+          },
+          "412": {
+            "description": "Filesystem storage or required database policy barriers are unavailable."
+          },
+          "413": {
+            "description": "Declared or streamed byte limit exceeded."
+          },
+          "429": {
+            "description": "Staging capacity is full."
+          }
+        }
+      }
+    },
+    "/import/reservations/{id}/commit": {
+      "post": {
+        "operationId": "commitDeferredImport",
+        "tags": [
+          "Deferred imports"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Atomically publish a deferred copied original",
+        "description": "Requires imports:readwrite. Verifies stage and target bytes, quota and fence, then commits a new asset bookmark, occurrence, source receipt, exact hash index and held internal import.committed outbox event together. A retry returns the same receipt. Separate sources or revisions receive separate cards and asset IDs even when bytes or source URLs match. The snapshot remains deferred and immutable; no release, generated thumbnail, AI, crawl, embeddings, rule or webhook is admitted. Private staged originals remain retained and count toward quota in addition to target copies. Normal legacy import APIs retain their previous semantics.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "fencingToken": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "exclusiveMinimum": true
+                  }
+                },
+                "required": [
+                  "fencingToken"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "ImportReceipt: operationId, sourceRevisionId, bookmarkId, assets[{slot,assetId,storedSha256,storedSize,storageGeneration}], metadataSha256, metadataSize, relative metadataUrl, processingPolicy=deferred, policyRevision=1, contentRevision=1, physicalReuse=false."
+          },
+          "401": {
+            "description": "Unauthorized — the Bearer token is missing, invalid, or expired.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "example": "Unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing imports scope or mutations disabled in read-only mode."
+          },
+          "404": {
+            "description": "Operation is not available to this owner."
+          },
+          "409": {
+            "description": "Busy, expired fence, conflicting payload, incomplete evidence or held source. Read the operation status before retrying."
+          },
+          "412": {
+            "description": "Filesystem storage or required database policy barriers are unavailable."
+          },
+          "413": {
+            "description": "Declared or streamed byte limit exceeded."
+          },
+          "429": {
+            "description": "Staging capacity is full."
           }
         }
       }

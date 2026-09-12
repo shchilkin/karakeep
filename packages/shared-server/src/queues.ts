@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { db } from "@karakeep/db";
+import { automaticQueueAllowed } from "./processingPolicy";
 
 import {
   EnqueueOptions,
@@ -51,10 +53,12 @@ function createDeferredQueue<T>(name: string, options: QueueOptions): Queue<T> {
   return {
     opts: options,
     name: () => name,
+    shouldRun: async (payload: T) => automaticQueueAllowed(db, payload),
     ensureInit: async () => {
       await ensureQueue();
     },
     async enqueue(payload: T, opts?: EnqueueOptions) {
+      if (!automaticQueueAllowed(db, payload)) return undefined;
       return (await ensureQueue()).enqueue(payload, opts);
     },
     async stats() {

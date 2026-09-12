@@ -311,14 +311,11 @@ test("real SQLite queue, asset storage, FFmpeg and local HTTP gate precede the s
     expect(catalogCalls).toBe(2);
     admissionFails = true;
     db.update(bookmarkLinks).set({ description: "PRIVATE SOURCE 3" }).run();
-    const unknown = await run();
-    expect(unknown).toMatchObject({
-      status: "success",
-      localCheckUnavailable: true,
-      resultSource: { provider: "local" },
-    });
+    // Unavailable admission is an executor failure, not permission to dispatch
+    // another local model or a paid request in the same run.
+    expect((await run())?.status).toBe("local_failed");
     expect(cloudCalls).toBe(2);
-    expect(catalogCalls).toBe(3);
+    expect(catalogCalls).toBe(2);
     expect(db.select().from(mediaAiRequests).all()).toHaveLength(
       ledgerBefore + 1,
     );

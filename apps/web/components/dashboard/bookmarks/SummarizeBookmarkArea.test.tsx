@@ -67,35 +67,38 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-test("local checks keep polling and disable retries while running; test-mode completion stays visible", () => {
-  const bookmark = article({
-    mediaAi: {
-      runId: "local",
-      fingerprint: "pixels",
-      model: "grok-4.6",
-      status: "checking_local",
-      localMode: "review",
-      allowPreview: true,
-      updatedAt: new Date().toISOString(),
-    },
-  });
-  const { rerender } = render(
-    <MediaCatalogArea bookmark={bookmark} readOnly={false} />,
-  );
-  expect(screen.getByRole("status").textContent).toBe(
-    "media_ai.checking_local",
-  );
-  expect(
-    screen
-      .getByRole("button", { name: "media_ai.retry" })
-      .hasAttribute("disabled"),
-  ).toBe(true);
-  expect(getBookmarkRefreshInterval(bookmark)).toBe(2000);
-  bookmark.mediaAi!.status = "local_review";
-  rerender(<MediaCatalogArea bookmark={bookmark} readOnly={false} />);
-  expect(screen.getByRole("status").textContent).toBe("media_ai.local_review");
-  expect(getBookmarkRefreshInterval(bookmark)).toBe(false);
-});
+test.each(["checking_local", "waiting_resource"] as const)(
+  "%s keeps polling and disables retries while running; completion stays visible",
+  (status) => {
+    const bookmark = article({
+      mediaAi: {
+        runId: "local",
+        fingerprint: "pixels",
+        model: "grok-4.6",
+        status,
+        localMode: "review",
+        allowPreview: true,
+        updatedAt: new Date().toISOString(),
+      },
+    });
+    const { rerender } = render(
+      <MediaCatalogArea bookmark={bookmark} readOnly={false} />,
+    );
+    expect(screen.getByRole("status").textContent).toBe(`media_ai.${status}`);
+    expect(
+      screen
+        .getByRole("button", { name: "media_ai.retry" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+    expect(getBookmarkRefreshInterval(bookmark)).toBe(2000);
+    bookmark.mediaAi!.status = "local_review";
+    rerender(<MediaCatalogArea bookmark={bookmark} readOnly={false} />);
+    expect(screen.getByRole("status").textContent).toBe(
+      "media_ai.local_review",
+    );
+    expect(getBookmarkRefreshInterval(bookmark)).toBe(false);
+  },
+);
 
 test("an interrupted local check continues polling for bounded recovery", () => {
   const bookmark = article({

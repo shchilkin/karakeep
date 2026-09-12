@@ -1,3 +1,4 @@
+import { isImportAssetRetained } from "@karakeep/shared-server";
 import { eq } from "drizzle-orm";
 
 import { db } from "@karakeep/db";
@@ -23,6 +24,7 @@ async function handleAsset(
   request: ZTidyAssetsRequest,
   jobId: string,
 ) {
+  if (isImportAssetRetained(db, asset.assetId)) return;
   const dbRow = await db.query.assets.findFirst({
     where: eq(assets.id, asset.assetId),
   });

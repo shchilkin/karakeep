@@ -12,7 +12,10 @@ import {
 import serverConfig from "@karakeep/shared/config";
 import { evenlySample } from "@karakeep/shared/mediaCatalog";
 import type { CatalogInput } from "@karakeep/shared/mediaCatalog";
-import { getQueueClient } from "@karakeep/shared/queueing";
+import {
+  getQueueClient,
+  QueueRetryAfterError,
+} from "@karakeep/shared/queueing";
 import type { DequeuedJob } from "@karakeep/shared/queueing";
 import {
   finishMediaCatalog,
@@ -21,6 +24,7 @@ import {
   continueMediaCatalog,
   recoverLocalMediaCatalog,
   reconcileLocalMediaCatalog,
+  waitForMediaCatalogResource,
 } from "@karakeep/trpc/models/mediaCatalog";
 import type { CatalogJob } from "@karakeep/trpc/models/mediaCatalog";
 import { RuleEngine } from "@karakeep/trpc/lib/ruleEngine";
@@ -30,6 +34,7 @@ import {
   inferMediaCatalog,
 } from "./mediaCatalogProvider";
 import { checkLocalMedia, reusableLocalCheck } from "./mediaLocalProvider";
+import { LocalResourceWait, LocalExecutorUnavailable } from "./localResource";
 
 export async function prepareCatalogImages(
   userId: string,
@@ -159,6 +164,11 @@ export async function runMediaCatalog(job: DequeuedJob<CatalogJob>) {
               ? reusableLocalCheck(started.state.localCheck, images)
               : null) ?? (await checkLocalMedia(images, job.abortSignal));
       } catch (error) {
+        if (
+          error instanceof LocalResourceWait ||
+          error instanceof LocalExecutorUnavailable
+        )
+          throw error;
         if (!started.state.hybrid) throw error;
         // Missing/invalid admission is local-only, never an implicit pass.
       }
@@ -199,6 +209,12 @@ export async function runMediaCatalog(job: DequeuedJob<CatalogJob>) {
     );
     if (applied) attachedTagIds = applied.attachedTagIds;
   } catch (error) {
+    if (error instanceof LocalResourceWait) {
+      if (waitForMediaCatalogResource(db, job.data, error.delayMs)) {
+        throw new QueueRetryAfterError("waiting_resource", error.delayMs);
+      }
+      return;
+    }
     finishMediaCatalog(
       db,
       job.data,

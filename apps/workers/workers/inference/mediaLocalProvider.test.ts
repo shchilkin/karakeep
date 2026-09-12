@@ -7,6 +7,7 @@ import {
   LOCAL_CHECK_REVISION,
 } from "@karakeep/shared/mediaLocalCheck";
 import { checkLocalMedia, reusableLocalCheck } from "./mediaLocalProvider";
+import { LocalResourceWait, LocalExecutorUnavailable } from "./localResource";
 
 const frame = {
   model: LOCAL_CHECK_MODEL,
@@ -133,3 +134,23 @@ test("old Nemotron observations remain readable but cannot skip a ShieldGemma ch
   };
   expect(reusableLocalCheck(previous, [image])).toBeNull();
 });
+
+test.each([
+  [429, LocalResourceWait],
+  [503, LocalExecutorUnavailable],
+] as const)(
+  "HTTP %s preserves the resource outcome without exposing a body or retrying",
+  async (status, error) => {
+    const request = vi
+      .fn()
+      .mockResolvedValue(new Response("private response", { status }));
+    await expect(
+      checkLocalMedia(
+        [Buffer.from("x")],
+        new AbortController().signal,
+        request,
+      ),
+    ).rejects.toBeInstanceOf(error);
+    expect(request).toHaveBeenCalledOnce();
+  },
+);

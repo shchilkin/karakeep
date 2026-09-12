@@ -1,3 +1,4 @@
+import { assertBookmarkMutable } from "@karakeep/shared-server";
 import { TRPCError } from "@trpc/server";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -97,6 +98,8 @@ export class Asset {
       this.ensureBookmarkOwnership(ctx, input.bookmarkId),
     ]);
     asset.ensureOwnership();
+    if (asset.asset.bookmarkId)
+      assertBookmarkMutable(ctx.db, asset.asset.bookmarkId);
 
     if (!isAllowedToAttachAsset(input.asset.assetType)) {
       throw new TRPCError({
@@ -238,6 +241,7 @@ export class Asset {
   ) {
     const bookmark = await BareBookmark.bareFromId(ctx, bookmarkId);
     bookmark.ensureOwnership();
+    assertBookmarkMutable(ctx.db, bookmarkId);
   }
 
   ensureOwnership() {

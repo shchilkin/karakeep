@@ -1,3 +1,4 @@
+import { assertBookmarkMutable } from "@karakeep/shared-server";
 import { createHash } from "node:crypto";
 
 import { TRPCError } from "@trpc/server";
@@ -1047,6 +1048,7 @@ export class Bookmark extends BareBookmark {
   }
 
   async delete() {
+    assertBookmarkMutable(this.ctx.db, this.id);
     this.ensureOwnership();
     const deleted = await this.ctx.db
       .delete(bookmarks)
