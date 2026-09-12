@@ -62,11 +62,13 @@ export default function MediaCatalogArea({
       ? t("media_ai.interrupted")
       : busy
         ? t(
-            state?.status === "checking_local"
-              ? "media_ai.checking_local"
-              : state?.status === "processing_local"
-                ? "media_ai.processing_local"
-                : "media_ai.processing",
+            state?.status === "waiting_resource"
+              ? "media_ai.waiting_resource"
+              : state?.status === "checking_local"
+                ? "media_ai.checking_local"
+                : state?.status === "processing_local"
+                  ? "media_ai.processing_local"
+                  : "media_ai.processing",
           )
         : state && state.status in failureMessages
           ? failureMessages[state.status as keyof typeof failureMessages]

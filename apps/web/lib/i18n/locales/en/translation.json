@@ -1,5 +1,6 @@
 {
   "media_ai": {
+    "waiting_resource": "Waiting for the local GPU to become available…",
     "processing_local": "Analyzing locally with Qwen…",
     "source_local": "Local analysis",
     "source_cloud": "Cloud analysis",

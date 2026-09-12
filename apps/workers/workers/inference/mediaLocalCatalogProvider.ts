@@ -2,6 +2,11 @@ import serverConfig from "@karakeep/shared/config";
 import type { CatalogInput } from "@karakeep/shared/mediaCatalog";
 import { zLocalCatalogResponse } from "@karakeep/shared/mediaLocalCatalog";
 import { CatalogFailure } from "./mediaCatalogProvider";
+import {
+  checkLocalStatus,
+  LocalExecutorUnavailable,
+  LocalResourceWait,
+} from "./localResource";
 
 /** Private service only. No retries and no fallback provider. */
 export async function inferLocalCatalog(
@@ -10,6 +15,7 @@ export async function inferLocalCatalog(
   signal: AbortSignal,
   request = fetch,
 ) {
+  let dispatched = false;
   try {
     const config = serverConfig.mediaAi;
     if (
@@ -33,6 +39,7 @@ export async function inferLocalCatalog(
       (!images.length && input.media.kind !== "text")
     )
       throw new Error();
+    dispatched = true;
     const response = await request(url, {
       method: "POST",
       redirect: "error",
@@ -50,6 +57,7 @@ export async function inferLocalCatalog(
     });
     if (!response.ok) {
       await response.body?.cancel();
+      checkLocalStatus(response.status);
       throw new Error();
     }
     const reader = response.body?.getReader();
@@ -70,7 +78,13 @@ export async function inferLocalCatalog(
     return zLocalCatalogResponse.parse(
       JSON.parse(Buffer.concat(chunks).toString("utf8")),
     ).result;
-  } catch {
+  } catch (error) {
+    if (
+      error instanceof LocalResourceWait ||
+      error instanceof LocalExecutorUnavailable
+    )
+      throw error;
+    if (dispatched) throw new LocalExecutorUnavailable();
     // Never propagate local responses or source content to worker logs.
     throw new CatalogFailure("local_failed");
   }

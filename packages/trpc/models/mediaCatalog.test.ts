@@ -30,6 +30,7 @@ import {
   continueMediaCatalog,
   recoverLocalMediaCatalog,
   reconcileLocalMediaCatalog,
+  waitForMediaCatalogResource,
 } from "./mediaCatalog";
 import { concealSensitiveBookmark } from "@karakeep/shared/sensitiveVisibility";
 import { getApiCaller } from "../testUtils";
@@ -224,6 +225,7 @@ describe("media catalog lifecycle", () => {
     expect(MediaCatalogQueue.enqueue).toHaveBeenLastCalledWith(job, {
       groupId: "u1",
       idempotencyKey: job.runId,
+      priority: 0,
     });
     expect(startMediaCatalog(db, job)).not.toBeNull();
     expect(startMediaCatalog(db, job)).toBeNull();
@@ -1200,5 +1202,79 @@ describe("hybrid routing", () => {
     await expect(requestMediaCatalog(db, "u1", "b1")).rejects.toMatchObject({
       code: "BAD_REQUEST",
     });
+  });
+});
+
+describe("durable GPU resource waiting", () => {
+  beforeEach(() =>
+    Object.assign(serverConfig.mediaAi, {
+      hybridEnabled: true,
+      localMode: "enforce",
+    }),
+  );
+
+  test("waiting repairs a lost delivery with the same key and reserves cloud only once after admission", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const now = Date.now();
+    try {
+      const job = await queue();
+      startMediaCatalog(db, job);
+      expect(waitForMediaCatalogResource(db, job)).toBe(true);
+      const state = catalogSnapshot(db, "u1", "b1").bookmark.mediaAi!;
+      expect(state).toMatchObject({
+        runId: job.runId,
+        status: "waiting_resource",
+      });
+      expect(state.localRecoveries).toBeUndefined();
+      expect(() => startMediaCatalog(db, job)).toThrow("waiting_resource");
+      expect(finishMediaCatalog(db, job, "success", result)).toBe(false);
+      expect(db.select().from(mediaAiRequests).all()).toHaveLength(0);
+      vi.setSystemTime(now + 30_001);
+      await recoverLocalMediaCatalog(db);
+      expect(MediaCatalogQueue.enqueue).toHaveBeenLastCalledWith(job, {
+        groupId: "u1",
+        idempotencyKey: job.runId,
+        priority: 0,
+      });
+      expect(startMediaCatalog(db, job)).not.toBeNull();
+      expect(continueMediaCatalog(db, job, localCheck())).toBe(true);
+      expect(waitForMediaCatalogResource(db, job)).toBe(false);
+      expect(db.select().from(mediaAiRequests).all()).toHaveLength(1);
+      finishMediaCatalog(db, job, "success", result);
+      expect(startMediaCatalog(db, job)).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("Qwen waiting retains the completed local checkpoint and never consumes a recovery attempt", async () => {
+    const job = await queue();
+    startMediaCatalog(db, job);
+    expect(continueMediaCatalog(db, job, localCheck(["sexual"]))).toBe("local");
+    const prior = catalogSnapshot(db, "u1", "b1").bookmark.mediaAi!;
+    expect(waitForMediaCatalogResource(db, job)).toBe(true);
+    const waiting = catalogSnapshot(db, "u1", "b1").bookmark.mediaAi!;
+    expect(waiting.localCheck).toEqual(prior.localCheck);
+    expect(waiting.localCheckFingerprint).toBe(prior.localCheckFingerprint);
+    expect(waiting.route).toBe("local");
+    expect(waiting.localRecoveries).toBe(prior.localRecoveries);
+    expect(db.select().from(mediaAiRequests).all()).toHaveLength(0);
+  });
+
+  test("a later deferred policy blocks recovery, claim, parking and result application", async () => {
+    const job = await queue();
+    startMediaCatalog(db, job);
+    waitForMediaCatalogResource(db, job);
+    db.update(bookmarks)
+      .set({ processingPolicy: "deferred" })
+      .where(eq(bookmarks.id, "b1"))
+      .run();
+    vi.mocked(MediaCatalogQueue.enqueue).mockClear();
+    await recoverLocalMediaCatalog(db, Date.now() + 60_000);
+    expect(MediaCatalogQueue.enqueue).not.toHaveBeenCalled();
+    expect(startMediaCatalog(db, job)).toBeNull();
+    expect(waitForMediaCatalogResource(db, job)).toBe(false);
+    expect(finishMediaCatalog(db, job, "success", result)).toBeUndefined();
+    expect(db.select().from(mediaAiRequests).all()).toHaveLength(0);
   });
 });

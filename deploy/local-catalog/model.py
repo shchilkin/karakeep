@@ -12,6 +12,8 @@ class CatalogModel:
         self.model = self.processor = self.tokenizer_data = None
 
     def load(self):
+        if self.model is not None and self.processor is not None and self.tokenizer_data is not None:
+            return
         import torch
         from transformers import AutoProcessor, BitsAndBytesConfig, Qwen3_5ForConditionalGeneration
         from lmformatenforcer.integrations.transformers import build_token_enforcer_tokenizer_data
@@ -33,9 +35,9 @@ class CatalogModel:
         if any(loading.get(k) for k in ['missing_keys', 'mismatched_keys', 'error_msgs']) or any(
                 'mtp.' not in k for k in loading.get('unexpected_keys', [])):
             raise RuntimeError('incompatible_checkpoint')
-        self.model = model.eval()
-        self.processor = AutoProcessor.from_pretrained(directory, local_files_only=True, trust_remote_code=False)
-        self.tokenizer_data = build_token_enforcer_tokenizer_data(self.processor.tokenizer)
+        processor = AutoProcessor.from_pretrained(directory, local_files_only=True, trust_remote_code=False)
+        tokenizer_data = build_token_enforcer_tokenizer_data(processor.tokenizer)
+        self.model, self.processor, self.tokenizer_data = model.eval(), processor, tokenizer_data
 
     def unload(self):
         self.model = self.processor = self.tokenizer_data = None

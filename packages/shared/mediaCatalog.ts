@@ -20,6 +20,7 @@ export const zMediaCatalogState = z.object({
     "pending",
     "processing",
     "processing_local",
+    "waiting_resource",
     "success",
     "refused",
     "failed",
@@ -34,6 +35,7 @@ export const zMediaCatalogState = z.object({
     "local_failed",
   ]),
   updatedAt: z.string(),
+  resourceWaitUntil: z.string().datetime().optional(),
   allowPreview: z.boolean(),
   automatic: z.boolean().optional(),
   localOnly: z.boolean().optional(),
@@ -59,6 +61,7 @@ export const zMediaCatalogState = z.object({
 export type MediaCatalogState = z.infer<typeof zMediaCatalogState>;
 
 export function catalogBusy(state: MediaCatalogState | null | undefined) {
+  if (state?.status === "waiting_resource") return true;
   return (
     !!state &&
     ["pending", "processing", "checking_local", "processing_local"].includes(

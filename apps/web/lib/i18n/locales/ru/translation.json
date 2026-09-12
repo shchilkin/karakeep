@@ -1,5 +1,6 @@
 {
   "media_ai": {
+    "waiting_resource": "Ожидание свободной GPU для локального анализа…",
     "processing_local": "Локальный анализ Qwen…",
     "source_local": "Локальный анализ",
     "source_cloud": "Облачный анализ",
