@@ -17,7 +17,8 @@ services:
       HF_HOME: /tmp/hf
       CUDA_CACHE_PATH: /tmp/cuda-cache
       PYTHONDONTWRITEBYTECODE: "1"
-    tmpfs: [/tmp:rw, nosuid, size=512m]
+    tmpfs:
+      - /tmp:rw,nosuid,size=512m
     volumes:
       - /srv/appdata/karakeep/models/shieldgemma:/models:ro
       - /srv/appdata/karakeep/secrets/local-token:/run/secrets/local_token:ro
@@ -39,7 +40,8 @@ services:
       GPU_LOCK_FILE: /gpu-lease/gpu.lock
       HF_HOME: /tmp/hf
       CUDA_CACHE_PATH: /tmp/cuda-cache
-    tmpfs: [/tmp:rw, nosuid, size=512m]
+    tmpfs:
+      - /tmp:rw,nosuid,size=512m
     volumes:
       - /srv/appdata/karakeep/models/qwen35-9b:/models:ro
       - /srv/appdata/karakeep/secrets/catalog-token:/run/secrets/local_token:ro

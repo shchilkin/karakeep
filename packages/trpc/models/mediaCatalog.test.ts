@@ -989,6 +989,64 @@ describe("hybrid routing", () => {
     expect(db.select().from(mediaAiRequests).all()).toHaveLength(0);
   });
 
+  test.each(["recovery", "manual"])(
+    "a failed local route stays local on %s retry even when admission now passes",
+    async (kind) => {
+      const job = await queue();
+      startMediaCatalog(db, job);
+      expect(continueMediaCatalog(db, job, null)).toBe("local");
+      finishMediaCatalog(db, job, "local_failed");
+      if (kind === "recovery")
+        await recoverLocalMediaCatalog(db, Date.now() + 1000_000);
+      else await requestMediaCatalog(db, "u1", "b1", { retry: true });
+      const state = catalogSnapshot(db, "u1", "b1").bookmark.mediaAi!;
+      const retry = { ...job, runId: state.runId };
+      expect(startMediaCatalog(db, retry)).toBeTruthy();
+      expect(continueMediaCatalog(db, retry, localCheck())).toBe("local");
+      expect(db.select().from(mediaAiRequests).all()).toHaveLength(0);
+    },
+  );
+
+  test.each(["enabled", "opt-out", "disabled"])(
+    "hybrid attachment follow-up respects %s without local-auto-new",
+    async (phase) => {
+      Object.assign(serverConfig.mediaAi, {
+        autoNew: true,
+        localAutoNew: false,
+      });
+      db.insert(bookmarkTags)
+        .values({ id: "archived", userId: "u1", name: "social-media-archived" })
+        .run();
+      db.insert(tagsOnBookmarks)
+        .values({ bookmarkId: "b1", tagId: "archived", attachedBy: "human" })
+        .run();
+      const job = await queue();
+      startMediaCatalog(db, job);
+      db.update(assets).set({ fileName: "replacement.jpg" }).run();
+      await requestMediaCatalog(db, "u1", "b1", { automatic: true });
+      expect(
+        catalogSnapshot(db, "u1", "b1").bookmark.mediaAi?.localRecheckRequested,
+      ).toBe(true);
+      expect(continueMediaCatalog(db, job, localCheck())).toBe(false);
+      if (phase === "opt-out")
+        db.update(users).set({ autoTaggingEnabled: false }).run();
+      if (phase === "disabled") serverConfig.mediaAi.autoNew = false;
+      await reconcileLocalMediaCatalog(db, job);
+      const next = catalogSnapshot(db, "u1", "b1").bookmark.mediaAi!;
+      if (phase === "enabled") {
+        expect(next).toMatchObject({
+          status: "pending",
+          automatic: true,
+          localOnly: true,
+        });
+        const followup = { ...job, runId: next.runId };
+        expect(startMediaCatalog(db, followup)).toBeTruthy();
+        expect(continueMediaCatalog(db, followup, localCheck())).toBe("local");
+      } else expect(next.status).toBe("stale");
+      expect(db.select().from(mediaAiRequests).all()).toHaveLength(0);
+    },
+  );
+
   test("unknown admission preserves positive observations and old result provenance on failure", async () => {
     const first = await queue();
     startMediaCatalog(db, first);

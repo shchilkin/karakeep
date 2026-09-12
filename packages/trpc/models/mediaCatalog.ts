@@ -162,6 +162,14 @@ export function catalogFingerprint(
     .digest("hex");
 }
 
+/** Hybrid auto-new authorizes free local continuations as well as admission. */
+function automaticCatalogEnabled(localOnly: boolean | undefined) {
+  const config = serverConfig.mediaAi;
+  return localOnly
+    ? config.localAutoNew || (config.hybridEnabled && config.autoNew)
+    : config.autoNew;
+}
+
 export async function requestMediaCatalog(
   db: DB,
   userId: string,
@@ -183,7 +191,7 @@ export async function requestMediaCatalog(
       message: "Hybrid analysis requires local admission",
     });
   }
-  const automaticEnabled = localOnly ? config.localAutoNew : config.autoNew;
+  const automaticEnabled = automaticCatalogEnabled(localOnly);
   if (!config.enabled || (options.automatic && !automaticEnabled)) return null;
   if (localOnly && config.localMode === "off") {
     if (options.automatic) return null;
@@ -268,6 +276,11 @@ export async function requestMediaCatalog(
         localOnly,
         localMode: config.localMode,
         hybrid: config.hybridEnabled,
+        // A retry of the same local input is never an implicit cloud upgrade.
+        route:
+          previous?.fingerprint === fingerprint && previous.route === "local"
+            ? "local"
+            : undefined,
         // Retain positive observations while replacement media is checked. The
         // worker may reuse bytes only for the matching original fingerprint.
         localCheck: previous?.localCheck,
@@ -347,9 +360,7 @@ export function startMediaCatalog(db: DB, job: CatalogJob) {
           .run();
       if (
         state.automatic &&
-        (!(state.localOnly
-          ? serverConfig.mediaAi.localAutoNew
-          : serverConfig.mediaAi.autoNew) ||
+        (!automaticCatalogEnabled(state.localOnly) ||
           tx
             .select({ enabled: users.autoTaggingEnabled })
             .from(users)
@@ -492,9 +503,7 @@ export function continueMediaCatalog(
         !!state.hybrid !== serverConfig.mediaAi.hybridEnabled ||
         (state.hybrid && state.localMode === "off") ||
         (state.automatic &&
-          (!(state.localOnly
-            ? serverConfig.mediaAi.localAutoNew
-            : serverConfig.mediaAi.autoNew) ||
+          (!automaticCatalogEnabled(state.localOnly) ||
             tx
               .select({ enabled: users.autoTaggingEnabled })
               .from(users)
@@ -511,7 +520,7 @@ export function continueMediaCatalog(
       if (
         !validCoverage ||
         !localCheck ||
-        (state.hybrid && state.localOnly) ||
+        (state.hybrid && (state.localOnly || state.route === "local")) ||
         holdLocalMedia(localCheck) ||
         shouldConcealSensitive(
           snapshot.bookmark.sensitiveCategories,
