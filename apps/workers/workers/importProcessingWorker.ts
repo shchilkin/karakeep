@@ -1,7 +1,7 @@
 import { Readable } from "node:stream";
 import { createHash, randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
-import { and, eq, gt, inArray, lte } from "drizzle-orm";
+import { and, eq, gt, inArray, lte, or } from "drizzle-orm";
 import sharp from "sharp";
 import type { DB } from "@karakeep/db";
 import { db } from "@karakeep/db";
@@ -217,11 +217,22 @@ export async function processNextImport(
         .from(importProcessing)
         .where(
           and(
-            inArray(importProcessing.state, [
-              "queued",
-              "running",
-              "waiting_ai",
-            ]),
+            or(
+              inArray(importProcessing.state, [
+                "queued",
+                "running",
+                "waiting_ai",
+              ]),
+              and(
+                eq(importProcessing.state, "complete"),
+                eq(importProcessing.searchReady, false),
+                inArray(importProcessing.stage, [
+                  "search",
+                  "local_check",
+                  "catalog",
+                ]),
+              ),
+            ),
             lte(importProcessing.leaseUntil, now),
           ),
         )
@@ -264,6 +275,36 @@ export async function processNextImport(
     });
     Object.assign(item, values);
   };
+  const publishSearch = async () => {
+    let searchFailed = false;
+    let searchError: unknown;
+    try {
+      await actions.search(item);
+    } catch (error) {
+      searchFailed = true;
+      searchError = error;
+    }
+    try {
+      assertClaim(database, item);
+    } catch (error) {
+      // Search is an external, unversioned projection. If an obsolete request
+      // completes late (including an uncertain HTTP outcome), durably request
+      // a fresh projection of the current retained record, without replaying AI.
+      database
+        .update(importProcessing)
+        .set({ searchReady: false, updatedAt: Date.now() })
+        .where(
+          and(
+            eq(importProcessing.bookmarkId, item.bookmarkId),
+            eq(importProcessing.policyRevision, item.policyRevision),
+            eq(importProcessing.contentRevision, item.contentRevision),
+          ),
+        )
+        .run();
+      throw error;
+    }
+    if (searchFailed) throw searchError;
+  };
   try {
     assertClaim(database, item);
     update({ state: "running" });
@@ -275,7 +316,7 @@ export async function processNextImport(
       importStageOrder[item.stage] >= importStageOrder.search &&
       !item.searchReady
     ) {
-      await actions.search(item);
+      await publishSearch();
       update({ searchReady: true });
     }
     if (importStageOrder[item.stage] >= importStageOrder.local_check) {
@@ -336,7 +377,7 @@ export async function processNextImport(
       }
       // Publish the AI projection only after the model succeeds; the original
       // title and source tags are still present in the search document.
-      await actions.search(item);
+      await publishSearch();
     }
     update({ state: "complete", error: null, leaseToken: null, leaseUntil: 0 });
   } catch (error) {

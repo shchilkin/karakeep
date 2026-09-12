@@ -590,3 +590,53 @@ test("an expired storage writer cannot overwrite the replacement published previ
       .get(),
   ).toBeUndefined();
 });
+
+test("late search publication is durably repaired without replaying completed AI", async () => {
+  let unblock!: () => void;
+  let entered!: () => void;
+  const blocked = new Promise<void>((resolve) => {
+    unblock = resolve;
+  });
+  const started = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  let document = "",
+    first = true;
+  const steps = {
+    ...actions,
+    search: async () => {
+      const summary = ai()?.result?.summary ?? "source";
+      if (first) {
+        first = false;
+        entered();
+        await blocked;
+      }
+      document = summary;
+    },
+  };
+  release("search");
+  const obsolete = processNextImport(db, steps);
+  await started;
+  db.update(schema.importProcessing).set({ leaseUntil: 0 }).run();
+  await processNextImport(db, steps);
+  release("catalog");
+  await processNextImport(db, steps);
+  startMediaCatalog(db, job());
+  continueMediaCatalog(db, job(), native());
+  finishMediaCatalog(db, job(), "success", {
+    title: "AI",
+    summary: "Current AI summary",
+    tags: ["new"],
+  });
+  await processNextImport(db, steps);
+  expect(document).toBe("Current AI summary");
+  unblock();
+  await obsolete;
+  expect(document).toBe("source");
+  expect(processing()).toMatchObject({ state: "complete", searchReady: false });
+  await processNextImport(db, steps);
+  expect(document).toBe("Current AI summary");
+  expect(processing()).toMatchObject({ state: "complete", searchReady: true });
+  expect(db.select().from(schema.mediaAiRequests).all()).toHaveLength(1);
+  expect(MediaCatalogQueue.enqueue).toHaveBeenCalledTimes(1);
+});
