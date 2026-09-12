@@ -25,6 +25,7 @@ class Fixture:
         self.existing = {"untouched": {"title": "Owner title", "note": "Owner note", "assets": ["old-asset"]}}
         self.existing_before = copy.deepcopy(self.existing)
         self.drop_once = None
+        self.busy_once = None
         self.corrupt_original = False
         self.corrupt_metadata = False
         self.corrupt_mapping = False
@@ -71,6 +72,9 @@ class Fixture:
                 fixture.calls.append((self.command, self.path, self.headers.get("Idempotency-Key")))
                 raw = self.rfile.read(int(self.headers.get("Content-Length", "0")))
                 path = self.path
+                if fixture.busy_once == (self.command, path):
+                    fixture.busy_once = None
+                    return self.send({}, 429)
                 if path in fixture.files:
                     file = fixture.files[path]
                     if self.command == "PROPFIND":

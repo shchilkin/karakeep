@@ -73,6 +73,13 @@ jobs:
       - name: Local catalog contract tests
         run: python3 -m unittest discover -s deploy/local-catalog -p 'test_*.py'
 
+      - name: Managed GPU runtime contract tests
+        run: python3 -m unittest discover -s deploy/gpu-runtime -p 'test_*.py'
+
+      - name: Bounded migration client tests
+        working-directory: tools/nextcloud-migration
+        run: python3 -m unittest discover -s tests -p 'test_*.py'
+
       - name: Shared Package Tests
         working-directory: packages/shared
         run: pnpm test
@@ -80,6 +87,10 @@ jobs:
       - name: TRPC Tests
         working-directory: packages/trpc
         run: pnpm test
+
+      - name: Persistent queue policy and resource waiting tests
+        working-directory: packages/plugins
+        run: pnpm exec vitest run --config queue-liteque/vitest.config.ts
 
       - name: Install media test dependencies
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
@@ -90,7 +101,7 @@ jobs:
 
       - name: Media UI Tests
         working-directory: apps/web
-        run: pnpm exec vitest run components/dashboard/bookmarks/BookmarkCardImage.test.tsx components/dashboard/bookmarks/BookmarkCardVideo.test.tsx components/dashboard/preview/SavedImageGallery.test.tsx lib/mediaPlayback.test.ts components/dashboard/bookmarks/VirtualMasonry.test.tsx
+        run: pnpm exec vitest run components/dashboard/bookmarks/BookmarkCardImage.test.tsx components/dashboard/bookmarks/BookmarkCardVideo.test.tsx components/dashboard/preview/SavedImageGallery.test.tsx lib/mediaPlayback.test.ts components/dashboard/bookmarks/VirtualMasonry.test.tsx components/dashboard/bookmarks/SummarizeBookmarkArea.test.tsx
 
       - name: Workers Tests
         working-directory: apps/workers

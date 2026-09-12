@@ -3,6 +3,7 @@ import { rm } from "node:fs/promises";
 import { Hono } from "hono";
 import { beforeAll, afterAll, expect, test, vi } from "vitest";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
+import { eq } from "drizzle-orm";
 import path from "node:path";
 import { TRPCError } from "@trpc/server";
 import { getHTTPStatusCodeFromError } from "@trpc/server/http";
@@ -16,7 +17,12 @@ const fixture = await vi.hoisted(async () => {
   return { dir };
 });
 import { db } from "@karakeep/db";
-import { users, bookmarks, processingOutbox } from "@karakeep/db/schema";
+import {
+  users,
+  bookmarks,
+  processingOutbox,
+  assetHashScanLease,
+} from "@karakeep/db/schema";
 import type { Context } from "@karakeep/trpc";
 import imports from "./deferredImport";
 import assets from "./assets";
@@ -115,6 +121,49 @@ beforeAll(() => {
 afterAll(async () => {
   vi.unstubAllGlobals();
   await rm(fixture.dir, { recursive: true, force: true });
+});
+test("busy original I/O returns retryable HTTP 429 and preserves the reserved operation", async () => {
+  const api = app();
+  const reserved = await api.request("/api/v1/import/reservations", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": "busy-http-key",
+    },
+    body: JSON.stringify({
+      ...payload,
+      source: { ...payload.source, objectId: "busy-http-object" },
+    }),
+  });
+  expect(reserved.status).toBe(200);
+  const item = await reserved.json();
+  const endpoint = `/api/v1/import/reservations/${item.operationId}/metadata`;
+  const upload = () =>
+    api.request(endpoint, {
+      method: "PUT",
+      headers: { "X-Import-Fence": String(item.fencingToken) },
+      body: metadata,
+    });
+  db.insert(assetHashScanLease)
+    .values({ id: 1, token: "synthetic-busy", expiresAt: Date.now() + 60_000 })
+    .run();
+  try {
+    expect((await upload()).status).toBe(429);
+    const status = await api.request(
+      `/api/v1/import/reservations/${item.operationId}`,
+    );
+    expect(await status.json()).toMatchObject({
+      operationId: item.operationId,
+      state: "reserved",
+      fencingToken: item.fencingToken,
+    });
+  } finally {
+    db.delete(assetHashScanLease)
+      .where(eq(assetHashScanLease.token, "synthetic-busy"))
+      .run();
+  }
+  expect((await upload()).status).toBe(200);
+  expect(db.select().from(bookmarks).all()).toHaveLength(0);
 });
 test("real REST streaming upload, commit and authenticated full target+metadata readback", async () => {
   const api = app();

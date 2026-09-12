@@ -205,6 +205,38 @@ test("actual original and raw metadata survive atomic copy commit; source retrie
   ]);
   expect(db.select().from(schema.bookmarks).all()).toHaveLength(2);
 });
+test("retained tag names reject ordinary and stale direct renames while unrelated tags stay editable", async () => {
+  const item = await staged();
+  const receipt = await commitImport(ctx, item.operationId, item.fencingToken);
+  const api = getApiCaller(db, "owner");
+  const before = await api.bookmarks.getBookmark({
+    bookmarkId: receipt.bookmarkId,
+  });
+  const tag = before.tags[0];
+  await expect(
+    api.tags.update({ tagId: tag.id, name: "Changed elsewhere" }),
+  ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+  expect(() =>
+    db
+      .update(schema.bookmarkTags)
+      .set({ name: "Stale direct rename" })
+      .where(eq(schema.bookmarkTags.id, tag.id))
+      .run(),
+  ).toThrow(/immutable/);
+  expect(
+    (await api.bookmarks.getBookmark({ bookmarkId: receipt.bookmarkId })).tags,
+  ).toEqual(before.tags);
+  const ordinary = await api.tags.create({ name: "Unrelated" });
+  expect(
+    await api.tags.update({ tagId: ordinary.id, name: "Ordinary rename" }),
+  ).toMatchObject({ name: "Ordinary rename" });
+  expect((await api.deferredImport.capabilities()).materialize).toBe(true);
+  sqlite.exec("DROP TRIGGER deferred_tag_name_update");
+  expect(await api.deferredImport.capabilities()).toMatchObject({
+    materialize: false,
+    persistentDeferred: false,
+  });
+});
 test("conflicting source/key, incomplete uploads, and other owners fail closed", async () => {
   const input = payload();
   const item = await reserveImport(ctx, input, "key");
@@ -414,6 +446,10 @@ test("two independent database connections converge on one commit after a busy r
       commitImport(otherConnection, item.operationId, item.fencingToken),
     ]);
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    expect(results.find((r) => r.status === "rejected")).toMatchObject({
+      status: "rejected",
+      reason: { code: "TOO_MANY_REQUESTS" },
+    });
     const one = await commitImport(ctx, item.operationId, item.fencingToken);
     const two = await commitImport(
       otherConnection,

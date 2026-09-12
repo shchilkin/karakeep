@@ -77,8 +77,8 @@ const digest = (bytes: string | Buffer) =>
 export function importCapabilities(ctx: AuthedContext) {
   const guards =
     ctx.db.get<{ total: number }>(
-      sql`SELECT count(*) AS total FROM sqlite_master WHERE type = 'trigger' AND name IN ('deferred_bookmark_update','deferred_bookmark_delete','deferred_asset_update','retained_import_asset_delete','deferred_asset_subtype_update','deferred_list_attachment','deferred_tag_attachment','deferred_tag_delete','deferred_tag_update','retained_import_user_delete')`,
-    )?.total === 10;
+      sql`SELECT count(*) AS total FROM sqlite_master WHERE type = 'trigger' AND name IN ('deferred_bookmark_update','deferred_bookmark_delete','deferred_asset_update','retained_import_asset_delete','deferred_asset_subtype_update','deferred_list_attachment','deferred_tag_attachment','deferred_tag_delete','deferred_tag_update','deferred_tag_name_update','retained_import_user_delete')`,
+    )?.total === 11;
   return {
     contractVersion: IMPORT_CONTRACT_VERSION,
     storageMode: "copy" as const,
@@ -440,7 +440,11 @@ async function withIo<T>(
         .where(eq(assetHashScanLease.id, 1))
         .get();
       if (old && old.expiresAt > Date.now())
-        conflict("Another original read or import write is running.");
+        throw new TRPCError({
+          code: "TOO_MANY_REQUESTS",
+          message:
+            "Another original read or import write is running. Retry the same operation later.",
+        });
       tx.insert(assetHashScanLease)
         .values({ id: 1, token, expiresAt: Date.now() + IO_LEASE_MS })
         .onConflictDoUpdate({

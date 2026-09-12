@@ -15,7 +15,7 @@ import { z } from "zod";
 
 import type { ZAttachedByEnum } from "@karakeep/shared/types/tags";
 import { SqliteError } from "@karakeep/db";
-import { bookmarkTags, tagsOnBookmarks } from "@karakeep/db/schema";
+import { bookmarks, bookmarkTags, tagsOnBookmarks } from "@karakeep/db/schema";
 import { triggerSearchReindex } from "@karakeep/shared-server";
 import {
   zCreateTagRequestSchema,
@@ -334,6 +334,27 @@ export class Tag {
   }
 
   async update(input: z.infer<typeof zUpdateTagRequestSchema>): Promise<void> {
+    if (input.name !== this.tag.name) {
+      const retained = this.ctx.db
+        .select({ id: bookmarks.id })
+        .from(tagsOnBookmarks)
+        .innerJoin(bookmarks, eq(bookmarks.id, tagsOnBookmarks.bookmarkId))
+        .where(
+          and(
+            eq(tagsOnBookmarks.tagId, this.tag.id),
+            eq(bookmarks.processingPolicy, "deferred"),
+          ),
+        )
+        .limit(1)
+        .get();
+      if (retained) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message:
+            "This tag is used by a retained imported snapshot and cannot be renamed yet.",
+        });
+      }
+    }
     try {
       const result = await this.ctx.db
         .update(bookmarkTags)

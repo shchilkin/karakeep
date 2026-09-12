@@ -111,6 +111,13 @@ CREATE TRIGGER deferred_tag_update BEFORE UPDATE ON tagsOnBookmarks
 WHEN EXISTS (SELECT 1 FROM bookmarks WHERE id IN (OLD.bookmarkId, NEW.bookmarkId) AND processingPolicy = 'deferred')
 BEGIN SELECT RAISE(ABORT, 'Deferred imported tags are immutable'); END;
 --> statement-breakpoint
+CREATE TRIGGER deferred_tag_name_update BEFORE UPDATE OF name ON bookmarkTags
+WHEN NEW.name IS NOT OLD.name AND EXISTS (
+  SELECT 1 FROM tagsOnBookmarks JOIN bookmarks ON bookmarks.id = tagsOnBookmarks.bookmarkId
+  WHERE tagsOnBookmarks.tagId = OLD.id AND bookmarks.processingPolicy = 'deferred'
+)
+BEGIN SELECT RAISE(ABORT, 'Deferred imported tag names are immutable'); END;
+--> statement-breakpoint
 CREATE TRIGGER retained_import_user_delete BEFORE DELETE ON user
 WHEN EXISTS (SELECT 1 FROM importSourceRevisions WHERE userId = OLD.id)
 BEGIN SELECT RAISE(ABORT, 'Imported source snapshots require retention-aware cleanup'); END;

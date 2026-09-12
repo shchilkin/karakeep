@@ -220,6 +220,7 @@
                   "pending",
                   "processing",
                   "processing_local",
+                  "waiting_resource",
                   "success",
                   "refused",
                   "failed",
@@ -236,6 +237,10 @@
               },
               "updatedAt": {
                 "type": "string"
+              },
+              "resourceWaitUntil": {
+                "type": "string",
+                "format": "date-time"
               },
               "allowPreview": {
                 "type": "boolean"
@@ -2127,6 +2132,7 @@
                             "pending",
                             "processing",
                             "processing_local",
+                            "waiting_resource",
                             "success",
                             "refused",
                             "failed",
@@ -2143,6 +2149,10 @@
                         },
                         "updatedAt": {
                           "type": "string"
+                        },
+                        "resourceWaitUntil": {
+                          "type": "string",
+                          "format": "date-time"
                         },
                         "allowPreview": {
                           "type": "boolean"
@@ -2766,6 +2776,7 @@
                             "pending",
                             "processing",
                             "processing_local",
+                            "waiting_resource",
                             "success",
                             "refused",
                             "failed",
@@ -2782,6 +2793,10 @@
                         },
                         "updatedAt": {
                           "type": "string"
+                        },
+                        "resourceWaitUntil": {
+                          "type": "string",
+                          "format": "date-time"
                         },
                         "allowPreview": {
                           "type": "boolean"
@@ -3316,6 +3331,7 @@
                             "pending",
                             "processing",
                             "processing_local",
+                            "waiting_resource",
                             "success",
                             "refused",
                             "failed",
@@ -3332,6 +3348,10 @@
                         },
                         "updatedAt": {
                           "type": "string"
+                        },
+                        "resourceWaitUntil": {
+                          "type": "string",
+                          "format": "date-time"
                         },
                         "allowPreview": {
                           "type": "boolean"

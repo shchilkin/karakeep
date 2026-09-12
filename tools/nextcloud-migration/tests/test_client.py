@@ -154,6 +154,25 @@ class ClientTest(unittest.TestCase):
             self.assertEqual(manifest.get(outside)['phase'], 'discovered')
             self.assertIsNone(manifest.get(outside)['stage'])
 
+    def test_cli_io_busy_keeps_source_resumable_under_the_same_approval(self):
+        self.use_cli_namespace()
+        config, args, approved, outside = self.cli_pilot_fixture('local_other_disk_verified')
+        self.fixture.busy_once = ('PUT', BASE + '/reservations/operation-1/metadata')
+        with patch('migration_client.cli.load_config', return_value=config), \
+                patch('migration_client.cli.connections', return_value=(self.source, self.target)), \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(main(args), 2)
+            with self.journal() as manifest:
+                self.assertIsNone(manifest.get(approved)['hold'])
+                self.assertEqual(manifest.get(approved)['error'], 'target_backpressure')
+            self.assertEqual(main(args), 0)
+            self.assertEqual(main(args), 0)
+        self.assertEqual(len(self.fixture.operations), 1)
+        with self.journal() as manifest:
+            self.assertEqual(manifest.get(approved)['phase'], 'verified')
+            self.assertEqual(manifest.get(outside)['phase'], 'discovered')
+            self.assertIsNone(manifest.get(outside)['stage'])
+
     def test_crash_resume_every_checkpoint_has_one_operation_and_occurrence(self):
         for phase in ["after_stage", "after_reserve", "after_upload", "after_commit", "after_readback"]:
             with self.subTest(phase=phase):
