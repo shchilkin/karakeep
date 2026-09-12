@@ -569,6 +569,10 @@ export const importProcessing = sqliteTable(
     searchReady: integer("searchReady", { mode: "boolean" })
       .notNull()
       .default(false),
+    searchRevision: integer("searchRevision").notNull().default(0),
+    searchIndexedRevision: integer("searchIndexedRevision")
+      .notNull()
+      .default(0),
     aiRunId: text("aiRunId"),
     leaseToken: text("leaseToken"),
     leaseUntil: integer("leaseUntil").notNull().default(0),

@@ -176,6 +176,8 @@ export function releaseImportProcessing(
         originalHeight: prior?.originalHeight ?? null,
         previewReady: prior?.previewReady ?? false,
         searchReady: prior?.searchReady ?? false,
+        searchRevision: prior?.searchRevision ?? 0,
+        searchIndexedRevision: prior?.searchIndexedRevision ?? 0,
         aiRunId:
           prior?.stage === input.stage &&
           prior.aiRunId === bookmark.mediaAi?.runId &&

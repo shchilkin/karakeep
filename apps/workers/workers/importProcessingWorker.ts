@@ -1,7 +1,7 @@
 import { Readable } from "node:stream";
 import { createHash, randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
-import { and, eq, gt, inArray, lte, or } from "drizzle-orm";
+import { and, eq, gt, inArray, lt, lte, or, sql } from "drizzle-orm";
 import sharp from "sharp";
 import type { DB } from "@karakeep/db";
 import { db } from "@karakeep/db";
@@ -225,7 +225,10 @@ export async function processNextImport(
               ]),
               and(
                 eq(importProcessing.state, "complete"),
-                eq(importProcessing.searchReady, false),
+                lt(
+                  importProcessing.searchIndexedRevision,
+                  importProcessing.searchRevision,
+                ),
                 inArray(importProcessing.stage, [
                   "search",
                   "local_check",
@@ -292,7 +295,10 @@ export async function processNextImport(
       // a fresh projection of the current retained record, without replaying AI.
       database
         .update(importProcessing)
-        .set({ searchReady: false, updatedAt: Date.now() })
+        .set({
+          searchRevision: sql`${importProcessing.searchRevision} + 1`,
+          updatedAt: Date.now(),
+        })
         .where(
           and(
             eq(importProcessing.bookmarkId, item.bookmarkId),
@@ -304,6 +310,9 @@ export async function processNextImport(
       throw error;
     }
     if (searchFailed) throw searchError;
+    // Repair dirtiness is independent of admission: an already running paid
+    // analysis must keep its permit while the search projection catches up.
+    update({ searchIndexedRevision: item.searchRevision });
   };
   try {
     assertClaim(database, item);
@@ -314,7 +323,7 @@ export async function processNextImport(
     }
     if (
       importStageOrder[item.stage] >= importStageOrder.search &&
-      !item.searchReady
+      (!item.searchReady || item.searchIndexedRevision < item.searchRevision)
     ) {
       await publishSearch();
       update({ searchReady: true });

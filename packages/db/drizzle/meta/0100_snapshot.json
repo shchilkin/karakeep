@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "4fa85ec0-010c-4dbb-ac40-573b02ed005c",
+  "id": "aa637362-8e14-42f2-ac38-ed02da0289e9",
   "prevId": "ed770b49-3226-45d0-acdd-e77030b02a66",
   "tables": {
     "account": {
@@ -2004,6 +2004,22 @@
           "notNull": true,
           "autoincrement": false,
           "default": false
+        },
+        "searchRevision": {
+          "name": "searchRevision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "searchIndexedRevision": {
+          "name": "searchIndexedRevision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
         },
         "aiRunId": {
           "name": "aiRunId",

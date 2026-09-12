@@ -13,6 +13,8 @@ CREATE TABLE `importProcessing` (
 	`originalHeight` integer,
 	`previewReady` integer DEFAULT false NOT NULL,
 	`searchReady` integer DEFAULT false NOT NULL,
+	`searchRevision` integer DEFAULT 0 NOT NULL,
+	`searchIndexedRevision` integer DEFAULT 0 NOT NULL,
 	`aiRunId` text,
 	`leaseToken` text,
 	`leaseUntil` integer DEFAULT 0 NOT NULL,
