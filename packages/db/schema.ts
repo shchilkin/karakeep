@@ -389,6 +389,66 @@ export const assets = sqliteTable(
   ],
 );
 
+// Hashes describe bytes read from storage at verifiedAt, never URL/title identity.
+export const assetContentHashes = sqliteTable(
+  "assetContentHashes",
+  {
+    assetId: text("assetId")
+      .primaryKey()
+      .references(() => assets.id, { onDelete: "cascade" }),
+    userId: text("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    sha256: text("sha256"),
+    size: integer("size").notNull(),
+    status: text("status", {
+      enum: ["verified", "unreadable", "too_large", "changed"],
+    }).notNull(),
+    verifiedAt: integer("verifiedAt", { mode: "timestamp_ms" }).notNull(),
+  },
+  (h) => [
+    index("assetContentHashes_owner_digest_idx").on(h.userId, h.sha256, h.size),
+  ],
+);
+
+export const duplicateGroups = sqliteTable(
+  "duplicateGroups",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => createId()),
+    userId: text("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    sha256: text("sha256").notNull(),
+    size: integer("size").notNull(),
+  },
+  (g) => [unique().on(g.userId, g.sha256, g.size)],
+);
+
+export const duplicateDecisions = sqliteTable("duplicateDecisions", {
+  groupId: text("groupId")
+    .primaryKey()
+    .references(() => duplicateGroups.id, { onDelete: "cascade" }),
+  evidenceVersion: text("evidenceVersion").notNull(),
+  decision: text("decision", {
+    enum: ["keep_both", "defer", "prefer_primary"],
+  }).notNull(),
+  primaryBookmarkId: text("primaryBookmarkId").references(() => bookmarks.id, {
+    onDelete: "set null",
+  }),
+  version: integer("version").notNull(),
+  updatedAt: integer("updatedAt", { mode: "timestamp_ms" }).notNull(),
+});
+
+// One CPU hash reader across server processes. The read deadline is shorter
+// than the lease; a fencing token prevents an expired reader publishing results.
+export const assetHashScanLease = sqliteTable("assetHashScanLease", {
+  id: integer("id").primaryKey(),
+  token: text("token").notNull(),
+  expiresAt: integer("expiresAt").notNull(),
+});
+
 export const highlights = sqliteTable(
   "highlights",
   {

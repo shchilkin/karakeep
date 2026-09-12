@@ -12,6 +12,7 @@ import { registry as assetsRegistry } from "./lib/assets";
 import { registry as backupsRegistry } from "./lib/backups";
 import { registry as bookmarksRegistry } from "./lib/bookmarks";
 import { registry as commonRegistry } from "./lib/common";
+import { registry as duplicatesRegistry } from "./lib/duplicates";
 import { registry as feedsRegistry } from "./lib/feeds";
 import { registry as highlightsRegistry } from "./lib/highlights";
 import { registry as listsRegistry } from "./lib/lists";
@@ -30,6 +31,7 @@ function getOpenApiDocumentation() {
     adminRegistry,
     backupsRegistry,
     feedsRegistry,
+    duplicatesRegistry,
   ]);
 
   const generator = new OpenApiGeneratorV3(registry.definitions);
@@ -43,7 +45,7 @@ function getOpenApiDocumentation() {
         "Karakeep is a self-hostable bookmarking and read-it-later service. " +
         "This API allows you to manage bookmarks, lists, tags, highlights, feeds, assets, and backups programmatically.\n\n" +
         "## Authentication\n\n" +
-        "All endpoints require a Bearer token passed in the `Authorization` header. " +
+        "Endpoints accept a Bearer token passed in the `Authorization` header; duplicate file scanning requires an owner web session. " +
         "You can generate an API key from the Karakeep web UI under **Settings > API Keys**.\n\n" +
         "## Pagination\n\n" +
         "List endpoints support cursor-based pagination via `cursor` and `limit` query parameters. " +
@@ -57,6 +59,11 @@ function getOpenApiDocumentation() {
         "If you exceed the allowed number of requests within the time window, the API returns a `429 Too Many Requests` response with a message indicating how many seconds to wait before retrying.",
     },
     tags: [
+      {
+        name: "Duplicates",
+        description:
+          "Index original file bytes, compare owner-scoped exact matches and retain review decisions without changing media.",
+      },
       {
         name: "Bookmarks",
         description:
