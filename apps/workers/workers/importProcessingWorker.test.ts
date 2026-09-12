@@ -632,6 +632,15 @@ test.each(["during", "after"])(
         searchReady: true,
         searchRevision: 1,
       });
+      const unavailableSearch = vi.fn(async () => {
+        throw new Error("search offline");
+      });
+      await processNextImport(db, { ...steps, search: unavailableSearch });
+      expect(unavailableSearch).not.toHaveBeenCalled();
+      expect(processing()).toMatchObject({
+        state: "waiting_ai",
+        searchReady: true,
+      });
     }
     finishMediaCatalog(db, job(), "success", {
       title: "AI",

@@ -323,6 +323,9 @@ export async function processNextImport(
     }
     if (
       importStageOrder[item.stage] >= importStageOrder.search &&
+      // Once AI is admitted, defer projection repair until its checkpoint is
+      // terminal. Search outages must not revoke an in-flight paid result.
+      !item.aiRunId &&
       (!item.searchReady || item.searchIndexedRevision < item.searchRevision)
     ) {
       await publishSearch();
