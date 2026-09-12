@@ -1356,6 +1356,7 @@
     "deferred_snapshot": "Processing deferred · original retained"
   },
   "import_processing": {
+    "paid_unconfirmed": "A cloud request started, but its result is unconfirmed. Resending is stopped to avoid charging twice.",
     "title": "Imported item",
     "preserved": "Your original file, title and source tags are preserved. Each step starts only when released.",
     "request_failed": "Could not release this step. Refresh its status and check that processing is configured.",

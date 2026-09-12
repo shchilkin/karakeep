@@ -60,6 +60,7 @@ export default function ImportProcessingArea({
     state.state === "held" || state.state === "failed"
       ? state.stage
       : stages[importStageOrder[state.stage]];
+  const paidUnconfirmed = state.error === "analysis_paid_result_unconfirmed";
   const busy =
     ["queued", "running", "waiting_ai"].includes(state.state) ||
     release.isPending;
@@ -76,12 +77,17 @@ export default function ImportProcessingArea({
         {t(`import_processing.states.${state.state}`)} ·{" "}
         {t(`import_processing.stages.${state.stage}`)}
       </p>
+      {paidUnconfirmed && (
+        <p role="alert" className="text-sm text-muted-foreground">
+          {t("import_processing.paid_unconfirmed")}
+        </p>
+      )}
       {release.isError && (
         <p role="alert" className="text-sm text-destructive">
           {t("import_processing.request_failed")}
         </p>
       )}
-      {(next || state.state === "failed") && (
+      {!paidUnconfirmed && (next || state.state === "failed") && (
         <Button
           size="sm"
           variant="secondary"

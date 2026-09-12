@@ -12,7 +12,9 @@ import {
   automaticQueueAllowed,
   isImportAssetRetained,
   MediaCatalogQueue,
+  loadAllPlugins,
 } from "@karakeep/shared-server";
+import { PluginManager, PluginType } from "@karakeep/shared/plugins";
 import { zLocalCheckResult } from "@karakeep/shared/mediaLocalCheck";
 import { concealSensitiveBookmark } from "@karakeep/shared/sensitiveVisibility";
 import type { ImportReservationInput } from "@karakeep/shared/types/deferredImport";
@@ -34,6 +36,7 @@ import {
   startMediaCatalog,
   continueMediaCatalog,
   finishMediaCatalog,
+  recoverLocalMediaCatalog,
 } from "@karakeep/trpc/models/mediaCatalog";
 import { Bookmark } from "@karakeep/trpc/models/bookmarks";
 import { makeImportPreview, processNextImport } from "./importProcessingWorker";
@@ -137,7 +140,7 @@ beforeEach(async () => {
         slot: "original",
         ordinal: 0,
         role: "original",
-        originalName: "original.png",
+        originalName: "misleading.mp4",
         observed: { sha256: hash(original), size: original.length },
         exported: null,
         transport: {},
@@ -409,7 +412,7 @@ test("restart resumes a search checkpoint without regenerating the preview or re
   await processNextImport(db, actions);
   expect(processing()).toMatchObject({
     state: "failed",
-    error: "analysis_timeout",
+    error: "analysis_paid_result_unconfirmed",
   });
   expect(await processNextImport(db, actions)).toBe(false);
 });
@@ -484,4 +487,106 @@ test("unknown local observation fails classification without authorizing any mod
     error: "analysis_local_failed",
   });
   expect(db.select().from(schema.mediaAiRequests).all()).toHaveLength(0);
+});
+
+test("ordinary retry never repeats an unconfirmed paid request", async () => {
+  release("catalog");
+  await processNextImport(db, actions);
+  const paidJob = job();
+  startMediaCatalog(db, paidJob);
+  expect(continueMediaCatalog(db, paidJob, native())).toBeTruthy();
+  finishMediaCatalog(db, paidJob, "timeout");
+  await processNextImport(db, actions);
+  expect(processing()).toMatchObject({
+    state: "failed",
+    error: "analysis_paid_result_unconfirmed",
+    aiRunId: paidJob.runId,
+  });
+  expect(() => release("catalog", true)).toThrow(/paid attempt/);
+  expect(db.select().from(schema.mediaAiRequests).all()).toHaveLength(1);
+  expect(MediaCatalogQueue.enqueue).toHaveBeenCalledTimes(1);
+});
+
+test("queued import cannot bypass admission after worker configuration changes", async () => {
+  release("catalog");
+  Object.assign(serverConfig.mediaAi, {
+    hybridEnabled: false,
+    localMode: "off",
+  });
+  await processNextImport(db, actions);
+  expect(processing().state).toBe("failed");
+  expect(MediaCatalogQueue.enqueue).not.toHaveBeenCalled();
+  expect(db.select().from(schema.mediaAiRequests).all()).toHaveLength(0);
+  Object.assign(serverConfig.mediaAi, {
+    hybridEnabled: true,
+    localMode: "enforce",
+  });
+  release("catalog", true);
+  await processNextImport(db, actions);
+  Object.assign(serverConfig.mediaAi, {
+    hybridEnabled: false,
+    localMode: "off",
+  });
+  expect(startMediaCatalog(db, job())).toBeNull();
+  expect(["cancelled", "stale"]).toContain(ai().status);
+  expect(db.select().from(schema.mediaAiRequests).all()).toHaveLength(0);
+});
+
+test("lost local import jobs recover behind interactive work", async () => {
+  release("catalog");
+  await processNextImport(db, actions);
+  const previous = job();
+  await recoverLocalMediaCatalog(db, Date.now() + 1_000_000);
+  expect(MediaCatalogQueue.enqueue).toHaveBeenLastCalledWith(
+    previous,
+    expect.objectContaining({ priority: 50 }),
+  );
+});
+
+test("an expired storage writer cannot overwrite the replacement published preview", async () => {
+  await loadAllPlugins();
+  const store = (await PluginManager.getClient(PluginType.AssetStore))!;
+  const save = store.saveAsset.bind(store);
+  let unblock!: () => void;
+  let entered!: () => void;
+  const blocked = new Promise<void>((resolve) => {
+    unblock = resolve;
+  });
+  const started = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  let obsoleteId = "";
+  vi.spyOn(store, "saveAsset").mockImplementationOnce(async (args) => {
+    obsoleteId = args.assetId;
+    entered();
+    await blocked;
+    return save(args);
+  });
+  release("preview");
+  const old = processNextImport(db, actions);
+  await started;
+  db.update(schema.importProcessing).set({ leaseUntil: 0 }).run();
+  await processNextImport(db, actions);
+  const current = processing();
+  expect(current).toMatchObject({ state: "complete", previewReady: true });
+  expect(current.previewAssetId).not.toBe(obsoleteId);
+  const published = path.join(
+    directory,
+    "assets",
+    "owner",
+    current.previewAssetId,
+    "asset.bin",
+  );
+  const before = await readFile(published);
+  unblock();
+  await old;
+  expect(processing()).toEqual(current);
+  expect(await readFile(published)).toEqual(before);
+  expect(
+    db
+      .select()
+      .from(schema.assets)
+      .where(eq(schema.assets.id, obsoleteId))
+      .get(),
+  ).toBeUndefined();
 });

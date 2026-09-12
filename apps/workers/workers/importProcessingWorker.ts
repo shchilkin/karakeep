@@ -9,6 +9,7 @@ import {
   assets,
   AssetTypes,
   bookmarks,
+  mediaAiRequests,
   importProcessing,
   importSourceAttachments,
 } from "@karakeep/db/schema";
@@ -132,6 +133,7 @@ export async function makeImportPreview(database: DB, item: Processing) {
       .run();
     tx.update(importProcessing)
       .set({
+        previewReady: true,
         originalWidth: dimensions.width,
         originalHeight: dimensions.height,
       })
@@ -228,6 +230,11 @@ export async function processNextImport(
       if (!candidate) return null;
       const claimed = {
         ...candidate,
+        // An expired writer can only finish its private, unpublished derivative.
+        // It cannot overwrite the asset subsequently published by a new claim.
+        previewAssetId: candidate.previewReady
+          ? candidate.previewAssetId
+          : randomUUID(),
         leaseToken: randomUUID(),
         leaseUntil: now + LEASE_MS,
         updatedAt: now,
@@ -315,7 +322,18 @@ export async function processNextImport(
         item.stage === "local_check"
           ? state.status === "local_review"
           : state.status === "success" && !!state.result;
-      if (!success) throw new ImportProcessingError(`analysis_${state.status}`);
+      if (!success) {
+        const paid = database
+          .select({ id: mediaAiRequests.id })
+          .from(mediaAiRequests)
+          .where(eq(mediaAiRequests.id, state.runId))
+          .get();
+        throw new ImportProcessingError(
+          paid
+            ? "analysis_paid_result_unconfirmed"
+            : `analysis_${state.status}`,
+        );
+      }
       // Publish the AI projection only after the model succeeds; the original
       // title and source tags are still present in the search document.
       await actions.search(item);

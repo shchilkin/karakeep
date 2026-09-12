@@ -87,7 +87,9 @@ export default function MediaCatalogArea({
         <Sparkles className="size-3.5" aria-hidden="true" />
         {t("media_ai.details")}
       </div>
-      <ImportProcessingArea bookmark={bookmark} readOnly={readOnly} />
+      {bookmark.importProcessing && (
+        <ImportProcessingArea bookmark={bookmark} readOnly={readOnly} />
+      )}
       {summary && (
         <p className="whitespace-pre-line break-words text-sm leading-relaxed">
           {summary}

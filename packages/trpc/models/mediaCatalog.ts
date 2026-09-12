@@ -91,6 +91,16 @@ export function catalogSnapshot(
     .from(bookmarkAssets)
     .where(eq(bookmarkAssets.id, bookmarkId))
     .get();
+  const importedImage =
+    bookmark.processingPolicy === "deferred" && asset?.assetType === "image"
+      ? attached.find(
+          (item) =>
+            item.id === asset.assetId && item.contentType?.startsWith("image/"),
+        )
+      : null;
+  const importedFileName = importedImage
+    ? `original.${importedImage.contentType!.split("/")[1]}`
+    : null;
   const input = catalogInput(
     {
       content:
@@ -106,13 +116,19 @@ export function catalogSnapshot(
               )?.id,
             }
           : bookmark.type === BookmarkTypes.ASSET && asset
-            ? { ...asset, type: BookmarkTypes.ASSET }
+            ? {
+                ...asset,
+                ...(importedFileName ? { fileName: importedFileName } : {}),
+                type: BookmarkTypes.ASSET,
+              }
             : { type: BookmarkTypes.UNKNOWN },
-      assets: attached.map((a) => ({
-        id: a.id,
-        fileName: a.fileName,
-        assetType: mapDBAssetTypeToUserType(a.assetType),
-      })),
+      assets: importedImage
+        ? []
+        : attached.map((a) => ({
+            id: a.id,
+            fileName: a.fileName,
+            assetType: mapDBAssetTypeToUserType(a.assetType),
+          })),
     },
     allowPreview,
   );
@@ -201,6 +217,16 @@ export async function requestMediaCatalog(
     });
   }
   const config = serverConfig.mediaAi;
+  if (
+    isBookmarkDeferred(db, bookmarkId) &&
+    (!config.enabled || config.localMode !== "enforce" || !config.hybridEnabled)
+  ) {
+    throw new TRPCError({
+      code: "PRECONDITION_FAILED",
+      message:
+        "Imported analysis requires enforced local admission and hybrid routing.",
+    });
+  }
   const localOnly =
     options.localOnly ?? (!!options.automatic && config.localAutoNew);
   if (config.hybridEnabled && config.localMode === "off") {
@@ -436,6 +462,12 @@ export function startMediaCatalog(db: DB, job: CatalogJob) {
         return null;
       }
       if (
+        (isBookmarkDeferred(tx, job.bookmarkId) &&
+          (!serverConfig.mediaAi.enabled ||
+            serverConfig.mediaAi.localMode !== "enforce" ||
+            !serverConfig.mediaAi.hybridEnabled ||
+            state.localMode !== "enforce" ||
+            !state.hybrid)) ||
         (state.localMode ?? "off") !== serverConfig.mediaAi.localMode ||
         !!state.hybrid !== serverConfig.mediaAi.hybridEnabled ||
         (state.hybrid && state.localMode === "off")
@@ -888,6 +920,7 @@ export async function recoverLocalMediaCatalog(db: DB, now = Date.now()) {
       await MediaCatalogQueue.enqueue(job, {
         groupId: job.userId,
         idempotencyKey: job.runId,
+        priority: isBookmarkDeferred(db, job.bookmarkId) ? 50 : 0,
       });
   }
 }

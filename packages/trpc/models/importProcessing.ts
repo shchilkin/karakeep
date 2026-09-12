@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm";
 import type { z } from "zod";
 import {
   bookmarks,
+  mediaAiRequests,
   importProcessing,
   importSourceAttachments,
   importSourceRevisions,
@@ -144,6 +145,22 @@ export function releaseImportProcessing(
           message:
             "Local admission and hybrid analysis must be enabled before release.",
         });
+      if (
+        prior?.aiRunId &&
+        bookmark.mediaAi?.runId === prior.aiRunId &&
+        bookmark.mediaAi.status !== "success" &&
+        tx
+          .select({ id: mediaAiRequests.id })
+          .from(mediaAiRequests)
+          .where(eq(mediaAiRequests.id, prior.aiRunId))
+          .get()
+      ) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message:
+            "A paid attempt has an unconfirmed result. Ordinary retry cannot repeat it.",
+        });
+      }
       const values = {
         bookmarkId: bookmark.id,
         sourceRevisionId: id,

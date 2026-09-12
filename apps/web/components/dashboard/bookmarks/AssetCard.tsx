@@ -119,7 +119,7 @@ export default function AssetCard({
             </span>
           </Link>
         ) : bookmarkedAsset.content.assetType === "image" &&
-          (layout === "masonry" || layout === "grid") ? (
+          (!!importedPreview || layout === "masonry" || layout === "grid") ? (
           <Link
             href={`/dashboard/preview/${bookmarkedAsset.id}`}
             className="block"
