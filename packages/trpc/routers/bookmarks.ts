@@ -1,3 +1,4 @@
+import { assertBookmarkMutable } from "@karakeep/shared-server";
 import type { SensitiveCategory } from "@karakeep/shared/sensitiveContent";
 import { requestMediaCatalog } from "../models/mediaCatalog";
 import { backfillLocalMedia } from "../models/localMediaBackfill";
@@ -103,6 +104,8 @@ export const ensureBookmarkOwnership = experimental_trpcMiddleware<{
     opts.input.bookmarkId,
   );
   bookmark.ensureOwnership();
+  if (opts.type === "mutation")
+    assertBookmarkMutable(opts.ctx.db, opts.input.bookmarkId);
 
   return opts.next({
     ctx: {
@@ -121,6 +124,9 @@ export const ensureBookmarkAccess = experimental_trpcMiddleware<{
     opts.ctx,
     opts.input.bookmarkId,
   );
+
+  if (opts.type === "mutation")
+    assertBookmarkMutable(opts.ctx.db, opts.input.bookmarkId);
 
   return opts.next({
     ctx: {

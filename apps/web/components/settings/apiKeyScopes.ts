@@ -81,6 +81,11 @@ const RESOURCE_TRANSLATION_KEYS = {
     descriptionKey: "settings.api_keys.scopes.resources.webhooks.description",
     hidden: false,
   },
+  imports: {
+    labelKey: "settings.api_keys.scopes.resources.imports.label",
+    descriptionKey: "settings.api_keys.scopes.resources.imports.description",
+    hidden: false,
+  },
   importSessions: {
     labelKey: "settings.api_keys.scopes.resources.importSessions.label",
     descriptionKey:

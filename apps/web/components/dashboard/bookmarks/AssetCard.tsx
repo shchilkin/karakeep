@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "@/lib/i18n/client";
 import { FileText } from "lucide-react";
 
 import type { ZBookmarkTypeAsset } from "@karakeep/shared/types/bookmarks";
@@ -81,6 +82,7 @@ export default function AssetCard({
   className?: string;
   bookmarkIndex?: number;
 }) {
+  const { t } = useTranslation();
   return (
     <BookmarkLayoutAdaptingCard
       title={
@@ -99,8 +101,22 @@ export default function AssetCard({
       bookmarkIndex={bookmarkIndex}
       wrapTags={true}
       image={(layout, className) =>
-        bookmarkedAsset.content.assetType === "image" &&
-        (layout === "masonry" || layout === "grid") ? (
+        bookmarkedAsset.processingPolicy === "deferred" ? (
+          <Link
+            href={`/dashboard/preview/${bookmarkedAsset.id}`}
+            className={cn(
+              className,
+              "flex min-h-40 flex-col items-center justify-center gap-3 p-6 text-center text-sm text-muted-foreground",
+            )}
+          >
+            <FileText className="size-8" />
+            <span>{t("duplicates.deferred_snapshot")}</span>
+            <span className="underline">
+              {t("duplicates.show_saved_original")}
+            </span>
+          </Link>
+        ) : bookmarkedAsset.content.assetType === "image" &&
+          (layout === "masonry" || layout === "grid") ? (
           <Link
             href={`/dashboard/preview/${bookmarkedAsset.id}`}
             className="block"

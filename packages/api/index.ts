@@ -1,3 +1,4 @@
+import deferredImport from "./routes/deferredImport";
 import { httpInstrumentationMiddleware } from "@hono/otel";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
@@ -42,7 +43,8 @@ const v1 = new Hono<{
   .route("/rss", rss)
   .route("/backups", backups)
   .route("/feeds", feeds)
-  .route("/duplicates", duplicates);
+  .route("/duplicates", duplicates)
+  .route("/import", deferredImport);
 
 const app = new Hono<{
   Variables: {

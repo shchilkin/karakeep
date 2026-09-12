@@ -1,3 +1,4 @@
+import { deferredImportRouter } from "./deferredImport";
 import { router } from "../index";
 import { adminAppRouter } from "./admin";
 import { apiKeysAppRouter } from "./apiKeys";
@@ -39,6 +40,7 @@ export const appRouter = router({
   subscriptions: subscriptionsRouter,
   config: configAppRouter,
   duplicates: duplicatesAppRouter,
+  deferredImport: deferredImportRouter,
 });
 // export type definition of API
 export type AppRouter = typeof appRouter;

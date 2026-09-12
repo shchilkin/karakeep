@@ -41,7 +41,13 @@ export function DuplicateComparison({
   const { t } = useTranslation();
   const sensitive = useSensitiveContent();
   const [expandedAsset, setExpandedAsset] = useState<string | null>(null);
-  useEffect(() => setExpandedAsset(null), [group.id]);
+  const [openedOriginals, setOpenedOriginals] = useState<Set<string>>(
+    () => new Set(),
+  );
+  useEffect(() => {
+    setExpandedAsset(null);
+    setOpenedOriginals(new Set());
+  }, [group.id]);
   return (
     <section className="space-y-6" aria-label={t("duplicates.compare")}>
       <div className="rounded-xl border bg-muted/30 p-4">
@@ -92,11 +98,26 @@ export function DuplicateComparison({
                           <EyeOff className="mr-2 size-4" />
                           {t("duplicates.reveal")}
                         </Button>
+                      ) : card.processingPolicy === "deferred" &&
+                        asset.contentType?.startsWith("image/") &&
+                        !openedOriginals.has(asset.id) ? (
+                        <Button
+                          variant="outline"
+                          onClick={() =>
+                            setOpenedOriginals(
+                              (previous) => new Set([...previous, asset.id]),
+                            )
+                          }
+                        >
+                          {t("duplicates.show_saved_original")} ·{" "}
+                          {bytes(asset.size)}
+                        </Button>
                       ) : asset.contentType?.startsWith("image/") ? (
                         // eslint-disable-next-line @next/next/no-img-element -- Authenticated server thumbnails and explicit original-size mode need direct asset URLs.
                         <img
                           src={
-                            expandedAsset === asset.id
+                            expandedAsset === asset.id ||
+                            card.processingPolicy === "deferred"
                               ? getAssetUrl(asset.id)
                               : getAssetThumbnailUrl(asset.id, 640)
                           }
@@ -162,6 +183,11 @@ export function DuplicateComparison({
                 ))}
               </div>
               <div className="space-y-3 border-t p-4">
+                {card.processingPolicy === "deferred" && (
+                  <p className="text-xs text-muted-foreground">
+                    {t("duplicates.deferred_snapshot")}
+                  </p>
+                )}
                 <h3 className="break-words font-semibold">
                   {card.title ?? t("duplicates.unnamed")}
                 </h3>

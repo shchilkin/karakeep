@@ -429,6 +429,10 @@
           "importSessions": {
             "label": "Import Sessions",
             "description": "Access import sessions."
+          },
+          "imports": {
+            "label": "Deferred imports",
+            "description": "Stage original files and private metadata, verify copies, and commit deferred source snapshots."
           }
         },
         "admin_resources": {
@@ -1346,6 +1350,8 @@
     "first_page": "First page",
     "next_page": "Next page",
     "matching_originals": "Matching originals",
-    "lists": "Lists"
+    "lists": "Lists",
+    "show_saved_original": "Show saved original",
+    "deferred_snapshot": "Processing deferred · original retained"
   }
 }

@@ -12,6 +12,7 @@ import { registry as assetsRegistry } from "./lib/assets";
 import { registry as backupsRegistry } from "./lib/backups";
 import { registry as bookmarksRegistry } from "./lib/bookmarks";
 import { registry as commonRegistry } from "./lib/common";
+import { registry as deferredImportRegistry } from "./lib/deferredImport";
 import { registry as duplicatesRegistry } from "./lib/duplicates";
 import { registry as feedsRegistry } from "./lib/feeds";
 import { registry as highlightsRegistry } from "./lib/highlights";
@@ -32,6 +33,7 @@ function getOpenApiDocumentation() {
     backupsRegistry,
     feedsRegistry,
     duplicatesRegistry,
+    deferredImportRegistry,
   ]);
 
   const generator = new OpenApiGeneratorV3(registry.definitions);
@@ -59,6 +61,11 @@ function getOpenApiDocumentation() {
         "If you exceed the allowed number of requests within the time window, the API returns a `429 Too Many Requests` response with a message indicating how many seconds to wait before retrying.",
     },
     tags: [
+      {
+        name: "Deferred imports",
+        description:
+          "Bounded source-revision copy import with exact metadata and immutable deferred processing.",
+      },
       {
         name: "Duplicates",
         description:
