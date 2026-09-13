@@ -36,6 +36,24 @@ Read `GET /reservations/{id}/processing`, then send `POST /reservations/{id}/rel
 
 Without a permit, the library shows a retained-original placeholder. With a completed preview, it shows the separate saved preview. Opening an original remains an explicit authenticated read. Sensitive concealment still applies; a failed or unknown local check never becomes evidence that media is safe. Ordinary crawling, OCR, embeddings, rules, webhooks and video processing remain blocked at every release stage.
 
+### Controller scheduling
+
+The CPU controller drains eligible work without a fixed delay between items. It
+still admits only one CPU operation at a time across controllers. An empty or
+temporarily unavailable queue is polled once a second. Active AI checkpoints have
+a persisted one-second polling cooldown, while terminal or missing checkpoints
+can be reconciled immediately; waiting for AI does not prevent ready CPU work.
+Infrastructure errors back off from one second to a maximum of 30 seconds, resetting
+after recovery. Stopping wakes a sleeping controller and lets an active operation
+finish without admitting the next one. Failed item stages still require an explicit
+retry; faster polling does not add processing permits or repeat inference.
+
+Adding controllers does not enable parallel preview processing, and concurrent
+import I/O requests still encounter the global original-scan/import-write lease.
+Pipeline overlap, bounded source prefetch and multiple preview decoders require
+separate coordination of per-item ownership, quota reservations, journal writes,
+stop/resume behavior and resource limits. GPU admission remains independent.
+
 Both the private staged copy and the target copy remain retained; metadata and staged originals count toward import quota in addition to target assets. There is no automatic stage garbage collection. Capacity is 16 nonterminal operations per owner and 64 globally. Disk headroom and quota are checked before publication. Orphan maintenance and physical asset deletion respect import retention, including a target promoted before a failed database commit.
 
 Until a retention-aware control path exists, ordinary card edits, attachment changes, list sharing, removal of retained tag associations, deletion and account cleanup cannot remove these snapshots. Shared tags used by retained snapshots cannot be renamed; unrelated tags retain normal editing behavior. Raw source metadata remains owner-only. Do not remove the custom SQL barriers during a later table rebuild; migration and guard tests must continue to prove them.
