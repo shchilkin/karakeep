@@ -1468,6 +1468,7 @@
       "complete": "Finished"
     },
     "reasons": {
+      "image_set_held": "Image set awaiting group analysis",
       "import_held": "Import awaiting catalog release",
       "no_saved_media": "No saved originals",
       "already_queued": "Already queued",
@@ -1506,5 +1507,32 @@
     "catalog_version": "Catalog version",
     "coverage": "{{sampled}} selected images/frames from {{assets}} saved assets; not exhaustive coverage.",
     "classifier": "Classifier"
+  },
+  "image_sets": {
+    "edit": "Edit image set",
+    "create": "Create image set",
+    "description": "Choose the order and cover. Originals, source links and tags stay on their original cards. Sets contain 2–50 images.",
+    "title": "Set title",
+    "title_placeholder": "Give these images a name",
+    "count": "{{count}} images",
+    "add": "Add images",
+    "search": "Search saved images",
+    "empty": "No matching images.",
+    "previous": "Previous",
+    "next": "Next",
+    "order": "Image order",
+    "cover": "Cover",
+    "make_cover": "Use as cover",
+    "move_up": "Move image {{position}} up",
+    "move_down": "Move image {{position}} down",
+    "remove": "Remove image {{position}} from set",
+    "ai_hold": "AI analysis is on hold for this set and its individual images. Set analysis will be available in a later update. Existing results are kept on the originals.",
+    "dissolve": "Dissolve set",
+    "dissolve_description": "The original cards will return to the feed with their files, titles and tags intact. This set’s own title, notes and tags will be removed.",
+    "confirm_dissolve": "Dissolve and restore cards",
+    "save": "Save set",
+    "sources": "Original cards",
+    "member_notice": "This image belongs to a set. Remove it from the set before editing or analyzing it.",
+    "open_set": "Open set"
   }
 }

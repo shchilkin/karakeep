@@ -120,6 +120,7 @@ export default function SummarizeBookmarkArea({
   });
 
   const clientConfig = useClientConfig();
+  if (bookmark.imageSet) return null;
   const hasSavedMedia = !!catalogInput(bookmark);
   const mediaArea =
     bookmark.importProcessing ||

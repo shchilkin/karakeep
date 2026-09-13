@@ -1,3 +1,5 @@
+import { ungroupedBookmarkCondition } from "../models/imageSets";
+import { imageSetMembers, imageSets } from "@karakeep/db/schema";
 import { assertBookmarkMutable } from "@karakeep/shared-server";
 import type { SensitiveCategory } from "@karakeep/shared/sensitiveContent";
 import { requestMediaCatalog } from "../models/mediaCatalog";
@@ -746,6 +748,11 @@ export const bookmarksAppRouter = router({
             modifiedAt: new Date(),
           };
           if (input.title !== undefined) {
+            // A legacy editor must also invalidate an open composition draft.
+            tx.update(imageSets)
+              .set({ revision: sql`${imageSets.revision} + 1` })
+              .where(eq(imageSets.bookmarkId, input.bookmarkId))
+              .run();
             // Old clients submit the displayed title even when only a note was
             // changed. An explicit titleSource still lets a user pin that title.
             const stored = tx
@@ -1080,6 +1087,28 @@ export const bookmarksAppRouter = router({
         filter = [{ type: "eq", field: "userId", value: ctx.user.id }];
       }
 
+      // Apply grouping before provider pagination, including stale index entries.
+      if (
+        ctx.db
+          .select()
+          .from(imageSetMembers)
+          .innerJoin(bookmarks, eq(bookmarks.id, imageSetMembers.bookmarkId))
+          .where(eq(bookmarks.userId, ctx.user.id))
+          .get()
+      ) {
+        const visibleIds = ctx.db
+          .select({ id: bookmarks.id })
+          .from(bookmarks)
+          .where(
+            and(
+              eq(bookmarks.userId, ctx.user.id),
+              ungroupedBookmarkCondition(),
+            ),
+          )
+          .all()
+          .map((b) => b.id);
+        filter.push({ type: "in", field: "id", values: visibleIds });
+      }
       /**
        * preserve legacy behaviour
        */

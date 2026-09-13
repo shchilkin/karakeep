@@ -1,3 +1,4 @@
+import type { SensitiveBookmark } from "./sensitiveVisibility";
 import { expect, test } from "vitest";
 import { zMediaCatalogState } from "./mediaCatalog";
 import {
@@ -114,4 +115,28 @@ test("retained positive observations keep previews closed during retries and tem
   expect(sensitiveRevealKey({ ...card, sensitiveCategories: [] })).not.toBe(
     sensitiveRevealKey({ ...card, sensitiveCategories: null }),
   );
+});
+
+test("manual set flags conceal immediately even before aggregate cache refresh", () => {
+  const set: SensitiveBookmark = {
+    id: "set",
+    sensitiveCategories: ["nudity"],
+    imageSet: {
+      revision: 1,
+      sensitivity: {
+        work: false,
+        balanced: false,
+        sensitive: false,
+        labels: [],
+      },
+    },
+  };
+  expect(concealSensitiveBookmark(set, "balanced")).toBe(true);
+  expect(sensitiveAssessment(set).labels).toEqual([
+    "sensitive.categories.nudity",
+  ]);
+  set.sensitiveCategories = [];
+  set.imageSet!.sensitivity.balanced = true;
+  expect(concealSensitiveBookmark(set, "balanced")).toBe(true);
+  expect(concealSensitiveBookmark(set, "all")).toBe(false);
 });

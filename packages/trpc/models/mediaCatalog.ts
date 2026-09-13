@@ -1,3 +1,4 @@
+import { isImageSetAnalysisHeld } from "@karakeep/shared-server";
 import { activeAiStatuses } from "@karakeep/shared/aiControl";
 import {
   aiControlDecision,
@@ -234,6 +235,14 @@ export async function requestMediaCatalog(
     throw new TRPCError({
       code: "CONFLICT",
       message: "Imported snapshot processing is deferred.",
+    });
+  }
+  if (isImageSetAnalysisHeld(db, bookmarkId)) {
+    if (options.automatic) return null;
+    throw new TRPCError({
+      code: "CONFLICT",
+      message:
+        "Image set analysis is on hold. No individual requests are sent while images belong to a set.",
     });
   }
   const config = serverConfig.mediaAi;

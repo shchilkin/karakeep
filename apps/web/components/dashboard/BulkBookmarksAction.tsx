@@ -1,5 +1,8 @@
 "use client";
 
+import ImageSetEditor, { imageSetCandidate } from "./sets/ImageSetEditor";
+import { Images } from "lucide-react";
+
 import AiQueueDialog from "./ai/AiQueueDialog";
 
 import { useEffect, useRef, useState } from "react";
@@ -35,6 +38,7 @@ import { ArchivedActionIcon, FavouritedActionIcon } from "./bookmarks/icons";
 export default function BulkBookmarksAction() {
   const { t } = useTranslation();
   const [aiOpen, setAiOpen] = useState(false);
+  const [setOpen, setSetOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isRemoveFromListDialogOpen, setIsRemoveFromListDialogOpen] =
     useState(false);
@@ -165,6 +169,15 @@ export default function BulkBookmarksAction() {
 
   const actionList = [
     {
+      name: t("image_sets.create"),
+      icon: <Images size={18} />,
+      action: () => setSetOpen(true),
+      hidden:
+        !isBulkEditEnabled ||
+        selectedBookmarks.length < 2 ||
+        !selectedBookmarks.every(imageSetCandidate),
+    },
+    {
       name: t("ai_control.queue_title"),
       icon: <Sparkles size={18} />,
       action: () => setAiOpen(true),
@@ -291,6 +304,7 @@ export default function BulkBookmarksAction() {
 
           return (
             <ActionButtonWithTooltip
+              aria-label={name}
               className={className}
               tooltip={name}
               disabled={disabled}
@@ -313,10 +327,18 @@ export default function BulkBookmarksAction() {
     isRemoveFromListDialogOpen ||
     manageListsModal ||
     bulkTagModal ||
-    aiOpen;
+    aiOpen ||
+    setOpen;
 
   return (
     <div>
+      {setOpen && (
+        <ImageSetEditor
+          selected={selectedBookmarks}
+          onClose={() => setSetOpen(false)}
+          onSaved={() => setIsBulkEditEnabled(false)}
+        />
+      )}
       {aiOpen && (
         <AiQueueDialog
           open

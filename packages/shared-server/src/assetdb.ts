@@ -1,3 +1,4 @@
+import { isImageSetAssetRetained } from "./imageSets";
 import type { DB } from "@karakeep/db";
 import { db } from "@karakeep/db";
 import { and, eq, gt } from "drizzle-orm";
@@ -103,8 +104,11 @@ export async function saveAsset({
     throw new Error("Asset size exceeds approved quota");
   }
 
-  if (isImportAssetRetained(db, assetId))
-    throw new Error("Imported original is retained and immutable");
+  if (
+    isImportAssetRetained(db, assetId) ||
+    isImageSetAssetRetained(db, assetId)
+  )
+    throw new Error("Saved original is retained and immutable");
   const store = await getAssetStore();
   return store.saveAsset({ userId, assetId, asset, metadata });
 }
@@ -126,8 +130,11 @@ export async function saveAssetFromFile({
     throw new Error("Quota approval is for a different user");
   }
 
-  if (isImportAssetRetained(db, assetId))
-    throw new Error("Imported original is retained and immutable");
+  if (
+    isImportAssetRetained(db, assetId) ||
+    isImageSetAssetRetained(db, assetId)
+  )
+    throw new Error("Saved original is retained and immutable");
   const store = await getAssetStore();
   return store.saveAssetFromFile({ userId, assetId, assetPath, metadata });
 }
@@ -200,8 +207,11 @@ export async function deleteAsset({
   userId: string;
   assetId: string;
 }) {
-  if (isImportAssetRetained(db, assetId))
-    throw new Error("Imported original is retained and immutable");
+  if (
+    isImportAssetRetained(db, assetId) ||
+    isImageSetAssetRetained(db, assetId)
+  )
+    throw new Error("Saved original is retained and immutable");
   const store = await getAssetStore();
   return store.deleteAsset({ userId, assetId });
 }
