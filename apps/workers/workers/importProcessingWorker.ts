@@ -17,6 +17,7 @@ import {
   createAssetReadStream,
   extractImageDimensions,
   getAssetSize,
+  importProcessingPermit,
   QuotaService,
   saveImportPreview,
 } from "@karakeep/shared-server";
@@ -418,23 +419,45 @@ export async function processNextImport(
       error instanceof ImportProcessingError
         ? error.message
         : "processing_failed";
-    database
-      .update(importProcessing)
-      .set({
-        state: "failed",
-        error: code,
-        leaseUntil: 0,
-        leaseToken: null,
-        updatedAt: Date.now(),
-      })
-      .where(
-        and(
+    database.transaction(
+      (tx) => {
+        const ownedClaim = and(
           eq(importProcessing.bookmarkId, item.bookmarkId),
           eq(importProcessing.generation, item.generation),
           eq(importProcessing.leaseToken, item.leaseToken!),
-        ),
-      )
-      .run();
+        );
+        if (!tx.select().from(importProcessing).where(ownedClaim).get()) return;
+        const permit = importProcessingPermit(
+          tx,
+          item.bookmarkId,
+          "local_check",
+        );
+        const state = tx
+          .select({ ai: bookmarks.mediaAi })
+          .from(bookmarks)
+          .where(eq(bookmarks.id, item.bookmarkId))
+          .get()?.ai;
+        // Admission persists its run before enqueue. An expired CPU lease or a
+        // later controller error must not revoke a still-active AI run's permit:
+        // it may already be paid, and its result/recovery still needs to commit.
+        // Never reopen a failed run or overwrite a newer lease/generation.
+        const waiting =
+          !!permit?.aiRunId &&
+          state?.runId === permit.aiRunId &&
+          activeAi.has(state.status);
+        tx.update(importProcessing)
+          .set({
+            state: waiting ? "waiting_ai" : "failed",
+            error: waiting ? null : code,
+            leaseUntil: 0,
+            leaseToken: null,
+            updatedAt: Date.now(),
+          })
+          .where(ownedClaim)
+          .run();
+      },
+      { behavior: "immediate" },
+    );
   }
   return true;
 }

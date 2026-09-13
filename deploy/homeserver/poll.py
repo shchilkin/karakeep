@@ -83,7 +83,44 @@ def protected_digest(sha):
 
 def idle():
     with sqlite3.connect(f'file:{DATA}/db.db?mode=ro', uri=True) as db:
-        busy = db.execute("select count(*) from bookmarks where json_extract(mediaAi,'$.status') in ('pending','checking_local','processing','processing_local','local_checked') or json_extract(mediaAi,'$.localRecheckRequested')=1").fetchone()[0]
+        # A failed, unleased classification-only import cannot dispatch or
+        # finish AI. Older controllers could leave its display snapshot pending.
+        # Ignore only that exact unpaid state, never active/uncertain inference.
+        busy = db.execute('''
+          SELECT count(*) FROM bookmarks b
+          WHERE (json_extract(b.mediaAi,'$.status') IN
+            ('pending','checking_local','processing','processing_local',
+             'local_checked','waiting_resource','waiting_control')
+            OR json_extract(b.mediaAi,'$.localRecheckRequested')=1)
+          AND NOT EXISTS (
+            SELECT 1 FROM importProcessing p
+            WHERE p.bookmarkId=b.id AND p.userId=b.userId
+              AND b.processingPolicy='deferred'
+              AND p.policyRevision=b.policyRevision AND p.contentRevision=b.contentRevision
+              AND p.stage='local_check' AND p.state='failed'
+              AND p.leaseToken IS NULL AND p.leaseUntil=0
+              AND p.aiRunId=json_extract(b.mediaAi,'$.runId')
+              AND json_extract(b.mediaAi,'$.status')='pending'
+              AND json_extract(b.mediaAi,'$.classificationOnly')=1
+              AND json_extract(b.mediaAi,'$.localOnly')=1
+              AND coalesce(json_extract(b.mediaAi,'$.localRecheckRequested'),0)=0
+              AND NOT EXISTS (SELECT 1 FROM mediaAiRequests r WHERE r.id=p.aiRunId)
+          )
+        ''').fetchone()[0]
+        busy += db.execute('''
+          SELECT count(*) FROM importProcessing
+          WHERE state IN ('queued','running','waiting_ai') OR leaseUntil>?
+            OR (state='complete' AND stage IN ('search','local_check','catalog')
+                AND searchIndexedRevision<searchRevision)
+        ''', (int(time.time()*1000),)).fetchone()[0]
+        busy += db.execute('''
+          SELECT count(*) FROM mediaAiBatches b, json_each(b.entries) e
+          WHERE b.status='running' AND json_extract(e.value,'$.status') IN ('ready','queued')
+        ''').fetchone()[0]
+    # Even a job with a stale display snapshot must drain before cutover. Count
+    # all durable tasks, including delayed/resource-waiting deliveries.
+    with sqlite3.connect(f'file:{DATA}/queue.db?mode=ro', uri=True) as db:
+        busy += db.execute('SELECT count(*) FROM tasks').fetchone()[0]
     with sqlite3.connect(f'file:{ROOT}/social-enricher/state/jobs.sqlite3?mode=ro', uri=True) as db:
         busy += db.execute("select count(*) from jobs where status in ('pending','processing')").fetchone()[0]
     return busy == 0

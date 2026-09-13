@@ -544,6 +544,114 @@ test("lost local import jobs recover behind interactive work", async () => {
   );
 });
 
+test.each(["pending", "processing", "processing_local"] as const)(
+  "an expired controller lease preserves the admitted %s run and its result",
+  async (status) => {
+    release(status === "pending" ? "local_check" : "catalog");
+    await processNextImport(db, {
+      ...actions,
+      catalog: async (...args) => {
+        const state = await requestMediaCatalog(...args);
+        if (status !== "pending") {
+          expect(startMediaCatalog(db, job())).not.toBeNull();
+          continueMediaCatalog(
+            db,
+            job(),
+            native(status === "processing_local" ? ["sexual"] : []),
+          );
+        }
+        // Admission outlives the CPU lease. The queue worker owns the AI run.
+        db.update(schema.importProcessing)
+          .set({ leaseUntil: Date.now() - 1 })
+          .where(eq(schema.importProcessing.bookmarkId, bookmarkId))
+          .run();
+        return state;
+      },
+    });
+    const admitted = job();
+    expect(processing()).toMatchObject({
+      state: "waiting_ai",
+      error: null,
+      leaseToken: null,
+      leaseUntil: 0,
+    });
+    expect(ai()).toMatchObject({ runId: admitted.runId, status });
+    expect(MediaCatalogQueue.enqueue).toHaveBeenCalledTimes(1);
+    if (status === "pending") {
+      expect(startMediaCatalog(db, admitted)).not.toBeNull();
+      continueMediaCatalog(db, admitted, native());
+    } else {
+      expect(
+        finishMediaCatalog(db, admitted, "success", {
+          title: "Result",
+          summary: "Description",
+          tags: ["example"],
+        }),
+      ).toBeTruthy();
+    }
+    await processNextImport(db, actions);
+    expect(processing().state).toBe("complete");
+    expect(processing().aiRunId).toBe(admitted.runId);
+    expect(db.select().from(schema.mediaAiRequests).all()).toHaveLength(
+      status === "processing" ? 1 : 0,
+    );
+    expect(MediaCatalogQueue.enqueue).toHaveBeenCalledTimes(1);
+  },
+);
+
+test("an admission error after persisting a run retains its recovery checkpoint", async () => {
+  release("local_check");
+  await processNextImport(db, {
+    ...actions,
+    catalog: async (...args) => {
+      await requestMediaCatalog(...args);
+      throw new Error("Interrupted after admission");
+    },
+  });
+  expect(processing().state).toBe("waiting_ai");
+  const admitted = job();
+  await recoverLocalMediaCatalog(db, Date.now() + 1_000_000);
+  expect(MediaCatalogQueue.enqueue).toHaveBeenLastCalledWith(
+    admitted,
+    expect.objectContaining({ idempotencyKey: admitted.runId }),
+  );
+});
+
+test("a failed enqueue remains terminal and is not implicitly retried", async () => {
+  release("local_check");
+  vi.mocked(MediaCatalogQueue.enqueue).mockRejectedValueOnce(
+    new Error("Unavailable"),
+  );
+  await processNextImport(db, actions);
+  expect(processing()).toMatchObject({ state: "failed", leaseToken: null });
+  expect(ai().status).toBe("local_failed");
+  await recoverLocalMediaCatalog(db, Date.now() + 1_000_000);
+  expect(await processNextImport(db, actions)).toBe(false);
+  expect(MediaCatalogQueue.enqueue).toHaveBeenCalledTimes(1);
+});
+
+test("an old admission error cannot overwrite a replacement lease", async () => {
+  release("local_check");
+  await processNextImport(db, {
+    ...actions,
+    catalog: async (...args) => {
+      await requestMediaCatalog(...args);
+      db.update(schema.importProcessing)
+        .set({
+          generation: processing().generation + 1,
+          leaseToken: "replacement",
+        })
+        .where(eq(schema.importProcessing.bookmarkId, bookmarkId))
+        .run();
+      throw new Error("Old controller failed");
+    },
+  });
+  expect(processing()).toMatchObject({
+    state: "running",
+    leaseToken: "replacement",
+  });
+});
+
 test("an expired storage writer cannot overwrite the replacement published preview", async () => {
   await loadAllPlugins();
   const store = (await PluginManager.getClient(PluginType.AssetStore))!;

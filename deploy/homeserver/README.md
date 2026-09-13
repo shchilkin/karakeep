@@ -29,6 +29,23 @@ new infrastructure, controller changes and schema changes therefore cannot be
 silently activated by the timer. AI configuration and model services remain as
 last explicitly deployed. No backfill or paid canary runs automatically.
 
+The idle gate checks durable queue tasks (including delayed deliveries), import
+intents/leases, unpublished search revisions, running batch admissions and AI
+resource/control waits as well as the Social Enricher. Missing databases or schema
+fail closed. Checks run before cutover and again after the web/enricher stop;
+external import coordinators must be paused for a manual rollout.
+
+An older import controller could mark a local-check import failed after persisting
+an AI run, leaving its display snapshot `pending`. The gate ignores only an
+unleased, failed `local_check` import whose owner/revisions/run match, whose AI
+snapshot is pending and classification-only/local-only, and whose run has no paid
+reservation or follow-up intent. Any durable queue task still blocks. This is a
+read-only compatibility rule: it does not rewrite the checkpoint, clear errors,
+retry inference or release imports. Active or paid/uncertain runs are never covered
+by the exception. The application preserves `waiting_ai` if controller admission
+outlives its CPU lease, so the admitted run can still complete using its existing
+permit. Failed enqueues still require explicit retry.
+
 A failed revision is recorded once as `failed-<sha>` and is not retried every five
 minutes. Inspect the private logs and `status.json`, then remove that marker only
 when ready for a deliberate retry. CI/queue waits are harmless and retry on the
