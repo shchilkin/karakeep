@@ -1,8 +1,7 @@
 import { activeAiStatuses } from "@karakeep/shared/aiControl";
 import { Readable } from "node:stream";
 import { createHash, randomUUID } from "node:crypto";
-import { setTimeout as delay } from "node:timers/promises";
-import { and, eq, gt, inArray, lt, lte, or, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, lt, lte, notExists, or, sql } from "drizzle-orm";
 import sharp from "sharp";
 import type { DB } from "@karakeep/db";
 import { db } from "@karakeep/db";
@@ -29,6 +28,8 @@ import { runIndex } from "./searchWorker";
 
 type Processing = typeof importProcessing.$inferSelect;
 const LEASE_MS = 300_000;
+const POLL_MS = 1000;
+const MAX_ERROR_BACKOFF_MS = 30_000;
 const activeAi = new Set(activeAiStatuses);
 export class ImportProcessingError extends Error {}
 
@@ -213,11 +214,34 @@ export async function processNextImport(
         .where(
           and(
             or(
-              inArray(importProcessing.state, [
-                "queued",
-                "running",
-                "waiting_ai",
-              ]),
+              inArray(importProcessing.state, ["queued", "running"]),
+              and(
+                eq(importProcessing.state, "waiting_ai"),
+                or(
+                  lte(importProcessing.updatedAt, now - POLL_MS),
+                  // An active checkpoint has a durable polling cooldown, so
+                  // draining ready work cannot repeatedly reclaim it. Terminal
+                  // or missing checkpoints remain immediately actionable.
+                  notExists(
+                    tx
+                      .select({ id: bookmarks.id })
+                      .from(bookmarks)
+                      .where(
+                        and(
+                          eq(bookmarks.id, importProcessing.bookmarkId),
+                          eq(
+                            sql<string>`json_extract(${bookmarks.mediaAi}, '$.runId')`,
+                            importProcessing.aiRunId,
+                          ),
+                          inArray(
+                            sql<string>`json_extract(${bookmarks.mediaAi}, '$.status')`,
+                            activeAiStatuses,
+                          ),
+                        ),
+                      ),
+                  ),
+                ),
+              ),
               and(
                 eq(importProcessing.state, "complete"),
                 lt(
@@ -416,23 +440,41 @@ export async function processNextImport(
 }
 
 export class ImportProcessingWorker {
-  static async build() {
+  static async build(processNext = () => processNextImport(db)) {
     let stopped = false;
+    let errorBackoff = POLL_MS;
+    let wake: (() => void) | undefined;
+    const sleep = (ms: number) =>
+      new Promise<void>((resolve) => {
+        const timer = setTimeout(done, ms);
+        function done() {
+          clearTimeout(timer);
+          wake = undefined;
+          resolve();
+        }
+        wake = done;
+      });
     return {
       async run() {
         while (!stopped) {
+          let waitMs = 0;
           try {
-            await processNextImport(db);
+            const worked = await processNext();
+            errorBackoff = POLL_MS;
+            if (!worked) waitMs = POLL_MS;
           } catch {
+            waitMs = errorBackoff;
+            errorBackoff = Math.min(errorBackoff * 2, MAX_ERROR_BACKOFF_MS);
             logger.warn(
               "[importProcessing] Controller unavailable; durable intents remain pending.",
             );
           }
-          if (!stopped) await delay(1000);
+          if (!stopped && waitMs) await sleep(waitMs);
         }
       },
       stop() {
         stopped = true;
+        wake?.();
       },
     };
   }

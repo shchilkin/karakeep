@@ -708,3 +708,84 @@ test("cloud pause retains import catalog permit and resumes to completion", asyn
   await processNextImport(db, actions);
   expect(processing().state).toBe("complete");
 });
+
+test("active AI checkpoints are polled at most once a second across controllers", async () => {
+  let now = Date.now();
+  vi.spyOn(Date, "now").mockImplementation(() => now);
+  release("local_check");
+  expect(await processNextImport(db, actions)).toBe(true);
+  const waiting = processing();
+  expect(waiting.state).toBe("waiting_ai");
+  expect(await processNextImport(db, actions)).toBe(false);
+  expect(processing()).toEqual(waiting);
+  now += 999;
+  expect(await processNextImport(db, actions)).toBe(false);
+  now += 1;
+  expect(await processNextImport(db, actions)).toBe(true);
+  expect(await processNextImport(db, actions)).toBe(false);
+  expect(MediaCatalogQueue.enqueue).toHaveBeenCalledTimes(1);
+  expect(db.select().from(schema.mediaAiRequests).all()).toHaveLength(0);
+
+  // Terminal results become eligible immediately, without waiting for a poll.
+  expect(startMediaCatalog(db, job())).not.toBeNull();
+  expect(continueMediaCatalog(db, job(), native())).toBe(false);
+  expect(await processNextImport(db, actions)).toBe(true);
+  expect(processing().state).toBe("complete");
+});
+
+test("an AI checkpoint in cooldown does not block a ready image", async () => {
+  let now = Date.now();
+  vi.spyOn(Date, "now").mockImplementation(() => now);
+  const firstId = bookmarkId;
+  const firstPayload = db
+    .select()
+    .from(schema.importSourceRevisions)
+    .get()!.payload;
+  release("local_check");
+  await processNextImport(db, actions);
+  now += 100;
+  const second = await reserveImport(
+    ctx,
+    {
+      ...firstPayload,
+      source: { ...firstPayload.source, objectId: "second" },
+    },
+    "import-second",
+  );
+  await uploadImportMetadata(
+    ctx,
+    second.operationId,
+    second.fencingToken,
+    metadata,
+  );
+  await uploadImportFile(
+    ctx,
+    second.operationId,
+    "original",
+    second.fencingToken,
+    Readable.from([original]),
+  );
+  const receipt = await commitImport(
+    ctx,
+    second.operationId,
+    second.fencingToken,
+  );
+  releaseImportProcessing(ctx, second.operationId, {
+    stage: "search",
+    requestId: randomUUID(),
+    expectedGeneration: 0,
+    retry: false,
+  });
+  expect(await processNextImport(db, actions)).toBe(true);
+  expect(getImportProcessing(ctx, second.operationId)?.state).toBe("complete");
+  expect(
+    db
+      .select()
+      .from(schema.importProcessing)
+      .where(eq(schema.importProcessing.bookmarkId, firstId))
+      .get()?.state,
+  ).toBe("waiting_ai");
+  expect(await processNextImport(db, actions)).toBe(false);
+  expect(receipt.bookmarkId).not.toBe(firstId);
+  expect(MediaCatalogQueue.enqueue).toHaveBeenCalledTimes(1);
+});
