@@ -1,5 +1,6 @@
 import type { DB, KarakeepDBTransaction } from "@karakeep/db";
 import {
+  bookmarks,
   mediaAiBatches,
   mediaAiControl,
   mediaAiRequests,
@@ -95,4 +96,18 @@ export function recordAiRun(
       },
     })
     .run();
+}
+
+/** Persist a state transition and its history in the caller's transaction. */
+export function persistAiState(
+  db: Connection,
+  bookmarkId: string,
+  userId: string,
+  state: MediaCatalogState,
+) {
+  db.update(bookmarks)
+    .set({ mediaAi: state })
+    .where(eq(bookmarks.id, bookmarkId))
+    .run();
+  recordAiRun(db, bookmarkId, userId, state);
 }

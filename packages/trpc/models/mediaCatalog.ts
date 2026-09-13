@@ -1,4 +1,10 @@
-import { aiControlDecision, getAiControl, recordAiRun } from "./aiControl";
+import { activeAiStatuses } from "@karakeep/shared/aiControl";
+import {
+  aiControlDecision,
+  getAiControl,
+  recordAiRun,
+  persistAiState,
+} from "./aiControl";
 import {
   isBookmarkDeferred,
   isImportCatalogBlocked,
@@ -481,18 +487,12 @@ export function startMediaCatalog(db: DB, job: CatalogJob) {
         state.allowPreview,
       );
       const update = (status: MediaCatalogState["status"]) =>
-        tx
-          .update(bookmarks)
-          .set({
-            mediaAi: {
-              ...state,
-              status,
-              resourceWaitUntil: undefined,
-              updatedAt: new Date().toISOString(),
-            },
-          })
-          .where(eq(bookmarks.id, job.bookmarkId))
-          .run();
+        persistAiState(tx, job.bookmarkId, job.userId, {
+          ...state,
+          status,
+          resourceWaitUntil: undefined,
+          updatedAt: new Date().toISOString(),
+        });
       if (
         state.automatic &&
         (!automaticCatalogEnabled(state.localOnly) ||
@@ -609,29 +609,22 @@ export function continueMediaCatalog(
         status: MediaCatalogState["status"],
         acceptObservation = true,
       ) =>
-        tx
-          .update(bookmarks)
-          .set({
-            mediaAi: {
-              ...state,
-              ...(acceptObservation && localCheck && !retainPriorHold
-                ? { localCheck, localCheckFingerprint: state.fingerprint }
-                : {}),
-              localCheckUnavailable:
-                unknown ||
-                (status === "processing_local" && !acceptObservation),
-              route:
-                status === "processing_local"
-                  ? "local"
-                  : status === "processing"
-                    ? "cloud"
-                    : state.route,
-              status,
-              updatedAt: new Date().toISOString(),
-            },
-          })
-          .where(eq(bookmarks.id, job.bookmarkId))
-          .run();
+        persistAiState(tx, job.bookmarkId, job.userId, {
+          ...state,
+          ...(acceptObservation && localCheck && !retainPriorHold
+            ? { localCheck, localCheckFingerprint: state.fingerprint }
+            : {}),
+          localCheckUnavailable:
+            unknown || (status === "processing_local" && !acceptObservation),
+          route:
+            status === "processing_local"
+              ? "local"
+              : status === "processing"
+                ? "cloud"
+                : state.route,
+          status,
+          updatedAt: new Date().toISOString(),
+        });
       if (
         !snapshot.input ||
         catalogFingerprint(
@@ -788,19 +781,14 @@ export function waitForMediaCatalogResource(
       )
         return false;
       const now = Date.now();
-      tx.update(bookmarks)
-        .set({
-          mediaAi: {
-            ...state,
-            status: "waiting_resource",
-            updatedAt: new Date(now).toISOString(),
-            resourceWaitUntil: new Date(
-              now + Math.max(1000, Math.min(300_000, delayMs)),
-            ).toISOString(),
-          },
-        })
-        .where(eq(bookmarks.id, job.bookmarkId))
-        .run();
+      persistAiState(tx, job.bookmarkId, job.userId, {
+        ...state,
+        status: "waiting_resource",
+        updatedAt: new Date(now).toISOString(),
+        resourceWaitUntil: new Date(
+          now + Math.max(1000, Math.min(300_000, delayMs)),
+        ).toISOString(),
+      });
       return true;
     },
     { behavior: "immediate" },
@@ -812,13 +800,7 @@ export async function reconcileLocalMediaCatalog(db: DB, job: CatalogJob) {
   if (isBookmarkDeferred(db, job.bookmarkId)) return;
   if (isImportCatalogBlocked(db, job.bookmarkId)) return;
   const active = (state: MediaCatalogState) =>
-    [
-      "pending",
-      "checking_local",
-      "processing",
-      "processing_local",
-      "waiting_resource",
-    ].includes(state.status);
+    activeAiStatuses.includes(state.status);
   const state = db
     .select({ mediaAi: bookmarks.mediaAi })
     .from(bookmarks)

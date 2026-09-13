@@ -1,3 +1,4 @@
+import { activeAiStatuses } from "@karakeep/shared/aiControl";
 import { Readable } from "node:stream";
 import { createHash, randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
@@ -28,13 +29,7 @@ import { runIndex } from "./searchWorker";
 
 type Processing = typeof importProcessing.$inferSelect;
 const LEASE_MS = 300_000;
-const activeAi = new Set([
-  "pending",
-  "checking_local",
-  "processing_local",
-  "processing",
-  "waiting_resource",
-]);
+const activeAi = new Set(activeAiStatuses);
 export class ImportProcessingError extends Error {}
 
 /** Read only a bounded, verified original. The preview has its own retained asset ID. */

@@ -37,6 +37,7 @@ import {
   continueMediaCatalog,
   finishMediaCatalog,
   recoverHeldMediaCatalog,
+  reconcileLocalMediaCatalog,
   requestMediaCatalog,
   startMediaCatalog,
 } from "./mediaCatalog";
@@ -443,4 +444,40 @@ test("manual Sensitive change during media I/O blocks the final cloud dispatch",
     .run();
   expect(authorizeMediaCatalogDispatch(db, job(), true)).toBe(false);
   expect(state().status).toBe("cancelled");
+});
+
+test("terminal admission failures stay terminal in history after a new refresh", async () => {
+  control("auto");
+  db.update(mediaAiControl).set({ dailyRequests: 0 }).run();
+  await requestMediaCatalog(db, "owner", "card");
+  const old = job();
+  startMediaCatalog(db, old);
+  expect(continueMediaCatalog(db, old, localCheck())).toBeFalsy();
+  expect(state().status).toBe("quota_exceeded");
+  expect(
+    db.select().from(mediaAiRuns).where(eq(mediaAiRuns.id, old.runId)).get()
+      ?.snapshot.status,
+  ).toBe("quota_exceeded");
+  db.update(mediaAiControl).set({ dailyRequests: 20 }).run();
+  const draft = prepareAiBatch(db, "owner", request());
+  await changeAiBatch(db, "owner", draft.id, "start");
+  expect(
+    aiHistory(db, "owner", "card").find((r) => r.id === old.runId),
+  ).toMatchObject({ status: "quota_exceeded", current: false });
+});
+
+test("attachment follow-up intent survives reconciliation while cloud is held", async () => {
+  control("off");
+  await requestMediaCatalog(db, "owner", "card");
+  const held = job();
+  startMediaCatalog(db, held);
+  continueMediaCatalog(db, held, localCheck());
+  db.update(bookmarks)
+    .set({ mediaAi: { ...state(), localRecheckRequested: true } })
+    .run();
+  await reconcileLocalMediaCatalog(db, held);
+  expect(state()).toMatchObject({
+    status: "waiting_control",
+    localRecheckRequested: true,
+  });
 });
