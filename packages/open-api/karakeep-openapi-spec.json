@@ -277,6 +277,7 @@
                   "processing",
                   "processing_local",
                   "waiting_resource",
+                  "waiting_control",
                   "success",
                   "refused",
                   "failed",
@@ -292,6 +293,16 @@
                 ]
               },
               "updatedAt": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string",
+                "enum": [
+                  "xai",
+                  "openai"
+                ]
+              },
+              "batchId": {
                 "type": "string"
               },
               "resourceWaitUntil": {
@@ -342,6 +353,29 @@
                   },
                   "recipe": {
                     "type": "string"
+                  },
+                  "analyzedAt": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "resolvedModel": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "catalogVersion": {
+                    "type": "integer"
+                  },
+                  "contentRevision": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "sampledImages": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "assetCount": {
+                    "type": "integer",
+                    "minimum": 0
                   }
                 },
                 "required": [
@@ -2248,6 +2282,7 @@
                             "processing",
                             "processing_local",
                             "waiting_resource",
+                            "waiting_control",
                             "success",
                             "refused",
                             "failed",
@@ -2263,6 +2298,16 @@
                           ]
                         },
                         "updatedAt": {
+                          "type": "string"
+                        },
+                        "provider": {
+                          "type": "string",
+                          "enum": [
+                            "xai",
+                            "openai"
+                          ]
+                        },
+                        "batchId": {
                           "type": "string"
                         },
                         "resourceWaitUntil": {
@@ -2313,6 +2358,29 @@
                             },
                             "recipe": {
                               "type": "string"
+                            },
+                            "analyzedAt": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "resolvedModel": {
+                              "type": "string",
+                              "maxLength": 200
+                            },
+                            "catalogVersion": {
+                              "type": "integer"
+                            },
+                            "contentRevision": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "sampledImages": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "assetCount": {
+                              "type": "integer",
+                              "minimum": 0
                             }
                           },
                           "required": [
@@ -2951,6 +3019,7 @@
                             "processing",
                             "processing_local",
                             "waiting_resource",
+                            "waiting_control",
                             "success",
                             "refused",
                             "failed",
@@ -2966,6 +3035,16 @@
                           ]
                         },
                         "updatedAt": {
+                          "type": "string"
+                        },
+                        "provider": {
+                          "type": "string",
+                          "enum": [
+                            "xai",
+                            "openai"
+                          ]
+                        },
+                        "batchId": {
                           "type": "string"
                         },
                         "resourceWaitUntil": {
@@ -3016,6 +3095,29 @@
                             },
                             "recipe": {
                               "type": "string"
+                            },
+                            "analyzedAt": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "resolvedModel": {
+                              "type": "string",
+                              "maxLength": 200
+                            },
+                            "catalogVersion": {
+                              "type": "integer"
+                            },
+                            "contentRevision": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "sampledImages": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "assetCount": {
+                              "type": "integer",
+                              "minimum": 0
                             }
                           },
                           "required": [
@@ -3565,6 +3667,7 @@
                             "processing",
                             "processing_local",
                             "waiting_resource",
+                            "waiting_control",
                             "success",
                             "refused",
                             "failed",
@@ -3580,6 +3683,16 @@
                           ]
                         },
                         "updatedAt": {
+                          "type": "string"
+                        },
+                        "provider": {
+                          "type": "string",
+                          "enum": [
+                            "xai",
+                            "openai"
+                          ]
+                        },
+                        "batchId": {
                           "type": "string"
                         },
                         "resourceWaitUntil": {
@@ -3630,6 +3743,29 @@
                             },
                             "recipe": {
                               "type": "string"
+                            },
+                            "analyzedAt": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "resolvedModel": {
+                              "type": "string",
+                              "maxLength": 200
+                            },
+                            "catalogVersion": {
+                              "type": "integer"
+                            },
+                            "contentRevision": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "sampledImages": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "assetCount": {
+                              "type": "integer",
+                              "minimum": 0
                             }
                           },
                           "required": [

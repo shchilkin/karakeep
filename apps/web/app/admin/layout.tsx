@@ -6,7 +6,14 @@ import Sidebar from "@/components/shared/sidebar/Sidebar";
 import SidebarLayout from "@/components/shared/sidebar/SidebarLayout";
 import { getServerAuthSession } from "@/server/auth";
 import { TFunction } from "i18next";
-import { Activity, ArrowLeft, Settings, Users, Wrench } from "lucide-react";
+import {
+  Activity,
+  ArrowLeft,
+  Settings,
+  Users,
+  Wrench,
+  Sparkles,
+} from "lucide-react";
 
 const adminSidebarItems = (
   t: TFunction,
@@ -19,6 +26,11 @@ const adminSidebarItems = (
     name: t("settings.back_to_app"),
     icon: <ArrowLeft size={18} />,
     path: "/dashboard/bookmarks",
+  },
+  {
+    name: t("ai_control.title"),
+    icon: <Sparkles size={18} />,
+    path: "/admin/ai",
   },
   {
     name: t("admin.server_stats.server_stats"),

@@ -29,6 +29,8 @@ vi.mock("@karakeep/shared-server", async (original) => ({
 }));
 vi.mock("@karakeep/trpc/models/mediaCatalog", () => ({
   startMediaCatalog: vi.fn(),
+  authorizeMediaCatalogDispatch: vi.fn(() => true),
+  mediaCatalogIsHeld: vi.fn(() => false),
   continueMediaCatalog: vi.fn(),
   finishMediaCatalog: vi.fn(),
   waitForMediaCatalogResource: vi.fn(),

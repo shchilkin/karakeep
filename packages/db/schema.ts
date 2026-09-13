@@ -15,6 +15,7 @@ import {
 } from "drizzle-orm/sqlite-core";
 
 import type { MediaCatalogState } from "@karakeep/shared/mediaCatalog";
+import type { AiBatchEntry, AiBatchRequest } from "@karakeep/shared/aiControl";
 
 import type { ZApiKeyScope } from "@karakeep/shared/types/apiKeys";
 import { API_KEY_FULL_ACCESS_SCOPE } from "@karakeep/shared/types/apiKeys";
@@ -1578,4 +1579,53 @@ export const mediaAiRequests = sqliteTable(
     day: text("day").notNull(),
   },
   (t) => [index("mediaAiRequests_day_idx").on(t.day)],
+);
+
+export const mediaAiControl = sqliteTable("mediaAiControl", {
+  id: integer("id").primaryKey(),
+  cloudMode: text("cloudMode", { enum: ["off", "manual", "auto"] }).notNull(),
+  dailyRequests: integer("dailyRequests").notNull(),
+  revision: integer("revision").notNull(),
+  updatedAt: text("updatedAt").notNull(),
+});
+
+export const mediaAiRuns = sqliteTable(
+  "mediaAiRuns",
+  {
+    id: text("id").primaryKey(),
+    userId: text("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    bookmarkId: text("bookmarkId")
+      .notNull()
+      .references(() => bookmarks.id, { onDelete: "cascade" }),
+    createdAt: text("createdAt").notNull(),
+    completedAt: text("completedAt"),
+    snapshot: text("snapshot", { mode: "json" })
+      .$type<MediaCatalogState>()
+      .notNull(),
+  },
+  (t) => [index("mediaAiRuns_bookmark_idx").on(t.bookmarkId, t.createdAt)],
+);
+
+export const mediaAiBatches = sqliteTable(
+  "mediaAiBatches",
+  {
+    id: text("id").primaryKey(),
+    userId: text("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    status: text("status", {
+      enum: ["draft", "running", "paused", "cancelled", "complete"],
+    }).notNull(),
+    provider: text("provider", { enum: ["xai", "openai"] }).notNull(),
+    request: text("request", { mode: "json" })
+      .$type<AiBatchRequest>()
+      .notNull(),
+    entries: text("entries", { mode: "json" })
+      .$type<AiBatchEntry[]>()
+      .notNull(),
+    createdAt: text("createdAt").notNull(),
+  },
+  (t) => [index("mediaAiBatches_user_idx").on(t.userId, t.createdAt)],
 );

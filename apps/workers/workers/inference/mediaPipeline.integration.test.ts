@@ -319,6 +319,61 @@ test("real SQLite queue, asset storage, FFmpeg and local HTTP gate precede the s
     expect(db.select().from(mediaAiRequests).all()).toHaveLength(
       ledgerBefore + 1,
     );
+    // Real persistent batch -> worker -> CPU media preparation, cloud transport stubbed.
+    admissionFails = false;
+    const { mediaAiControl } = await import("@karakeep/db/schema");
+    const { prepareAiBatch, changeAiBatch } =
+      await import("@karakeep/trpc/models/aiBackoffice");
+    const { recoverHeldMediaCatalog } =
+      await import("@karakeep/trpc/models/mediaCatalog");
+    const { randomUUID } = await import("node:crypto");
+    db.insert(mediaAiControl)
+      .values({
+        id: 1,
+        cloudMode: "off",
+        dailyRequests: 200,
+        revision: 1,
+        updatedAt: new Date().toISOString(),
+      })
+      .run();
+    const batch = prepareAiBatch(db, "qa-owner", {
+      requestId: randomUUID(),
+      selection: { type: "ids", ids: ["qa-card"] },
+      mode: "hybrid",
+      model: config.mediaAi.model,
+      action: "refresh",
+    });
+    await changeAiBatch(db, "qa-owner", batch.id, "start");
+    const heldJob = catalogSnapshot(db, "qa-owner", "qa-card").bookmark
+      .mediaAi!;
+    await expect(
+      runMediaCatalog({
+        id: "held",
+        priority: 0,
+        runNumber: 1,
+        data: {
+          bookmarkId: "qa-card",
+          userId: "qa-owner",
+          runId: heldJob.runId,
+        },
+        abortSignal: new AbortController().signal,
+      }),
+    ).rejects.toThrow("waiting_control");
+    expect(cloudCalls).toBe(2);
+    expect(
+      catalogSnapshot(db, "qa-owner", "qa-card").bookmark.mediaAi?.status,
+    ).toBe("waiting_control");
+    db.update(mediaAiControl).set({ cloudMode: "auto" }).run();
+    await recoverHeldMediaCatalog(db);
+    await runner.runUntilEmpty!();
+    expect(cloudCalls).toBe(3);
+    expect(
+      catalogSnapshot(db, "qa-owner", "qa-card").bookmark.mediaAi,
+    ).toMatchObject({
+      status: "success",
+      batchId: batch.id,
+      resultSource: { provider: "xai", sampledImages: 1, assetCount: 1 },
+    });
   } finally {
     vi.unstubAllGlobals();
     service.close();

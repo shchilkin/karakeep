@@ -1,3 +1,4 @@
+import { drainAiBatches } from "@karakeep/trpc/models/aiBackoffice";
 import { inferLocalCatalog } from "./mediaLocalCatalogProvider";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -25,6 +26,9 @@ import {
   recoverLocalMediaCatalog,
   reconcileLocalMediaCatalog,
   waitForMediaCatalogResource,
+  authorizeMediaCatalogDispatch,
+  mediaCatalogIsHeld,
+  recoverHeldMediaCatalog,
 } from "@karakeep/trpc/models/mediaCatalog";
 import type { CatalogJob } from "@karakeep/trpc/models/mediaCatalog";
 import { RuleEngine } from "@karakeep/trpc/lib/ruleEngine";
@@ -174,31 +178,45 @@ export async function runMediaCatalog(job: DequeuedJob<CatalogJob>) {
       }
       job.abortSignal.throwIfAborted();
       const route = continueMediaCatalog(db, job.data, local);
-      if (!route) return;
+      if (!route) {
+        if (mediaCatalogIsHeld(db, job.data))
+          throw new QueueRetryAfterError("waiting_control", 30_000);
+        return;
+      }
       localRoute = route === "local";
       cloudStarted = !localRoute;
     }
     job.abortSignal.throwIfAborted();
     if (!localRoute && !config.apiKey) throw new CatalogFailure("failed");
+    const body = localRoute
+      ? undefined
+      : catalogRequest(
+          started.state.model,
+          started.state.hybrid
+            ? {
+                ...started.input,
+                source: { title: "", caption: "", author: "" },
+              }
+            : started.input,
+          images,
+          started.state.hybrid ? [] : started.tags,
+        );
+    if (!authorizeMediaCatalogDispatch(db, job.data, !localRoute)) {
+      if (mediaCatalogIsHeld(db, job.data))
+        throw new QueueRetryAfterError("waiting_control", 30_000);
+      return;
+    }
+    let resolvedModel: string | undefined;
     const result = localRoute
       ? await inferLocalCatalog(started.input, images, job.abortSignal)
       : await inferMediaCatalog({
-          provider: config.provider,
+          provider: started.state.provider ?? config.provider,
           apiKey: config.apiKey!,
           signal: job.abortSignal,
-          body: catalogRequest(
-            started.state.model,
-            // ShieldGemma admits images only. Do not upload unexamined captions,
-            // author names or existing/locally generated tags alongside them.
-            started.state.hybrid
-              ? {
-                  ...started.input,
-                  source: { title: "", caption: "", author: "" },
-                }
-              : started.input,
-            images,
-            started.state.hybrid ? [] : started.tags,
-          ),
+          body: body!,
+          onResponseMetadata: (model) => {
+            resolvedModel = model;
+          },
         });
     const applied = finishMediaCatalog(
       db,
@@ -206,9 +224,15 @@ export async function runMediaCatalog(job: DequeuedJob<CatalogJob>) {
       "success",
       result,
       started.tags,
+      {
+        resolvedModel,
+        sampledImages: images.length,
+        assetCount: started.input.assets.length,
+      },
     );
     if (applied) attachedTagIds = applied.attachedTagIds;
   } catch (error) {
+    if (error instanceof QueueRetryAfterError) throw error;
     if (error instanceof LocalResourceWait) {
       if (waitForMediaCatalogResource(db, job.data, error.delayMs)) {
         throw new QueueRetryAfterError("waiting_resource", error.delayMs);
@@ -274,6 +298,8 @@ export class MediaCatalogWorker {
       if (recovering) return;
       recovering = true;
       try {
+        await drainAiBatches(db);
+        await recoverHeldMediaCatalog(db);
         await recoverLocalMediaCatalog(db);
       } catch {
         /* Pending checkpoints remain durable; the next scan retries. */

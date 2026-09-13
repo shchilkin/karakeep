@@ -101,7 +101,7 @@ jobs:
 
       - name: Media UI Tests
         working-directory: apps/web
-        run: pnpm exec vitest run components/dashboard/bookmarks/BookmarkCardImage.test.tsx components/dashboard/bookmarks/BookmarkCardVideo.test.tsx components/dashboard/preview/SavedImageGallery.test.tsx lib/mediaPlayback.test.ts components/dashboard/bookmarks/VirtualMasonry.test.tsx components/dashboard/bookmarks/SummarizeBookmarkArea.test.tsx
+        run: pnpm exec vitest run components/dashboard/bookmarks/BookmarkCardImage.test.tsx components/dashboard/bookmarks/BookmarkCardVideo.test.tsx components/dashboard/preview/SavedImageGallery.test.tsx lib/mediaPlayback.test.ts components/dashboard/bookmarks/VirtualMasonry.test.tsx components/dashboard/bookmarks/SummarizeBookmarkArea.test.tsx components/dashboard/ai/AiQueueDialog.test.tsx
 
       - name: Workers Tests
         working-directory: apps/workers
