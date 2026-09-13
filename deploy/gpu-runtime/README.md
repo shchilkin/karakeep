@@ -1,8 +1,10 @@
 # Managed local GPU runtime
 
-This is the first application integration of llama-swap v255 with Karakeep's
-existing native ShieldGemma and Qwen services and SQLite/liteque queue. It is not
-a deployment or evidence of GPU performance. The existing model recipes,
+This integrates llama-swap v255 with Karakeep's existing native ShieldGemma and
+Qwen services and SQLite/liteque queue. An isolated native GPU pilot was performed
+on 2026-09-13; production activation remains a separate step. See the
+[rollout checkpoint](ROLLOUT.md) for measured limits, admission proposals and
+cutover/rollback. The existing model recipes,
 revisions, native HTTP contracts and shared deferred-import authority remain in
 place. No database migration or import release API is introduced here.
 
@@ -54,8 +56,10 @@ a switch plus cold start can still exhaust the client timeout.
   treated as a definitive resource refusal. Paid requests retain their existing
   ledger/no-replay behavior.
 - UI shows resource waiting, continues polling and prevents duplicate enqueue.
-  Shared deferred policy is checked at request, claim, continuation, parking,
-  recovery and result application. Foundation stage permits remain closed.
+  Shared import permissions are checked at request, claim, continuation, parking,
+  recovery and result application. Since the controlled-processing release,
+  verified imports can receive revision-scoped preview/search/local-check/catalog
+  permits while remaining deferred. The runtime does not grant or bypass permits.
 
 The current worker still has concurrency 1. There are no independent CPU/cloud
 lanes, weighted fairness, model micro-batches, measured VRAM/RAM admission, or
@@ -70,9 +74,9 @@ Build with `deploy/` as context and immutable digests for the reviewed existing
 backend images. Both must use the pinned Python 3.12 slim-trixie base in the native
 Dockerfiles. Qwen remains at `/usr/local`; ShieldGemma's entire Python prefix is
 copied to `/opt/shield-python` and runs with its own `PYTHONHOME`. This preserves
-their different Transformers versions (5.17.0 and 4.57.6). Native image/library
-compatibility still needs the GPU pilot; a synthetic Python-prefix test is not a
-Torch/CUDA test.
+their different Transformers versions (5.17.0 and 4.57.6). Native imports and
+single-image GPU inference were subsequently verified with both stacks. This
+does not validate every input profile or future dependency/image change.
 
 ```sh
 docker build --platform linux/amd64 \
@@ -80,7 +84,8 @@ docker build --platform linux/amd64 \
   --build-arg QWEN_IMAGE="$QWEN_IMAGE_DIGEST" \
   --tag karakeep-gpu-lifecycle:review \
   --file deploy/gpu-runtime/Dockerfile deploy
-docker compose -f deploy/gpu-runtime/compose.example.yml config --quiet
+docker compose --env-file /path/to/verified-runtime.env \
+  -f deploy/gpu-runtime/compose.example.yml config --quiet
 ```
 
 The two build arguments are deliberately required (Docker emits
@@ -93,8 +98,15 @@ printed or included in exported logs.
 Adapt it within the existing deployment, verifying actual image digests, secret
 paths, serving UID, NVIDIA CDI support and the existing internal network. Use the
 same Linux lock-file bind as other cooperating consumers. No published host port,
-Docker socket or archive mount is required. Only the worker needs the private
-service URLs:
+Docker socket or archive mount is required.
+The template requires `GPU_RUNTIME_IMAGE`, `SHIELD_MODEL_DIR` and `QWEN_MODEL_DIR`.
+Set them from the verified image and the existing native containers' model mounts;
+do not assume that model weights live under `/srv/appdata/karakeep/models`.
+Missing bind sources fail instead of silently creating empty directories. The
+template joins the existing `karakeep_media-local` network (override through
+`MEDIA_LOCAL_NETWORK` when appropriate); it does not create a disconnected network
+for a second Compose project. Verify that this existing network is internal.
+Only the worker needs the private service URLs:
 
 ```dotenv
 MEDIA_AI_LOCAL_URL=http://gpu-lifecycle:8090/upstream/shield/classify
@@ -128,13 +140,12 @@ env -u NO_COLOR pnpm --filter @karakeep/plugins exec vitest run \
   --config queue-liteque/vitest.config.ts queue-liteque/src/tests/resourceWait.test.ts
 ```
 
-Before production: build from the actual immutable backend images; verify both
-native Python dependency stacks; run a separately approved bounded synthetic GPU
-pilot covering repeated same-model calls, both switch directions, VRAM return,
-external lock contention, watchdog/PID-1 failure and recovery. Profile cold-start
-and inference deadlines plus RAM/VRAM with Jellyfin's actual workload before
-raising concurrency or releasing an import. This change does not authorize those
-operations.
+The later native pilot verified repeated calls, both switch directions, VRAM
+return, external lock contention, forced unload and PID-1 recovery. Before
+activation, review its workload limits in [ROLLOUT.md](ROLLOUT.md) and use the
+verified immutable image. Recheck any dependency change and profile larger inputs,
+deadlines and Jellyfin workloads before widening admission or concurrency. This
+change does not authorize production activation or additional import release.
 
 For a later cutover, quiesce the affected workers and let existing calls drain,
 stop the two old GPU services, start the common lifecycle unit, then change the
