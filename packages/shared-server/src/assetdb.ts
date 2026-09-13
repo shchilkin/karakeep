@@ -108,7 +108,7 @@ export async function saveAsset({
     isImportAssetRetained(db, assetId) ||
     isImageSetAssetRetained(db, assetId)
   )
-    throw new Error("Imported original is retained and immutable");
+    throw new Error("Saved original is retained and immutable");
   const store = await getAssetStore();
   return store.saveAsset({ userId, assetId, asset, metadata });
 }
@@ -134,7 +134,7 @@ export async function saveAssetFromFile({
     isImportAssetRetained(db, assetId) ||
     isImageSetAssetRetained(db, assetId)
   )
-    throw new Error("Imported original is retained and immutable");
+    throw new Error("Saved original is retained and immutable");
   const store = await getAssetStore();
   return store.saveAssetFromFile({ userId, assetId, assetPath, metadata });
 }
@@ -211,7 +211,7 @@ export async function deleteAsset({
     isImportAssetRetained(db, assetId) ||
     isImageSetAssetRetained(db, assetId)
   )
-    throw new Error("Imported original is retained and immutable");
+    throw new Error("Saved original is retained and immutable");
   const store = await getAssetStore();
   return store.deleteAsset({ userId, assetId });
 }

@@ -402,3 +402,55 @@ test<CustomTestContext>("read-only image derivatives remain available while orig
     .run();
   expect(() => assertBookmarkDerivativesAllowed(ctx.db, ids[2])).toThrow();
 });
+
+test<CustomTestContext>("manual set labels can tighten visibility; clearing the set never clears a member", async (ctx) => {
+  const { ids, api, id } = seed(ctx);
+  await api.imageSets.save({
+    id,
+    composition: {
+      title: "Set",
+      memberIds: ids.slice(0, 2),
+      coverBookmarkId: ids[0],
+    },
+  });
+  const flagged = await api.bookmarks.updateBookmark({
+    bookmarkId: id,
+    sensitiveCategories: ["nudity"],
+  });
+  expect(concealSensitiveBookmark(flagged, "balanced")).toBe(true);
+  await api.bookmarks.updateBookmark({
+    bookmarkId: id,
+    sensitiveCategories: [],
+  });
+  ctx.db
+    .update(bookmarks)
+    .set({ sensitiveCategories: ["nudity"] })
+    .where(eq(bookmarks.id, ids[1]))
+    .run();
+  expect(
+    concealSensitiveBookmark(
+      await api.bookmarks.getBookmark({ bookmarkId: id }),
+      "balanced",
+    ),
+  ).toBe(true);
+});
+
+test<CustomTestContext>("account deletion gives a recoverable conflict while a set retains originals", async (ctx) => {
+  const { ids, api, id, owner } = seed(ctx);
+  await api.imageSets.save({
+    id,
+    composition: {
+      title: "Set",
+      memberIds: ids.slice(0, 2),
+      coverBookmarkId: ids[0],
+    },
+  });
+  await expect(api.users.deleteAccount({})).rejects.toMatchObject({
+    code: "CONFLICT",
+    message: "Dissolve image sets before deleting this account.",
+  });
+  expect(
+    ctx.db.select().from(users).where(eq(users.id, owner.id)).get(),
+  ).toBeDefined();
+  expect(ctx.db.select().from(assets).all()).toHaveLength(4);
+});

@@ -116,7 +116,17 @@ export function hydrateImageSets(db: Connection, cards: ZBookmark[]) {
           fail("An original in this set is unavailable.");
         return row;
       });
-    const assessments = ordered.map((r) => sensitiveAssessment(r.bookmark));
+    const assessedCards = ordered.map((r) => r.bookmark);
+    // A manual set label can tighten visibility, but clearing it never clears a member.
+    if (card.sensitiveCategories?.length) {
+      const original = db
+        .select()
+        .from(bookmarks)
+        .where(eq(bookmarks.id, card.id))
+        .get()!;
+      assessedCards.push(original);
+    }
+    const assessments = assessedCards.map(sensitiveAssessment);
     card.imageSet = {
       revision: set.revision,
       coverBookmarkId: set.coverBookmarkId,
@@ -133,9 +143,9 @@ export function hydrateImageSets(db: Connection, cards: ZBookmark[]) {
         },
       })),
       sensitivity: {
-        work: ordered.some((r) => concealSensitiveBookmark(r.bookmark, "work")),
-        balanced: ordered.some((r) =>
-          concealSensitiveBookmark(r.bookmark, "balanced"),
+        work: assessedCards.some((b) => concealSensitiveBookmark(b, "work")),
+        balanced: assessedCards.some((b) =>
+          concealSensitiveBookmark(b, "balanced"),
         ),
         sensitive: assessments.some((a) => a.sensitive),
         labels: [...new Set(assessments.flatMap((a) => a.labels))],

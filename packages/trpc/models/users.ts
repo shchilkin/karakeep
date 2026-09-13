@@ -1,4 +1,4 @@
-import { importSourceRevisions } from "@karakeep/db/schema";
+import { importSourceRevisions, imageSets } from "@karakeep/db/schema";
 import { randomBytes } from "crypto";
 import { TRPCError } from "@trpc/server";
 import { and, count, desc, eq, gte, lte, sql } from "drizzle-orm";
@@ -425,6 +425,20 @@ export class User {
         message:
           "Imported snapshots require retention-aware cleanup before account deletion.",
       });
+
+    if (
+      db
+        .select({ id: imageSets.bookmarkId })
+        .from(imageSets)
+        .innerJoin(bookmarks, eq(bookmarks.id, imageSets.bookmarkId))
+        .where(eq(bookmarks.userId, userId))
+        .get()
+    ) {
+      throw new TRPCError({
+        code: "CONFLICT",
+        message: "Dissolve image sets before deleting this account.",
+      });
+    }
 
     const res = await db.delete(users).where(eq(users.id, userId));
 
