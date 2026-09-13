@@ -1,3 +1,6 @@
+import { useState } from "react";
+import AiQueueDialog from "../ai/AiQueueDialog";
+import AiHistory from "../ai/AiHistory";
 import ImportProcessingArea from "./ImportProcessingArea";
 import { Button } from "@/components/ui/button";
 import { useClientConfig } from "@/lib/clientConfig";
@@ -19,6 +22,7 @@ export default function MediaCatalogArea({
   includeManualSummary?: boolean;
 }) {
   const { t } = useTranslation();
+  const [aiOpen, setAiOpen] = useState(false);
   const api = useTRPC();
   const cache = useQueryClient();
   const config = useClientConfig();
@@ -64,13 +68,15 @@ export default function MediaCatalogArea({
       ? t("media_ai.interrupted")
       : busy
         ? t(
-            state?.status === "waiting_resource"
-              ? "media_ai.waiting_resource"
-              : state?.status === "checking_local"
-                ? "media_ai.checking_local"
-                : state?.status === "processing_local"
-                  ? "media_ai.processing_local"
-                  : "media_ai.processing",
+            state?.status === "waiting_control"
+              ? "media_ai.waiting_control"
+              : state?.status === "waiting_resource"
+                ? "media_ai.waiting_resource"
+                : state?.status === "checking_local"
+                  ? "media_ai.checking_local"
+                  : state?.status === "processing_local"
+                    ? "media_ai.processing_local"
+                    : "media_ai.processing",
           )
         : state && state.status in failureMessages
           ? failureMessages[state.status as keyof typeof failureMessages]
@@ -100,7 +106,14 @@ export default function MediaCatalogArea({
           {state.resultSource.provider === "local"
             ? t("media_ai.source_local")
             : t("media_ai.source_cloud")}{" "}
-          · {state.resultSource.model}
+          · {state.resultSource.provider} ·{" "}
+          {state.resultSource.resolvedModel ?? state.resultSource.model}
+          {state.resultSource.analyzedAt && (
+            <>
+              {" "}
+              · {new Date(state.resultSource.analyzedAt).toLocaleDateString()}
+            </>
+          )}
         </p>
       )}
       {state?.localCheckUnavailable &&
@@ -155,6 +168,26 @@ export default function MediaCatalogArea({
               ? t("media_ai.analyze_preview")
               : t("media_ai.analyze")}
         </Button>
+      )}
+      {!readOnly && config.mediaAi?.enabled && (
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            onClick={() => setAiOpen(true)}
+          >
+            {t("ai_control.manage")}
+          </Button>
+          {state && <AiHistory bookmarkId={bookmark.id} />}
+          {aiOpen && (
+            <AiQueueDialog
+              open
+              onOpenChange={setAiOpen}
+              selection={{ type: "ids", ids: [bookmark.id] }}
+            />
+          )}
+        </div>
       )}
     </section>
   );

@@ -1,3 +1,10 @@
+import { activeAiStatuses } from "@karakeep/shared/aiControl";
+import {
+  aiControlDecision,
+  getAiControl,
+  recordAiRun,
+  persistAiState,
+} from "./aiControl";
 import {
   isBookmarkDeferred,
   isImportCatalogBlocked,
@@ -17,6 +24,7 @@ import {
   bookmarks,
   bookmarkTags,
   mediaAiRequests,
+  mediaAiBatches,
   importProcessing,
   tagsOnBookmarks,
   users,
@@ -153,12 +161,13 @@ export function catalogFingerprint(
   input: CatalogInput,
   model: string,
   localOnly = false,
+  provider = serverConfig.mediaAi.provider,
 ) {
   return createHash("sha256")
     .update(
       JSON.stringify({
         version: MEDIA_CATALOG_VERSION,
-        provider: serverConfig.mediaAi.provider,
+        provider,
         model,
         input,
         ...(serverConfig.mediaAi.hybridEnabled
@@ -204,6 +213,17 @@ export async function requestMediaCatalog(
     localOnly?: boolean;
     importRelease?: boolean;
     classificationOnly?: boolean;
+    control?: {
+      runId: string;
+      batchId: string;
+      fingerprint: string;
+      priorRunId: string | null;
+      policyRevision: number;
+      contentRevision: number;
+      model: string;
+      provider: "xai" | "openai";
+      refresh: boolean;
+    };
   } = {},
 ) {
   if (
@@ -279,7 +299,29 @@ export async function requestMediaCatalog(
       )
         return null;
       const previous = bookmark.mediaAi;
-      const fingerprint = catalogFingerprint(input, config.model, localOnly);
+      const model = options.control?.model ?? config.model;
+      const provider = options.control?.provider ?? config.provider;
+      const fingerprint = catalogFingerprint(input, model, localOnly, provider);
+      if (options.control) {
+        const batch = tx
+          .select()
+          .from(mediaAiBatches)
+          .where(eq(mediaAiBatches.id, options.control.batchId))
+          .get();
+        if (!batch || batch.userId !== userId || batch.status !== "running")
+          return null;
+        if (previous?.runId === options.control.runId) return previous;
+        if (
+          fingerprint !== options.control.fingerprint ||
+          (previous?.runId ?? null) !== options.control.priorRunId ||
+          bookmark.policyRevision !== options.control.policyRevision ||
+          bookmark.contentRevision !== options.control.contentRevision
+        )
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "Card changed since the batch was prepared.",
+          });
+      }
       const busy = catalogBusy(previous);
       if (previous?.status === "pending" || busy) {
         // Repair a lost enqueue only on an explicit, expired retry. Reusing the
@@ -307,14 +349,17 @@ export async function requestMediaCatalog(
       // A successful input is never charged again. Failed inputs require a manual retry.
       if (
         previous?.fingerprint === fingerprint &&
+        !options.control?.refresh &&
         (previous.status === "success" || !options.retry)
       )
         return null;
       const next: MediaCatalogState = {
         classificationOnly: options.classificationOnly,
-        runId: randomUUID(),
+        runId: options.control?.runId ?? randomUUID(),
         fingerprint,
-        model: config.model,
+        model,
+        provider,
+        batchId: options.control?.batchId,
         status: "pending",
         updatedAt: new Date().toISOString(),
         allowPreview,
@@ -362,6 +407,8 @@ export async function requestMediaCatalog(
           .where(eq(importProcessing.bookmarkId, bookmarkId))
           .run();
       }
+      if (previous) recordAiRun(tx, bookmarkId, userId, previous, true);
+      recordAiRun(tx, bookmarkId, userId, next);
       tx.update(bookmarks)
         .set({ mediaAi: next })
         .where(eq(bookmarks.id, bookmarkId))
@@ -376,7 +423,8 @@ export async function requestMediaCatalog(
     await MediaCatalogQueue.enqueue(job, {
       groupId: userId,
       idempotencyKey: state.runId,
-      priority: options.importRelease ? 50 : state.automatic ? 10 : 0,
+      priority:
+        options.importRelease || state.batchId ? 50 : state.automatic ? 10 : 0,
     });
   } catch {
     finishMediaCatalog(
@@ -394,7 +442,7 @@ export async function requestMediaCatalog(
 
 export function startMediaCatalog(db: DB, job: CatalogJob) {
   if (isImportCatalogBlocked(db, job.bookmarkId)) return null;
-  return db.transaction(
+  const started = db.transaction(
     (tx) => {
       if (isImportCatalogBlocked(tx, job.bookmarkId)) return null;
       const state = tx
@@ -410,9 +458,19 @@ export function startMediaCatalog(db: DB, job: CatalogJob) {
       if (
         !state ||
         state.runId !== job.runId ||
-        !["pending", "waiting_resource"].includes(state.status)
+        !["pending", "waiting_resource", "waiting_control"].includes(
+          state.status,
+        )
       )
         return null;
+      const control = aiControlDecision(
+        tx,
+        state,
+        state.route === "cloud" ||
+          !state.localMode ||
+          state.localMode === "off",
+      );
+      if (control !== "allow") return { held: control, state };
       if (state.status === "waiting_resource") {
         const delay =
           Date.parse(state.resourceWaitUntil ?? state.updatedAt) - Date.now();
@@ -429,18 +487,12 @@ export function startMediaCatalog(db: DB, job: CatalogJob) {
         state.allowPreview,
       );
       const update = (status: MediaCatalogState["status"]) =>
-        tx
-          .update(bookmarks)
-          .set({
-            mediaAi: {
-              ...state,
-              status,
-              resourceWaitUntil: undefined,
-              updatedAt: new Date().toISOString(),
-            },
-          })
-          .where(eq(bookmarks.id, job.bookmarkId))
-          .run();
+        persistAiState(tx, job.bookmarkId, job.userId, {
+          ...state,
+          status,
+          resourceWaitUntil: undefined,
+          updatedAt: new Date().toISOString(),
+        });
       if (
         state.automatic &&
         (!automaticCatalogEnabled(state.localOnly) ||
@@ -455,8 +507,12 @@ export function startMediaCatalog(db: DB, job: CatalogJob) {
       }
       if (
         !snapshot.input ||
-        catalogFingerprint(snapshot.input, state.model, state.localOnly) !==
-          state.fingerprint
+        catalogFingerprint(
+          snapshot.input,
+          state.model,
+          state.localOnly,
+          state.provider,
+        ) !== state.fingerprint
       ) {
         update("stale");
         return null;
@@ -489,7 +545,7 @@ export function startMediaCatalog(db: DB, job: CatalogJob) {
         .from(mediaAiRequests)
         .where(eq(mediaAiRequests.day, day))
         .get()!.n;
-      if (used >= serverConfig.mediaAi.dailyRequests) {
+      if (used >= getAiControl(tx).dailyRequests) {
         update("quota_exceeded");
         return null;
       }
@@ -513,6 +569,13 @@ export function startMediaCatalog(db: DB, job: CatalogJob) {
     },
     { behavior: "immediate" },
   );
+  if (started?.held) {
+    holdMediaCatalogControl(db, job, started.held);
+    if (started.held === "wait")
+      throw new QueueRetryAfterError("waiting_control", 30_000);
+    return null;
+  }
+  return started;
 }
 
 /** Persist the local checkpoint and reserve a paid attempt only after admission. */
@@ -546,33 +609,30 @@ export function continueMediaCatalog(
         status: MediaCatalogState["status"],
         acceptObservation = true,
       ) =>
-        tx
-          .update(bookmarks)
-          .set({
-            mediaAi: {
-              ...state,
-              ...(acceptObservation && localCheck && !retainPriorHold
-                ? { localCheck, localCheckFingerprint: state.fingerprint }
-                : {}),
-              localCheckUnavailable:
-                unknown ||
-                (status === "processing_local" && !acceptObservation),
-              route:
-                status === "processing_local"
-                  ? "local"
-                  : status === "processing"
-                    ? "cloud"
-                    : state.route,
-              status,
-              updatedAt: new Date().toISOString(),
-            },
-          })
-          .where(eq(bookmarks.id, job.bookmarkId))
-          .run();
+        persistAiState(tx, job.bookmarkId, job.userId, {
+          ...state,
+          ...(acceptObservation && localCheck && !retainPriorHold
+            ? { localCheck, localCheckFingerprint: state.fingerprint }
+            : {}),
+          localCheckUnavailable:
+            unknown || (status === "processing_local" && !acceptObservation),
+          route:
+            status === "processing_local"
+              ? "local"
+              : status === "processing"
+                ? "cloud"
+                : state.route,
+          status,
+          updatedAt: new Date().toISOString(),
+        });
       if (
         !snapshot.input ||
-        catalogFingerprint(snapshot.input, state.model, state.localOnly) !==
-          state.fingerprint
+        catalogFingerprint(
+          snapshot.input,
+          state.model,
+          state.localOnly,
+          state.provider,
+        ) !== state.fingerprint
       ) {
         update("stale", false);
         return false;
@@ -604,6 +664,11 @@ export function continueMediaCatalog(
         update("cancelled", false);
         return false;
       }
+      const batchControl = aiControlDecision(tx, state, false);
+      if (batchControl !== "allow") {
+        update(batchControl === "wait" ? "waiting_control" : "cancelled");
+        return false;
+      }
       if (state.classificationOnly) {
         update(
           validCoverage && !unknown ? "local_review" : "local_failed",
@@ -632,6 +697,22 @@ export function continueMediaCatalog(
         update("local_only");
         return false;
       }
+      const control = aiControlDecision(tx, state, true);
+      if (control !== "allow") {
+        update(control === "wait" ? "waiting_control" : "cancelled");
+        const held = tx
+          .select()
+          .from(bookmarks)
+          .where(eq(bookmarks.id, job.bookmarkId))
+          .get()!.mediaAi!;
+        const next = { ...held, route: "cloud" as const };
+        tx.update(bookmarks)
+          .set({ mediaAi: next })
+          .where(eq(bookmarks.id, job.bookmarkId))
+          .run();
+        recordAiRun(tx, job.bookmarkId, job.userId, next);
+        return false;
+      }
       if (!serverConfig.mediaAi.apiKey) {
         update("failed");
         return false;
@@ -642,7 +723,7 @@ export function continueMediaCatalog(
         .from(mediaAiRequests)
         .where(eq(mediaAiRequests.day, day))
         .get()!.n;
-      if (used >= serverConfig.mediaAi.dailyRequests) {
+      if (used >= getAiControl(tx).dailyRequests) {
         update("quota_exceeded");
         return null;
       }
@@ -700,19 +781,14 @@ export function waitForMediaCatalogResource(
       )
         return false;
       const now = Date.now();
-      tx.update(bookmarks)
-        .set({
-          mediaAi: {
-            ...state,
-            status: "waiting_resource",
-            updatedAt: new Date(now).toISOString(),
-            resourceWaitUntil: new Date(
-              now + Math.max(1000, Math.min(300_000, delayMs)),
-            ).toISOString(),
-          },
-        })
-        .where(eq(bookmarks.id, job.bookmarkId))
-        .run();
+      persistAiState(tx, job.bookmarkId, job.userId, {
+        ...state,
+        status: "waiting_resource",
+        updatedAt: new Date(now).toISOString(),
+        resourceWaitUntil: new Date(
+          now + Math.max(1000, Math.min(300_000, delayMs)),
+        ).toISOString(),
+      });
       return true;
     },
     { behavior: "immediate" },
@@ -724,13 +800,7 @@ export async function reconcileLocalMediaCatalog(db: DB, job: CatalogJob) {
   if (isBookmarkDeferred(db, job.bookmarkId)) return;
   if (isImportCatalogBlocked(db, job.bookmarkId)) return;
   const active = (state: MediaCatalogState) =>
-    [
-      "pending",
-      "checking_local",
-      "processing",
-      "processing_local",
-      "waiting_resource",
-    ].includes(state.status);
+    activeAiStatuses.includes(state.status);
   const state = db
     .select({ mediaAi: bookmarks.mediaAi })
     .from(bookmarks)
@@ -822,7 +892,7 @@ export async function recoverLocalMediaCatalog(db: DB, now = Date.now()) {
     })
     .from(bookmarks)
     .where(
-      sql`json_extract(${bookmarks.mediaAi}, '$.localRecheckRequested') = 1 AND json_extract(${bookmarks.mediaAi}, '$.status') NOT IN ('pending', 'checking_local', 'processing', 'processing_local', 'waiting_resource')`,
+      sql`json_extract(${bookmarks.mediaAi}, '$.localRecheckRequested') = 1 AND json_extract(${bookmarks.mediaAi}, '$.status') NOT IN ('pending', 'checking_local', 'processing', 'processing_local', 'waiting_resource', 'waiting_control')`,
     )
     .limit(100)
     .all();
@@ -901,6 +971,12 @@ export async function recoverLocalMediaCatalog(db: DB, now = Date.now()) {
             .where(eq(importProcessing.bookmarkId, candidate.id))
             .run();
         }
+        recordAiRun(tx, candidate.id, candidate.userId, {
+          ...state,
+          status: stop ? next.status : "local_failed",
+          updatedAt: next.updatedAt,
+        });
+        recordAiRun(tx, candidate.id, candidate.userId, next);
         tx.update(bookmarks)
           .set({ mediaAi: next })
           .where(eq(bookmarks.id, candidate.id))
@@ -931,6 +1007,11 @@ export function finishMediaCatalog(
   status: MediaCatalogState["status"],
   result?: MediaCatalogResult,
   initialTags: string[] = [],
+  metadata?: {
+    resolvedModel?: string;
+    sampledImages?: number;
+    assetCount?: number;
+  },
 ) {
   if (isImportCatalogBlocked(db, job.bookmarkId)) return;
   return db.transaction(
@@ -980,8 +1061,12 @@ export function finishMediaCatalog(
         );
         if (
           !fresh.input ||
-          catalogFingerprint(fresh.input, state.model, state.localOnly) !==
-            state.fingerprint
+          catalogFingerprint(
+            fresh.input,
+            state.model,
+            state.localOnly,
+            state.provider,
+          ) !== state.fingerprint
         ) {
           status = "stale";
           applied = undefined;
@@ -1044,6 +1129,7 @@ export function finishMediaCatalog(
           }
         }
       }
+      const completedAt = new Date().toISOString();
       tx.update(bookmarks)
         .set({
           mediaAi: {
@@ -1059,16 +1145,37 @@ export function finishMediaCatalog(
                     recipe: LOCAL_CATALOG_RECIPE,
                   }
                 : {
-                    provider: serverConfig.mediaAi.provider,
+                    provider: state.provider ?? serverConfig.mediaAi.provider,
                     model: state.model,
+                    resolvedModel: metadata?.resolvedModel,
                   }
               : state.resultSource,
             suppressedTags: suppressed,
-            updatedAt: new Date().toISOString(),
+            updatedAt: completedAt,
           },
         })
         .where(eq(bookmarks.id, job.bookmarkId))
         .run();
+      const finished = tx
+        .select()
+        .from(bookmarks)
+        .where(eq(bookmarks.id, job.bookmarkId))
+        .get()!.mediaAi!;
+      if (applied && finished.resultSource) {
+        finished.resultSource = {
+          ...finished.resultSource,
+          analyzedAt: completedAt,
+          catalogVersion: MEDIA_CATALOG_VERSION,
+          contentRevision: current.contentRevision,
+          sampledImages: metadata?.sampledImages,
+          assetCount: metadata?.assetCount,
+        };
+        tx.update(bookmarks)
+          .set({ mediaAi: finished })
+          .where(eq(bookmarks.id, job.bookmarkId))
+          .run();
+      }
+      recordAiRun(tx, job.bookmarkId, job.userId, finished);
       return { attachedTagIds };
     },
     { behavior: "immediate" },
@@ -1077,4 +1184,162 @@ export function finishMediaCatalog(
 
 export async function reindexMediaCatalog(bookmarkId: string, userId: string) {
   await triggerSearchReindex(bookmarkId, { groupId: userId });
+}
+
+export function holdMediaCatalogControl(
+  db: DB,
+  job: CatalogJob,
+  decision: "wait" | "cancel",
+) {
+  return db.transaction(
+    (tx) => {
+      const row = tx
+        .select()
+        .from(bookmarks)
+        .where(
+          and(
+            eq(bookmarks.id, job.bookmarkId),
+            eq(bookmarks.userId, job.userId),
+          ),
+        )
+        .get();
+      const state = row?.mediaAi;
+      if (!state || state.runId !== job.runId) return;
+      // A reserved/in-flight cloud request is never replayed by resuming a pause.
+      const paid = tx
+        .select()
+        .from(mediaAiRequests)
+        .where(eq(mediaAiRequests.id, job.runId))
+        .get();
+      const next: MediaCatalogState = {
+        ...state,
+        status: decision === "cancel" || paid ? "cancelled" : "waiting_control",
+        updatedAt: new Date().toISOString(),
+      };
+      tx.update(bookmarks)
+        .set({ mediaAi: next })
+        .where(eq(bookmarks.id, job.bookmarkId))
+        .run();
+      recordAiRun(tx, job.bookmarkId, job.userId, next);
+    },
+    { behavior: "immediate" },
+  );
+}
+
+/** Final synchronous gate directly before invoking the provider, including after CPU I/O. */
+export function authorizeMediaCatalogDispatch(
+  db: DB,
+  job: CatalogJob,
+  cloud: boolean,
+) {
+  const row = db
+    .select()
+    .from(bookmarks)
+    .where(
+      and(eq(bookmarks.id, job.bookmarkId), eq(bookmarks.userId, job.userId)),
+    )
+    .get();
+  const state = row?.mediaAi;
+  if (
+    !state ||
+    state.runId !== job.runId ||
+    !["processing", "processing_local"].includes(state.status)
+  )
+    return false;
+  const decision = aiControlDecision(db, state, cloud);
+  if (
+    !serverConfig.mediaAi.enabled ||
+    isImportCatalogBlocked(db, job.bookmarkId) ||
+    decision !== "allow"
+  ) {
+    holdMediaCatalogControl(
+      db,
+      job,
+      decision === "allow" ? "cancel" : decision,
+    );
+    return false;
+  }
+  if (
+    cloud &&
+    state.localMode === "enforce" &&
+    shouldConcealSensitive(
+      row!.sensitiveCategories,
+      state.hybrid ? "work" : "balanced",
+    )
+  ) {
+    holdMediaCatalogControl(db, job, "cancel");
+    return false;
+  }
+  const snapshot = catalogSnapshot(
+    db,
+    job.userId,
+    job.bookmarkId,
+    state.allowPreview,
+  );
+  if (
+    !snapshot.input ||
+    catalogFingerprint(
+      snapshot.input,
+      state.model,
+      state.localOnly,
+      state.provider,
+    ) !== state.fingerprint
+  ) {
+    finishMediaCatalog(db, job, "stale");
+    return false;
+  }
+  return true;
+}
+
+export function mediaCatalogIsHeld(db: DB, job: CatalogJob) {
+  const row = db
+    .select()
+    .from(bookmarks)
+    .where(
+      and(eq(bookmarks.id, job.bookmarkId), eq(bookmarks.userId, job.userId)),
+    )
+    .get();
+  return (
+    row?.mediaAi?.runId === job.runId &&
+    row.mediaAi.status === "waiting_control"
+  );
+}
+
+const heldRecoveryCursor = new WeakMap<DB, string>();
+
+export async function recoverHeldMediaCatalog(db: DB) {
+  if (!serverConfig.mediaAi.enabled) return;
+  const rows = db
+    .select()
+    .from(bookmarks)
+    .where(
+      and(
+        sql`json_extract(${bookmarks.mediaAi}, '$.status') = 'waiting_control'`,
+        sql`${bookmarks.id} > ${heldRecoveryCursor.get(db) ?? ""}`,
+      ),
+    )
+    .orderBy(bookmarks.id)
+    .limit(200)
+    .all();
+  heldRecoveryCursor.set(
+    db,
+    rows.length === 200 ? rows[rows.length - 1].id : "",
+  );
+  for (const row of rows) {
+    const state = row.mediaAi!;
+    if (isImportCatalogBlocked(db, row.id)) continue;
+    const decision = aiControlDecision(
+      db,
+      state,
+      state.route === "cloud" || state.localMode === "off",
+    );
+    const job = { bookmarkId: row.id, userId: row.userId, runId: state.runId };
+    if (decision === "cancel") holdMediaCatalogControl(db, job, decision);
+    if (decision === "allow")
+      await MediaCatalogQueue.enqueue(job, {
+        groupId: row.userId,
+        idempotencyKey: state.runId,
+        priority: state.batchId ? 50 : state.automatic ? 10 : 0,
+      });
+  }
 }

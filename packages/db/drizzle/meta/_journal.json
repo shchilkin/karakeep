@@ -708,6 +708,13 @@
       "when": 1789239295967,
       "tag": "0100_import_processing_release",
       "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "6",
+      "when": 1789281646354,
+      "tag": "0101_ai_backoffice",
+      "breakpoints": true
     }
   ]
 }

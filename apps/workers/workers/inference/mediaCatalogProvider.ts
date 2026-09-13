@@ -122,6 +122,7 @@ export async function inferMediaCatalog(
     apiKey: string;
     body: ReturnType<typeof catalogRequest>;
     signal: AbortSignal;
+    onResponseMetadata?: (resolvedModel: string | undefined) => void;
   },
   request = fetch,
 ) {
@@ -166,9 +167,15 @@ export async function inferMediaCatalog(
     } finally {
       await reader.cancel();
     }
-    return parseCatalogResponse(
-      JSON.parse(Buffer.concat(chunks).toString("utf8")),
+    const body: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    const result = parseCatalogResponse(body);
+    const metadata = z
+      .object({ model: z.string().max(200).optional() })
+      .safeParse(body);
+    options.onResponseMetadata?.(
+      metadata.success ? metadata.data.model : undefined,
     );
+    return result;
   } catch (error) {
     if (signal.aborted) throw new CatalogFailure("timeout");
     if (error instanceof CatalogFailure) throw error;

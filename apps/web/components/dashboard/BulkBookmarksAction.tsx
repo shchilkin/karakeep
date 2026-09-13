@@ -1,5 +1,7 @@
 "use client";
 
+import AiQueueDialog from "./ai/AiQueueDialog";
+
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { usePathname } from "next/navigation";
@@ -14,6 +16,7 @@ import { useBookmarkBulkMutations } from "@/lib/hooks/useBookmarkBulkActions";
 import type { UpdateBookmarkProps } from "@/lib/hooks/useBookmarkBulkActions";
 import { useTranslation } from "@/lib/i18n/client";
 import {
+  Sparkles,
   CheckCheck,
   FileDown,
   Hash,
@@ -31,6 +34,7 @@ import { ArchivedActionIcon, FavouritedActionIcon } from "./bookmarks/icons";
 
 export default function BulkBookmarksAction() {
   const { t } = useTranslation();
+  const [aiOpen, setAiOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isRemoveFromListDialogOpen, setIsRemoveFromListDialogOpen] =
     useState(false);
@@ -160,6 +164,13 @@ export default function BulkBookmarksAction() {
     selectedBookmarks.every((item) => item.archived === true);
 
   const actionList = [
+    {
+      name: t("ai_control.queue_title"),
+      icon: <Sparkles size={18} />,
+      action: () => setAiOpen(true),
+      isPending: false,
+      hidden: !isBulkEditEnabled,
+    },
     {
       name: isClipboardAvailable()
         ? t("actions.copy_link")
@@ -301,10 +312,18 @@ export default function BulkBookmarksAction() {
     isDeleteDialogOpen ||
     isRemoveFromListDialogOpen ||
     manageListsModal ||
-    bulkTagModal;
+    bulkTagModal ||
+    aiOpen;
 
   return (
     <div>
+      {aiOpen && (
+        <AiQueueDialog
+          open
+          onOpenChange={setAiOpen}
+          selection={{ type: "ids", ids: selectedBookmarks.map((b) => b.id) }}
+        />
+      )}
       <ActionConfirmingDialog
         open={isDeleteDialogOpen}
         setOpen={setIsDeleteDialogOpen}

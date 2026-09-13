@@ -37,6 +37,7 @@ import {
   continueMediaCatalog,
   finishMediaCatalog,
   recoverLocalMediaCatalog,
+  recoverHeldMediaCatalog,
 } from "@karakeep/trpc/models/mediaCatalog";
 import { Bookmark } from "@karakeep/trpc/models/bookmarks";
 import { makeImportPreview, processNextImport } from "./importProcessingWorker";
@@ -676,3 +677,34 @@ test.each(["during", "after"])(
     expect(MediaCatalogQueue.enqueue).toHaveBeenCalledTimes(1);
   },
 );
+
+test("cloud pause retains import catalog permit and resumes to completion", async () => {
+  release("catalog");
+  await processNextImport(db, actions);
+  db.insert(schema.mediaAiControl)
+    .values({
+      id: 1,
+      cloudMode: "off",
+      dailyRequests: 200,
+      revision: 1,
+      updatedAt: new Date().toISOString(),
+    })
+    .run();
+  const currentJob = job();
+  expect(startMediaCatalog(db, currentJob)).not.toBeNull();
+  expect(continueMediaCatalog(db, currentJob, native())).toBe(false);
+  await processNextImport(db, actions);
+  expect(processing().state).toBe("waiting_ai");
+  expect(processing().error).toBeNull();
+  db.update(schema.mediaAiControl).set({ cloudMode: "auto" }).run();
+  await recoverHeldMediaCatalog(db);
+  expect(startMediaCatalog(db, currentJob)).not.toBeNull();
+  expect(continueMediaCatalog(db, currentJob, native())).toBe(true);
+  finishMediaCatalog(db, currentJob, "success", {
+    title: "AI title",
+    summary: "AI summary",
+    tags: ["Source tag"],
+  });
+  await processNextImport(db, actions);
+  expect(processing().state).toBe("complete");
+});

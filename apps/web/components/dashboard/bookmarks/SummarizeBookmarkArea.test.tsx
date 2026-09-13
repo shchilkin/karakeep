@@ -8,6 +8,9 @@ import SummarizeBookmarkArea from "./SummarizeBookmarkArea";
 import MediaCatalogArea from "./MediaCatalogArea";
 import { getBookmarkRefreshInterval } from "@karakeep/shared/utils/bookmarkUtils";
 
+vi.mock("../ai/AiHistory", () => ({ default: () => null }));
+vi.mock("../ai/AiQueueDialog", () => ({ default: () => null }));
+
 const mocks = vi.hoisted(() => ({
   summarize: vi.fn(),
   update: vi.fn(),
@@ -83,7 +86,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-test.each(["checking_local", "waiting_resource"] as const)(
+test.each(["checking_local", "waiting_resource", "waiting_control"] as const)(
   "%s keeps polling and disables retries while running; completion stays visible",
   (status) => {
     const bookmark = article({

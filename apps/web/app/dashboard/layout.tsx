@@ -11,6 +11,7 @@ import { getServerAuthSession } from "@/server/auth";
 import { TRPCError } from "@trpc/server";
 import { TFunction } from "i18next";
 import {
+  Sparkles,
   EyeOff,
   Copy,
   Archive,
@@ -87,6 +88,11 @@ export default async function Dashboard({
         name: t("sensitive.section_title"),
         icon: <EyeOff size={18} />,
         path: "/dashboard/sensitive",
+      },
+      {
+        name: t("ai_control.title"),
+        icon: <Sparkles size={18} />,
+        path: "/dashboard/ai",
       },
       {
         name: t("duplicates.title"),
