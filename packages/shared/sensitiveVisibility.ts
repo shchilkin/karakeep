@@ -26,8 +26,18 @@ export interface SensitiveBookmark {
 /** Manual [] is an explicit clear; null delegates to observations. Native
  * negatives cover only sampled images and cannot certify Work suitability. */
 export function sensitiveAssessment(bookmark: SensitiveBookmark) {
-  if (bookmark.imageSet)
-    return { source: "automatic" as const, ...bookmark.imageSet.sensitivity };
+  if (bookmark.imageSet) {
+    const aggregate = bookmark.imageSet.sensitivity;
+    const manualLabels = (bookmark.sensitiveCategories ?? []).map(
+      (c) => `sensitive.categories.${c}` as const,
+    );
+    return {
+      source: "automatic" as const,
+      ...aggregate,
+      sensitive: aggregate.sensitive || manualLabels.length > 0,
+      labels: [...new Set([...aggregate.labels, ...manualLabels])],
+    };
+  }
   const manual = bookmark.sensitiveCategories;
   if (manual != null) {
     return {
@@ -50,7 +60,11 @@ export function concealSensitiveBookmark(
   mode: SensitivityMode,
 ) {
   if (mode === "all") return false;
-  if (bookmark.imageSet) return bookmark.imageSet.sensitivity[mode];
+  if (bookmark.imageSet)
+    return (
+      bookmark.imageSet.sensitivity[mode] ||
+      shouldConcealSensitive(bookmark.sensitiveCategories ?? [], mode)
+    );
   if (bookmark.sensitiveCategories != null)
     return shouldConcealSensitive(bookmark.sensitiveCategories, mode);
   return mode === "work" || sensitiveAssessment(bookmark).sensitive;
