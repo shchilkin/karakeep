@@ -2,7 +2,7 @@
 # Existing individual GPU service containers must be stopped during cutover.
 services:
   gpu-lifecycle:
-    image: karakeep-gpu-lifecycle:review
+    image: ${GPU_RUNTIME_IMAGE:?set the verified immutable runtime image}
     platform: linux/amd64
     restart: unless-stopped
     user: "1000:1000"
@@ -22,12 +22,32 @@ services:
     tmpfs:
       - /tmp:rw,nosuid,size=512m
     volumes:
-      - /srv/appdata/karakeep/models/shieldgemma:/models/shieldgemma:ro
-      - /srv/appdata/karakeep/models/qwen35-9b:/models/qwen35-9b:ro
-      - /srv/appdata/karakeep/secrets/local-token:/run/secrets/shield_token:ro
-      - /srv/appdata/karakeep/secrets/catalog-token:/run/secrets/catalog_token:ro
-      - /srv/appdata/karakeep/gpu-lease:/gpu-lease
+      - type: bind
+        source: ${SHIELD_MODEL_DIR:?set the verified ShieldGemma directory}
+        target: /models/shieldgemma
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${QWEN_MODEL_DIR:?set the verified Qwen directory}
+        target: /models/qwen35-9b
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: /srv/appdata/karakeep/secrets/local-token
+        target: /run/secrets/shield_token
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: /srv/appdata/karakeep/secrets/catalog-token
+        target: /run/secrets/catalog_token
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: /srv/appdata/karakeep/gpu-lease
+        target: /gpu-lease
+        bind: { create_host_path: false }
     networks: [media-local]
 networks:
   media-local:
-    internal: true
+    external: true
+    name: ${MEDIA_LOCAL_NETWORK:-karakeep_media-local}
