@@ -26,6 +26,7 @@ import {
   verifyImport,
 } from "../models/deferredImport";
 import { getApiCaller, getTestQueueMocks } from "../testUtils";
+import { Bookmark } from "../models/bookmarks";
 import type { AuthedContext } from "..";
 
 const directory = `/tmp/karakeep-deferred-import-${crypto.randomUUID()}`;
@@ -493,4 +494,100 @@ test("missing policy barriers disable materialization and over-limit streams can
     reserveImport(ctx, payload("blocked"), "blocked"),
   ).rejects.toThrow(/policy migrations/);
   expect(db.select().from(schema.bookmarks).all()).toHaveLength(0);
+});
+
+test("ready import previews survive list, tag and search hydration like the detail response", async () => {
+  const item = await staged();
+  const receipt = await commitImport(ctx, item.operationId, item.fencingToken);
+  const api = getApiCaller(db, "owner");
+  const processing = db.select().from(schema.importProcessing).get()!;
+  expect(
+    (await api.bookmarks.getBookmarks({})).bookmarks[0].importProcessing,
+  ).toMatchObject({
+    state: "held",
+    previewReady: false,
+    previewAssetId: null,
+  });
+  db.insert(schema.assets)
+    .values({
+      id: processing.previewAssetId,
+      userId: "owner",
+      bookmarkId: receipt.bookmarkId,
+      assetType: schema.AssetTypes.ASSET_SCREENSHOT,
+      contentType: "image/webp",
+      fileName: "import-preview.webp",
+      width: 640,
+      height: 960,
+    })
+    .run();
+  db.update(schema.importProcessing)
+    .set({
+      generation: 1,
+      stage: "preview",
+      state: "complete",
+      previewReady: true,
+      originalWidth: 720,
+      originalHeight: 1080,
+    })
+    .where(eq(schema.importProcessing.bookmarkId, receipt.bookmarkId))
+    .run();
+  const detail = await api.bookmarks.getBookmark({
+    bookmarkId: receipt.bookmarkId,
+  });
+  expect(detail.importProcessing).toMatchObject({
+    previewReady: true,
+    previewAssetId: processing.previewAssetId,
+  });
+  const home = await api.bookmarks.getBookmarks({});
+  const tagged = await api.bookmarks.getBookmarks({ tagId: detail.tags[0].id });
+  const hydrated = await Bookmark.loadMulti(ctx, {
+    ids: [receipt.bookmarkId],
+    includeContent: false,
+    sortOrder: "desc",
+  });
+  for (const listed of [
+    home.bookmarks[0],
+    tagged.bookmarks[0],
+    hydrated.bookmarks[0].asZBookmark(),
+  ]) {
+    expect(listed.importProcessing).toEqual(detail.importProcessing);
+    expect(listed.processingPolicy).toBe("deferred");
+    expect(listed.assets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: receipt.assets[0].assetId,
+          width: 720,
+          height: 1080,
+        }),
+        expect.objectContaining({
+          id: processing.previewAssetId,
+          width: 640,
+          height: 960,
+        }),
+      ]),
+    );
+    expect(listed.title).toBe(detail.title);
+    expect(
+      listed.tags.map(({ id, name, attachedBy }) => ({ id, name, attachedBy })),
+    ).toEqual(detail.tags);
+    expect(listed.importProcessing).not.toHaveProperty("leaseToken");
+    expect(listed.importProcessing).not.toHaveProperty("userId");
+  }
+  expect(
+    (await getApiCaller(db, "other").bookmarks.getBookmarks({})).bookmarks,
+  ).toEqual([]);
+  expect(
+    (
+      await Bookmark.loadMulti(
+        { ...ctx, user: { id: "other", role: "user" } },
+        { ids: [receipt.bookmarkId], includeContent: false, sortOrder: "desc" },
+      )
+    ).bookmarks,
+  ).toEqual([]);
+  expect(db.select().from(schema.processingOutbox).all()).toMatchObject([
+    { state: "held" },
+  ]);
+  Object.values(getTestQueueMocks()).forEach((mock) =>
+    expect(mock).not.toHaveBeenCalled(),
+  );
 });
