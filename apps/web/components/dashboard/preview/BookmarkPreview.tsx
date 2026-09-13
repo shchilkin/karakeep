@@ -178,13 +178,13 @@ export default function BookmarkPreview({
     );
 
   if (
-    bookmark.content.type === BookmarkTypes.LINK &&
+    (bookmark.content.type === BookmarkTypes.LINK || bookmark.imageSet) &&
     getBookmarkMedia(bookmark).length > 0
   ) {
     return (
       <MediaBookmarkPreview
         bookmark={{ ...bookmark, content: bookmark.content }}
-        readOnly={!isOwner}
+        readOnly={!isOwner || !!bookmark.memberOfSet}
         metadata={<BookmarkMetadata bookmark={bookmark} />}
         onClose={onClose}
       />
@@ -235,27 +235,53 @@ export default function BookmarkPreview({
         )}
       </div>
       <Separator />
+      {bookmark.memberOfSet && (
+        <p className="text-sm text-muted-foreground">
+          {t("image_sets.member_notice")}{" "}
+          <Link
+            className="underline"
+            href={`/dashboard/preview/${bookmark.memberOfSet}`}
+          >
+            {t("image_sets.open_set")}
+          </Link>
+        </p>
+      )}
       <BookmarkMetadata bookmark={bookmark} />
-      <SummarizeBookmarkArea bookmark={bookmark} readOnly={!isOwner} />
+      <SummarizeBookmarkArea
+        bookmark={bookmark}
+        readOnly={!isOwner || !!bookmark.memberOfSet}
+      />
       <Separator />
       <div className="flex flex-col gap-1.5">
         <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
           {t("common.tags")}
         </p>
-        <BookmarkTagsEditor bookmark={bookmark} disabled={!isOwner} />
+        <BookmarkTagsEditor
+          bookmark={bookmark}
+          disabled={!isOwner || !!bookmark.memberOfSet}
+        />
       </div>
       <Separator />
       <div className="flex flex-col gap-1.5">
         <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
           {t("common.note")}
         </p>
-        <NoteEditor bookmark={bookmark} disabled={!isOwner} />
+        <NoteEditor
+          bookmark={bookmark}
+          disabled={!isOwner || !!bookmark.memberOfSet}
+        />
       </div>
       <Separator />
-      <AttachmentBox bookmark={bookmark} readOnly={!isOwner} />
-      <HighlightsBox bookmarkId={bookmark.id} readOnly={!isOwner} />
+      <AttachmentBox
+        bookmark={bookmark}
+        readOnly={!isOwner || !!bookmark.memberOfSet}
+      />
+      <HighlightsBox
+        bookmarkId={bookmark.id}
+        readOnly={!isOwner || !!bookmark.memberOfSet}
+      />
       <Separator />
-      {isOwner && <ActionBar bookmark={bookmark} />}
+      {isOwner && !bookmark.memberOfSet && <ActionBar bookmark={bookmark} />}
     </div>
   );
 

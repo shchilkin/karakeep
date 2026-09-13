@@ -1,3 +1,12 @@
+import {
+  hydrateImageSets,
+  ungroupedBookmarkCondition,
+  privateSetCondition,
+} from "./imageSets";
+import {
+  isImageSet,
+  assertImageSetFilesMutable,
+} from "@karakeep/shared-server";
 import { importProcessingView } from "./importProcessing";
 import { assertBookmarkMutable } from "@karakeep/shared-server";
 import { createHash } from "node:crypto";
@@ -153,6 +162,7 @@ export class BareBookmark {
     if (bookmarkOwnerId == ctx.user.id) {
       return true;
     }
+    if (isImageSet(ctx.db, bookmarkId)) return false;
     const bookmarkLists = await List.forBookmark(ctx, bookmarkId);
     return bookmarkLists.some((l) => l.canUserView());
   }
@@ -321,10 +331,9 @@ export class Bookmark extends BareBookmark {
         message: "Bookmark not found",
       });
     }
-    return Bookmark.fromData(
-      ctx,
-      await Bookmark.toZodSchema(bookmark, includeContent),
-    );
+    const card = await Bookmark.toZodSchema(bookmark, includeContent);
+    hydrateImageSets(ctx.db, [card]);
+    return Bookmark.fromData(ctx, card);
   }
 
   static fromData(ctx: AuthedContext, data: ZBookmark) {
@@ -462,7 +471,10 @@ export class Bookmark extends BareBookmark {
     ctx: AuthedContext,
     // `ids` is intentionally not part of the public getBookmarks API; it's
     // only settable by server-side callers (search, smart lists, public lists).
-    input: z.infer<typeof zGetBookmarksRequestSchema> & { ids?: string[] },
+    input: z.infer<typeof zGetBookmarksRequestSchema> & {
+      ids?: string[];
+      excludeImageSets?: boolean;
+    },
   ): Promise<{
     bookmarks: Bookmark[];
     nextCursor: ZCursor | null;
@@ -527,6 +539,8 @@ export class Bookmark extends BareBookmark {
 
     // Build common filter conditions (archived, favourited, ids)
     const buildCommonFilters = (): (SQL | undefined)[] => [
+      ungroupedBookmarkCondition(),
+      privateSetCondition(ctx.user.id, input.excludeImageSets),
       input.sensitive !== undefined
         ? input.sensitive
           ? sensitiveBookmarkCondition()
@@ -795,6 +809,7 @@ export class Bookmark extends BareBookmark {
     );
 
     const bookmarksArr = Object.values(bookmarksRes);
+    hydrateImageSets(ctx.db, bookmarksArr);
 
     // Fetch HTML content from assets for bookmarks that have contentAssetId (large content)
     if (input.includeContent) {
@@ -928,6 +943,11 @@ export class Bookmark extends BareBookmark {
   }
 
   asPublicBookmark(): ZPublicBookmark {
+    if (this.bookmark.imageSet)
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: "Image sets are private.",
+      });
     const getPublicSignedAssetUrl = (assetId: string) => {
       // Tokens will expire in 1 hour and will have a grace period of 15mins
       return Asset.getPublicSignedAssetUrl(
@@ -1083,6 +1103,7 @@ export class Bookmark extends BareBookmark {
   }
 
   async delete() {
+    assertImageSetFilesMutable(this.ctx.db, this.id);
     assertBookmarkMutable(this.ctx.db, this.id);
     this.ensureOwnership();
     const deleted = await this.ctx.db

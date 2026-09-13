@@ -1,3 +1,4 @@
+import { imageSetsRouter } from "./imageSets";
 import { deferredImportRouter } from "./deferredImport";
 import { aiRouter } from "./ai";
 import { router } from "../index";
@@ -22,6 +23,7 @@ import { usersAppRouter } from "./users";
 import { webhooksAppRouter } from "./webhooks";
 
 export const appRouter = router({
+  imageSets: imageSetsRouter,
   ai: aiRouter,
   bookmarks: bookmarksAppRouter,
   apiKeys: apiKeysAppRouter,

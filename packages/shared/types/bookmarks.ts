@@ -196,7 +196,44 @@ export const zBookmarkTitleSourceSchema = z.enum([
   "unknown",
 ]);
 
+export const zImageSetMember = z.object({
+  bookmarkId: z.string(),
+  title: z.string(),
+  sourceUrl: z.string().nullable(),
+  image: zAssetSchema,
+});
+export const zImageSet = z.object({
+  revision: z.number().int(),
+  coverBookmarkId: z.string(),
+  members: z.array(zImageSetMember),
+  sensitivity: z.object({
+    work: z.boolean(),
+    balanced: z.boolean(),
+    sensitive: z.boolean(),
+    labels: z.array(
+      z.enum([
+        "sensitive.categories.revealing_clothing",
+        "sensitive.categories.suggestive",
+        "sensitive.categories.nudity",
+        "sensitive.categories.explicit_sexual",
+        "sensitive.categories.violence",
+        "sensitive.categories.gore",
+        "sensitive.categories.self_harm",
+        "sensitive.categories.drugs",
+        "sensitive.categories.hate_extremism",
+        "sensitive.categories.disturbing",
+        "sensitive.categories.other",
+        "media_ai.native_categories.sexual",
+        "media_ai.native_categories.violence",
+        "media_ai.native_categories.dangerous",
+      ]),
+    ),
+  }),
+});
+
 export const zBareBookmarkSchema = z.object({
+  imageSet: zImageSet.optional(),
+  memberOfSet: z.string().optional(),
   importProcessing: zImportProcessingView.nullish(),
   processingPolicy: z.enum(["automatic", "deferred"]).optional(),
   policyRevision: z.number().int().optional(),

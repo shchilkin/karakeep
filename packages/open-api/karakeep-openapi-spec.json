@@ -135,6 +135,137 @@
       "Bookmark": {
         "type": "object",
         "properties": {
+          "imageSet": {
+            "type": "object",
+            "properties": {
+              "revision": {
+                "type": "integer"
+              },
+              "coverBookmarkId": {
+                "type": "string"
+              },
+              "members": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "bookmarkId": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "sourceUrl": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "image": {
+                      "type": "object",
+                      "properties": {
+                        "width": {
+                          "type": "integer",
+                          "nullable": true,
+                          "minimum": 0,
+                          "exclusiveMinimum": true
+                        },
+                        "height": {
+                          "type": "integer",
+                          "nullable": true,
+                          "minimum": 0,
+                          "exclusiveMinimum": true
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "assetType": {
+                          "type": "string",
+                          "enum": [
+                            "linkHtmlContent",
+                            "screenshot",
+                            "pdf",
+                            "assetScreenshot",
+                            "bannerImage",
+                            "fullPageArchive",
+                            "video",
+                            "bookmarkAsset",
+                            "precrawledArchive",
+                            "userUploaded",
+                            "avatar",
+                            "unknown"
+                          ]
+                        },
+                        "fileName": {
+                          "type": "string",
+                          "nullable": true
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "assetType"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "bookmarkId",
+                    "title",
+                    "sourceUrl",
+                    "image"
+                  ]
+                }
+              },
+              "sensitivity": {
+                "type": "object",
+                "properties": {
+                  "work": {
+                    "type": "boolean"
+                  },
+                  "balanced": {
+                    "type": "boolean"
+                  },
+                  "sensitive": {
+                    "type": "boolean"
+                  },
+                  "labels": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "sensitive.categories.revealing_clothing",
+                        "sensitive.categories.suggestive",
+                        "sensitive.categories.nudity",
+                        "sensitive.categories.explicit_sexual",
+                        "sensitive.categories.violence",
+                        "sensitive.categories.gore",
+                        "sensitive.categories.self_harm",
+                        "sensitive.categories.drugs",
+                        "sensitive.categories.hate_extremism",
+                        "sensitive.categories.disturbing",
+                        "sensitive.categories.other",
+                        "media_ai.native_categories.sexual",
+                        "media_ai.native_categories.violence",
+                        "media_ai.native_categories.dangerous"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "work",
+                  "balanced",
+                  "sensitive",
+                  "labels"
+                ]
+              }
+            },
+            "required": [
+              "revision",
+              "coverBookmarkId",
+              "members",
+              "sensitivity"
+            ]
+          },
+          "memberOfSet": {
+            "type": "string"
+          },
           "importProcessing": {
             "type": "object",
             "nullable": true,
@@ -2140,6 +2271,137 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "imageSet": {
+                      "type": "object",
+                      "properties": {
+                        "revision": {
+                          "type": "integer"
+                        },
+                        "coverBookmarkId": {
+                          "type": "string"
+                        },
+                        "members": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "bookmarkId": {
+                                "type": "string"
+                              },
+                              "title": {
+                                "type": "string"
+                              },
+                              "sourceUrl": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "image": {
+                                "type": "object",
+                                "properties": {
+                                  "width": {
+                                    "type": "integer",
+                                    "nullable": true,
+                                    "minimum": 0,
+                                    "exclusiveMinimum": true
+                                  },
+                                  "height": {
+                                    "type": "integer",
+                                    "nullable": true,
+                                    "minimum": 0,
+                                    "exclusiveMinimum": true
+                                  },
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "assetType": {
+                                    "type": "string",
+                                    "enum": [
+                                      "linkHtmlContent",
+                                      "screenshot",
+                                      "pdf",
+                                      "assetScreenshot",
+                                      "bannerImage",
+                                      "fullPageArchive",
+                                      "video",
+                                      "bookmarkAsset",
+                                      "precrawledArchive",
+                                      "userUploaded",
+                                      "avatar",
+                                      "unknown"
+                                    ]
+                                  },
+                                  "fileName": {
+                                    "type": "string",
+                                    "nullable": true
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "assetType"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "bookmarkId",
+                              "title",
+                              "sourceUrl",
+                              "image"
+                            ]
+                          }
+                        },
+                        "sensitivity": {
+                          "type": "object",
+                          "properties": {
+                            "work": {
+                              "type": "boolean"
+                            },
+                            "balanced": {
+                              "type": "boolean"
+                            },
+                            "sensitive": {
+                              "type": "boolean"
+                            },
+                            "labels": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "enum": [
+                                  "sensitive.categories.revealing_clothing",
+                                  "sensitive.categories.suggestive",
+                                  "sensitive.categories.nudity",
+                                  "sensitive.categories.explicit_sexual",
+                                  "sensitive.categories.violence",
+                                  "sensitive.categories.gore",
+                                  "sensitive.categories.self_harm",
+                                  "sensitive.categories.drugs",
+                                  "sensitive.categories.hate_extremism",
+                                  "sensitive.categories.disturbing",
+                                  "sensitive.categories.other",
+                                  "media_ai.native_categories.sexual",
+                                  "media_ai.native_categories.violence",
+                                  "media_ai.native_categories.dangerous"
+                                ]
+                              }
+                            }
+                          },
+                          "required": [
+                            "work",
+                            "balanced",
+                            "sensitive",
+                            "labels"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "revision",
+                        "coverBookmarkId",
+                        "members",
+                        "sensitivity"
+                      ]
+                    },
+                    "memberOfSet": {
+                      "type": "string"
+                    },
                     "importProcessing": {
                       "type": "object",
                       "nullable": true,
@@ -2877,6 +3139,137 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "imageSet": {
+                      "type": "object",
+                      "properties": {
+                        "revision": {
+                          "type": "integer"
+                        },
+                        "coverBookmarkId": {
+                          "type": "string"
+                        },
+                        "members": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "bookmarkId": {
+                                "type": "string"
+                              },
+                              "title": {
+                                "type": "string"
+                              },
+                              "sourceUrl": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "image": {
+                                "type": "object",
+                                "properties": {
+                                  "width": {
+                                    "type": "integer",
+                                    "nullable": true,
+                                    "minimum": 0,
+                                    "exclusiveMinimum": true
+                                  },
+                                  "height": {
+                                    "type": "integer",
+                                    "nullable": true,
+                                    "minimum": 0,
+                                    "exclusiveMinimum": true
+                                  },
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "assetType": {
+                                    "type": "string",
+                                    "enum": [
+                                      "linkHtmlContent",
+                                      "screenshot",
+                                      "pdf",
+                                      "assetScreenshot",
+                                      "bannerImage",
+                                      "fullPageArchive",
+                                      "video",
+                                      "bookmarkAsset",
+                                      "precrawledArchive",
+                                      "userUploaded",
+                                      "avatar",
+                                      "unknown"
+                                    ]
+                                  },
+                                  "fileName": {
+                                    "type": "string",
+                                    "nullable": true
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "assetType"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "bookmarkId",
+                              "title",
+                              "sourceUrl",
+                              "image"
+                            ]
+                          }
+                        },
+                        "sensitivity": {
+                          "type": "object",
+                          "properties": {
+                            "work": {
+                              "type": "boolean"
+                            },
+                            "balanced": {
+                              "type": "boolean"
+                            },
+                            "sensitive": {
+                              "type": "boolean"
+                            },
+                            "labels": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "enum": [
+                                  "sensitive.categories.revealing_clothing",
+                                  "sensitive.categories.suggestive",
+                                  "sensitive.categories.nudity",
+                                  "sensitive.categories.explicit_sexual",
+                                  "sensitive.categories.violence",
+                                  "sensitive.categories.gore",
+                                  "sensitive.categories.self_harm",
+                                  "sensitive.categories.drugs",
+                                  "sensitive.categories.hate_extremism",
+                                  "sensitive.categories.disturbing",
+                                  "sensitive.categories.other",
+                                  "media_ai.native_categories.sexual",
+                                  "media_ai.native_categories.violence",
+                                  "media_ai.native_categories.dangerous"
+                                ]
+                              }
+                            }
+                          },
+                          "required": [
+                            "work",
+                            "balanced",
+                            "sensitive",
+                            "labels"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "revision",
+                        "coverBookmarkId",
+                        "members",
+                        "sensitivity"
+                      ]
+                    },
+                    "memberOfSet": {
+                      "type": "string"
+                    },
                     "importProcessing": {
                       "type": "object",
                       "nullable": true,
@@ -3525,6 +3918,137 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "imageSet": {
+                      "type": "object",
+                      "properties": {
+                        "revision": {
+                          "type": "integer"
+                        },
+                        "coverBookmarkId": {
+                          "type": "string"
+                        },
+                        "members": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "bookmarkId": {
+                                "type": "string"
+                              },
+                              "title": {
+                                "type": "string"
+                              },
+                              "sourceUrl": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "image": {
+                                "type": "object",
+                                "properties": {
+                                  "width": {
+                                    "type": "integer",
+                                    "nullable": true,
+                                    "minimum": 0,
+                                    "exclusiveMinimum": true
+                                  },
+                                  "height": {
+                                    "type": "integer",
+                                    "nullable": true,
+                                    "minimum": 0,
+                                    "exclusiveMinimum": true
+                                  },
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "assetType": {
+                                    "type": "string",
+                                    "enum": [
+                                      "linkHtmlContent",
+                                      "screenshot",
+                                      "pdf",
+                                      "assetScreenshot",
+                                      "bannerImage",
+                                      "fullPageArchive",
+                                      "video",
+                                      "bookmarkAsset",
+                                      "precrawledArchive",
+                                      "userUploaded",
+                                      "avatar",
+                                      "unknown"
+                                    ]
+                                  },
+                                  "fileName": {
+                                    "type": "string",
+                                    "nullable": true
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "assetType"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "bookmarkId",
+                              "title",
+                              "sourceUrl",
+                              "image"
+                            ]
+                          }
+                        },
+                        "sensitivity": {
+                          "type": "object",
+                          "properties": {
+                            "work": {
+                              "type": "boolean"
+                            },
+                            "balanced": {
+                              "type": "boolean"
+                            },
+                            "sensitive": {
+                              "type": "boolean"
+                            },
+                            "labels": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "enum": [
+                                  "sensitive.categories.revealing_clothing",
+                                  "sensitive.categories.suggestive",
+                                  "sensitive.categories.nudity",
+                                  "sensitive.categories.explicit_sexual",
+                                  "sensitive.categories.violence",
+                                  "sensitive.categories.gore",
+                                  "sensitive.categories.self_harm",
+                                  "sensitive.categories.drugs",
+                                  "sensitive.categories.hate_extremism",
+                                  "sensitive.categories.disturbing",
+                                  "sensitive.categories.other",
+                                  "media_ai.native_categories.sexual",
+                                  "media_ai.native_categories.violence",
+                                  "media_ai.native_categories.dangerous"
+                                ]
+                              }
+                            }
+                          },
+                          "required": [
+                            "work",
+                            "balanced",
+                            "sensitive",
+                            "labels"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "revision",
+                        "coverBookmarkId",
+                        "members",
+                        "sensitivity"
+                      ]
+                    },
+                    "memberOfSet": {
+                      "type": "string"
+                    },
                     "importProcessing": {
                       "type": "object",
                       "nullable": true,

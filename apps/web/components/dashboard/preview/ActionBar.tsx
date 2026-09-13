@@ -53,27 +53,33 @@ export default function ActionBar({ bookmark }: { bookmark: ZBookmark }) {
 
   return (
     <div className="flex items-center justify-center gap-3 text-muted-foreground">
-      <SensitiveEditor
-        bookmark={bookmark}
-        open={sensitiveOpen}
-        setOpen={setSensitiveOpen}
-      />
-      <Button
-        variant="ghost"
-        size="none"
-        className="size-8 rounded-md"
-        aria-label={t("sensitive.edit")}
-        title={t("sensitive.edit")}
-        onClick={() => setSensitiveOpen(true)}
-      >
-        <EyeOff
-          size={18}
-          strokeWidth={1.5}
-          className={
-            bookmark.sensitiveCategories?.length ? "text-foreground" : undefined
-          }
-        />
-      </Button>
+      {!bookmark.imageSet && (
+        <>
+          <SensitiveEditor
+            bookmark={bookmark}
+            open={sensitiveOpen}
+            setOpen={setSensitiveOpen}
+          />
+          <Button
+            variant="ghost"
+            size="none"
+            className="size-8 rounded-md"
+            aria-label={t("sensitive.edit")}
+            title={t("sensitive.edit")}
+            onClick={() => setSensitiveOpen(true)}
+          >
+            <EyeOff
+              size={18}
+              strokeWidth={1.5}
+              className={
+                bookmark.sensitiveCategories?.length
+                  ? "text-foreground"
+                  : undefined
+              }
+            />
+          </Button>
+        </>
+      )}
       <Tooltip delayDuration={0}>
         <EditBookmarkDialog
           bookmark={bookmark}
@@ -156,25 +162,27 @@ export default function ActionBar({ bookmark }: { bookmark: ZBookmark }) {
           {bookmark.archived ? t("actions.unarchive") : t("actions.archive")}
         </TooltipContent>
       </Tooltip>
-      <Tooltip delayDuration={0}>
-        <DeleteBookmarkConfirmationDialog
-          bookmark={bookmark}
-          open={deleteBookmarkDialogOpen}
-          setOpen={setDeleteBookmarkDialogOpen}
-        />
-        <TooltipTrigger asChild>
-          <Button
-            className="size-8 rounded-md"
-            variant="ghost"
-            size="none"
-            onClick={() => setDeleteBookmarkDialogOpen(true)}
-            aria-label={t("actions.delete")}
-          >
-            <Trash2 size={18} strokeWidth={1.5} />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">{t("actions.delete")}</TooltipContent>
-      </Tooltip>
+      {!bookmark.imageSet && (
+        <Tooltip delayDuration={0}>
+          <DeleteBookmarkConfirmationDialog
+            bookmark={bookmark}
+            open={deleteBookmarkDialogOpen}
+            setOpen={setDeleteBookmarkDialogOpen}
+          />
+          <TooltipTrigger asChild>
+            <Button
+              className="size-8 rounded-md"
+              variant="ghost"
+              size="none"
+              onClick={() => setDeleteBookmarkDialogOpen(true)}
+              aria-label={t("actions.delete")}
+            >
+              <Trash2 size={18} strokeWidth={1.5} />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">{t("actions.delete")}</TooltipContent>
+        </Tooltip>
+      )}
     </div>
   );
 }

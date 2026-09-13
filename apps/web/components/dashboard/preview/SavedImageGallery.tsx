@@ -133,9 +133,11 @@ function GalleryImage({
 export default function SavedImageGallery({
   images,
   title,
+  initialImageId,
 }: {
   images: BookmarkMedia[];
   title: string;
+  initialImageId?: string;
 }) {
   const hasMedia = images.length > 0;
   useEffect(
@@ -146,7 +148,7 @@ export default function SavedImageGallery({
   const labels = images.some((image) => image.video)
     ? "preview.media"
     : "preview.gallery";
-  const [selectedId, setSelectedId] = useState(images[0]?.id);
+  const [selectedId, setSelectedId] = useState(initialImageId ?? images[0]?.id);
   const [expanded, setExpanded] = useState(false);
   const touchStart = useRef<{ x: number; y: number } | null>(null);
   const lastSwipe = useRef(0);

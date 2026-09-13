@@ -5,6 +5,20 @@ import type { SensitiveCategory, SensitivityMode } from "./sensitiveContent";
 
 export interface SensitiveBookmark {
   id: string;
+  imageSet?: {
+    revision: number;
+    sensitivity: {
+      work: boolean;
+      balanced: boolean;
+      sensitive: boolean;
+      labels: (
+        | `sensitive.categories.${SensitiveCategory}`
+        | "media_ai.native_categories.sexual"
+        | "media_ai.native_categories.violence"
+        | "media_ai.native_categories.dangerous"
+      )[];
+    };
+  };
   sensitiveCategories?: SensitiveCategory[] | null;
   mediaAi?: MediaCatalogState | null;
 }
@@ -12,6 +26,8 @@ export interface SensitiveBookmark {
 /** Manual [] is an explicit clear; null delegates to observations. Native
  * negatives cover only sampled images and cannot certify Work suitability. */
 export function sensitiveAssessment(bookmark: SensitiveBookmark) {
+  if (bookmark.imageSet)
+    return { source: "automatic" as const, ...bookmark.imageSet.sensitivity };
   const manual = bookmark.sensitiveCategories;
   if (manual != null) {
     return {
@@ -34,6 +50,7 @@ export function concealSensitiveBookmark(
   mode: SensitivityMode,
 ) {
   if (mode === "all") return false;
+  if (bookmark.imageSet) return bookmark.imageSet.sensitivity[mode];
   if (bookmark.sensitiveCategories != null)
     return shouldConcealSensitive(bookmark.sensitiveCategories, mode);
   return mode === "work" || sensitiveAssessment(bookmark).sensitive;
@@ -43,6 +60,7 @@ export function concealSensitiveBookmark(
 export function sensitiveRevealKey(bookmark: SensitiveBookmark) {
   return JSON.stringify([
     bookmark.id,
+    bookmark.imageSet,
     bookmark.sensitiveCategories == null
       ? null
       : [...bookmark.sensitiveCategories].sort(),

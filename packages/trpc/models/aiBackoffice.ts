@@ -1,3 +1,4 @@
+import { isImageSetAnalysisHeld } from "@karakeep/shared-server";
 import { randomUUID } from "node:crypto";
 import { TRPCError } from "@trpc/server";
 import { and, count, desc, eq, inArray, like, sql } from "drizzle-orm";
@@ -183,7 +184,8 @@ export function prepareAiBatch(
       const entries: AiBatchEntry[] = cards.map((card) => {
         const snapshot = catalogSnapshot(db, userId, card.id);
         let reason: string | undefined;
-        if (
+        if (isImageSetAnalysisHeld(db, card.id)) reason = "image_set_held";
+        else if (
           card.processingPolicy === "deferred" &&
           !importProcessingPermit(db, card.id, "catalog")
         )

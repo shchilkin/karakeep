@@ -1,3 +1,4 @@
+import { imageSetForMember, isImageSetAnalysisHeld } from "./imageSets";
 import { and, eq } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import type { DB, KarakeepDBTransaction } from "@karakeep/db";
@@ -20,12 +21,29 @@ export function isBookmarkDeferred(db: PolicyDB, bookmarkId: string) {
   );
 }
 export function assertBookmarkMutable(db: PolicyDB, bookmarkId: string) {
+  if (imageSetForMember(db, bookmarkId))
+    throw new TRPCError({
+      code: "CONFLICT",
+      message: "Remove this image from its set before editing the original.",
+    });
   if (isBookmarkDeferred(db, bookmarkId))
     throw new TRPCError({
       code: "CONFLICT",
       message:
         "This imported snapshot is deferred and immutable. Processing or changes require a revision-aware release.",
     });
+}
+/** Derived display caches do not edit the original or invoke AI. */
+export function assertBookmarkDerivativesAllowed(
+  db: PolicyDB,
+  bookmarkId: string,
+) {
+  if (!isBookmarkDeferred(db, bookmarkId)) return;
+  if (importProcessingPermit(db, bookmarkId, "preview")?.previewReady) return;
+  throw new TRPCError({
+    code: "CONFLICT",
+    message: "Wait for the imported image preview to be released first.",
+  });
 }
 export function isImportAssetRetained(db: PolicyDB, assetId: string) {
   return (
@@ -78,8 +96,9 @@ export function importProcessingPermit(
 }
 export function isImportCatalogBlocked(db: PolicyDB, bookmarkId: string) {
   return (
-    isBookmarkDeferred(db, bookmarkId) &&
-    !importProcessingPermit(db, bookmarkId, "local_check")
+    isImageSetAnalysisHeld(db, bookmarkId) ||
+    (isBookmarkDeferred(db, bookmarkId) &&
+      !importProcessingPermit(db, bookmarkId, "local_check"))
   );
 }
 export function automaticQueueAllowed(
@@ -94,6 +113,9 @@ export function automaticQueueAllowed(
     typeof payload.bookmarkId !== "string"
   )
     return true;
+  if (isImageSetAnalysisHeld(db, payload.bookmarkId)) {
+    return queueName === "searching_indexing";
+  }
   if (!isBookmarkDeferred(db, payload.bookmarkId)) return true;
   if (
     queueName === "searching_indexing" &&

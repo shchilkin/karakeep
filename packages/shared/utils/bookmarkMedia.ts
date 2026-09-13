@@ -7,6 +7,7 @@ export type BookmarkMedia = BookmarkImage & { video?: { posterId?: string } };
 
 /** Ordered originals; generated video posters never become extra slides. */
 export function getBookmarkMedia(bookmark: ZBookmark): BookmarkMedia[] {
+  if (bookmark.imageSet) return bookmark.imageSet.members.map((m) => m.image);
   if (bookmark.content.type !== BookmarkTypes.LINK) return [];
   const originals = bookmark.assets.filter(
     (asset) =>

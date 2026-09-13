@@ -8,3 +8,5 @@ export * from "./tracing";
 export * from "./eventLogTypes";
 
 export * from "./processingPolicy";
+
+export * from "./imageSets";

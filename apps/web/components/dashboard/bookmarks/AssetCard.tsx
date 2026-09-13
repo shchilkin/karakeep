@@ -1,5 +1,7 @@
 "use client";
 
+import { Images } from "lucide-react";
+
 import Image from "next/image";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -122,7 +124,7 @@ export default function AssetCard({
           (!!importedPreview || layout === "masonry" || layout === "grid") ? (
           <Link
             href={`/dashboard/preview/${bookmarkedAsset.id}`}
-            className="block"
+            className="relative block"
           >
             <BookmarkCardImage
               key={bookmarkedAsset.content.assetId}
@@ -145,6 +147,17 @@ export default function AssetCard({
               naturalSize={layout === "masonry"}
               className={className}
             />
+            {bookmarkedAsset.imageSet && (
+              <span
+                className="absolute bottom-3 left-3 flex items-center gap-1.5 rounded-md bg-black/80 px-2 py-1 text-xs tabular-nums text-white"
+                aria-label={t("image_sets.count", {
+                  count: bookmarkedAsset.imageSet.members.length,
+                })}
+              >
+                <Images className="size-3.5" aria-hidden="true" />
+                {bookmarkedAsset.imageSet.members.length}
+              </span>
+            )}
           </Link>
         ) : (
           <div className="relative size-full flex-1">

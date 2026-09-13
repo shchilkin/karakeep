@@ -1,4 +1,7 @@
-import { assertBookmarkMutable } from "@karakeep/shared-server";
+import {
+  assertBookmarkMutable,
+  assertImageSetFilesMutable,
+} from "@karakeep/shared-server";
 import { TRPCError } from "@trpc/server";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -93,6 +96,7 @@ export class Asset {
       };
     },
   ) {
+    assertImageSetFilesMutable(ctx.db, input.bookmarkId);
     const [asset] = await Promise.all([
       Asset.fromId(ctx, input.asset.id),
       this.ensureBookmarkOwnership(ctx, input.bookmarkId),
@@ -144,6 +148,7 @@ export class Asset {
       newAssetId: string;
     },
   ) {
+    assertImageSetFilesMutable(ctx.db, input.bookmarkId);
     const [oldAsset, newAsset] = await Promise.all([
       Asset.fromId(ctx, input.oldAssetId),
       Asset.fromId(ctx, input.newAssetId),
@@ -151,6 +156,8 @@ export class Asset {
     ]);
     oldAsset.ensureOwnership();
     newAsset.ensureOwnership();
+    if (newAsset.asset.bookmarkId)
+      assertImageSetFilesMutable(ctx.db, newAsset.asset.bookmarkId);
 
     if (
       !isAllowedToAttachAsset(

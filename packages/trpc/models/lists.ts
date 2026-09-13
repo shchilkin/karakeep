@@ -233,6 +233,7 @@ export abstract class List {
 
     const bookmarks = await Bookmark.loadMulti(authedCtx, {
       ids: bookmarkIds,
+      excludeImageSets: true,
       includeContent: false,
       limit: pagination.limit,
       sortOrder: pagination.order,

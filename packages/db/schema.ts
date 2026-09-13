@@ -1629,3 +1629,28 @@ export const mediaAiBatches = sqliteTable(
   },
   (t) => [index("mediaAiBatches_user_idx").on(t.userId, t.createdAt)],
 );
+
+// A set owns a gallery identity, never the members' files. Membership is reversible.
+export const imageSets = sqliteTable("imageSets", {
+  bookmarkId: text("bookmarkId")
+    .primaryKey()
+    .references(() => bookmarks.id, { onDelete: "cascade" }),
+  revision: integer("revision").notNull().default(1),
+  coverBookmarkId: text("coverBookmarkId").notNull(),
+});
+export const imageSetMembers = sqliteTable(
+  "imageSetMembers",
+  {
+    setId: text("setId")
+      .notNull()
+      .references(() => imageSets.bookmarkId, { onDelete: "cascade" }),
+    bookmarkId: text("bookmarkId")
+      .primaryKey()
+      .references(() => bookmarks.id, { onDelete: "restrict" }),
+    assetId: text("assetId")
+      .notNull()
+      .references(() => assets.id, { onDelete: "restrict" }),
+    position: integer("position").notNull(),
+  },
+  (t) => [index("imageSetMembers_set_position_idx").on(t.setId, t.position)],
+);
