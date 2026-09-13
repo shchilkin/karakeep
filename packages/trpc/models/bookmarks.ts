@@ -31,6 +31,7 @@ import {
   bookmarksInLists,
   bookmarkTags,
   bookmarkTexts,
+  importProcessing,
   rssFeedImportsTable,
   tagsOnBookmarks,
 } from "@karakeep/db/schema";
@@ -641,6 +642,7 @@ export class Bookmark extends BareBookmark {
       .leftJoin(bookmarkTexts, eq(bookmarkTexts.id, sq.id))
       .leftJoin(bookmarkAssets, eq(bookmarkAssets.id, sq.id))
       .leftJoin(assets, eq(assets.bookmarkId, sq.id))
+      .leftJoin(importProcessing, eq(importProcessing.bookmarkId, sq.id))
       .orderBy(desc(sq.createdAt), desc(sq.id));
 
     const bookmarksRes = results.reduce<Record<string, ZBookmark>>(
@@ -704,6 +706,7 @@ export class Bookmark extends BareBookmark {
           acc[bookmarkId] = {
             ...row.bookmarksSq,
             firstCreatedAt: row.bookmarksSq.dbCreatedAt,
+            importProcessing: importProcessingView(row.importProcessing),
             content,
             tags: [],
             assets: [],
@@ -773,8 +776,16 @@ export class Bookmark extends BareBookmark {
             id: row.assets.id,
             assetType: mapDBAssetTypeToUserType(row.assets.assetType),
             fileName: row.assets.fileName,
-            width: row.assets.width ?? undefined,
-            height: row.assets.height ?? undefined,
+            width:
+              (row.assets.id === row.bookmarkAssets?.assetId &&
+              row.importProcessing?.previewReady
+                ? row.importProcessing.originalWidth
+                : row.assets.width) ?? undefined,
+            height:
+              (row.assets.id === row.bookmarkAssets?.assetId &&
+              row.importProcessing?.previewReady
+                ? row.importProcessing.originalHeight
+                : row.assets.height) ?? undefined,
           });
         }
 
