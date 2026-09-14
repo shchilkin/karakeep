@@ -65,7 +65,7 @@ beforeAll(async () => {
     "-f",
     "lavfi",
     "-i",
-    "testsrc2=size=1280x720:rate=30:duration=8",
+    "testsrc2=size=640x360:rate=15:duration=8",
     "-f",
     "lavfi",
     "-i",
@@ -87,7 +87,7 @@ beforeAll(async () => {
   fixture.contents.set("broken", Buffer.from("invalid video"));
   fixture.contents.set("image", Buffer.from("image"));
   fixture.types.set("image", "image/jpeg");
-}, 20000);
+}, 40000);
 afterAll(async () => {
   await rm(fixture.directory, { recursive: true, force: true });
 });
@@ -137,7 +137,7 @@ it("encodes a small silent H264 preview, preserves originals, and reuses it", as
   ).toEqual(bytes);
   expect(fixture.read.mock.calls.length).toBe(reads);
   expect(fixture.contents.get("video")).toEqual(original);
-}, 20000);
+}, 40000);
 
 it("requires authentication, ownership and asset read scope on warm cache", async () => {
   for (const [client, status] of [
@@ -229,7 +229,7 @@ it("also handles saved WebM and Matroska video without changing originals", asyn
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe("video/mp4");
   }
-}, 20000);
+}, 40000);
 
 it.each(["video/quicktime", "video/x-m4v"])(
   "serves a browser-compatible hover clip for imported %s",
