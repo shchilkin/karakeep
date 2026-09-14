@@ -80,7 +80,8 @@ export async function makeImportPreview(database: DB, item: Processing) {
   )
     throw new ImportProcessingError("original_hash_changed");
   const video = isImportVideoMime(original.detectedMime);
-  const frame = video ? await importVideoFrame(bytes) : bytes;
+  const videoFrame = video ? await importVideoFrame(bytes) : null;
+  const frame = videoFrame?.bytes ?? bytes;
   const { data, info } = await sharp(frame, {
     animated: false,
     limitInputPixels: 40_000_000,
@@ -97,10 +98,9 @@ export async function makeImportPreview(database: DB, item: Processing) {
     .toBuffer({ resolveWithObject: true });
   if (!data.length || !info.width || !info.height)
     throw new ImportProcessingError("preview_decode_failed");
-  const dimensions = await extractImageDimensions(
-    frame,
-    video ? "image/png" : original.detectedMime,
-  );
+  const dimensions =
+    videoFrame?.dimensions ??
+    (await extractImageDimensions(bytes, original.detectedMime));
   if (!dimensions)
     throw new ImportProcessingError("preview_dimensions_missing");
   assertClaim(database, item);

@@ -957,6 +957,8 @@ async function stageVideo(bytes: Buffer, name: string) {
 
 test.each([
   ["mp4", "video/mp4", "mp4", "isom"],
+  ["mp4", "video/mp4", "mp4", "iso5"],
+  ["mp4", "video/mp4", "mp4", "iso6"],
   ["webm", "video/webm", "webm", ""],
   ["mov", "video/quicktime", "mov", "qt  "],
   ["m4v", "video/x-m4v", "ipod", "M4V "],

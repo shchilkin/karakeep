@@ -36,6 +36,8 @@ import {
 import serverConfig from "@karakeep/shared/config";
 import { BookmarkTypes } from "@karakeep/shared/types/bookmarks";
 import {
+  importVideoMimeTypes,
+  isImportVideoMime,
   IMPORT_CONTRACT_VERSION,
   MAX_IMPORT_FILE_BYTES,
   MAX_IMPORT_METADATA_BYTES,
@@ -50,10 +52,6 @@ import type { AuthedContext } from "..";
 const LEASE_MS = 120_000;
 const IO_LEASE_MS = 60_000;
 const IO_TIMEOUT_MS = 20_000;
-import {
-  importVideoMimeTypes,
-  isImportVideoMime,
-} from "@karakeep/shared/types/deferredImport";
 const MIMES = [
   "image/jpeg",
   "image/png",
@@ -545,7 +543,24 @@ function sniffMime(bytes: Buffer) {
     const brand = bytes.subarray(8, 12).toString();
     if (brand === "qt  ") return "video/quicktime";
     if (["M4V ", "M4VH", "M4VP"].includes(brand)) return "video/x-m4v";
-    if (["isom", "iso2", "mp41", "mp42", "avc1", "MSNV"].includes(brand))
+    if (
+      [
+        "isom",
+        "iso2",
+        "iso3",
+        "iso4",
+        "iso5",
+        "iso6",
+        "iso7",
+        "iso8",
+        "iso9",
+        "dash",
+        "mp41",
+        "mp42",
+        "avc1",
+        "MSNV",
+      ].includes(brand)
+    )
       return "video/mp4";
   }
   if (

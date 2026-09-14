@@ -86,6 +86,8 @@ class ClientTest(unittest.TestCase):
     def test_video_containers_complete_verified_copy_with_original_metadata(self):
         samples = [
             (b"\x00\x00\x00\x18ftypisom" + bytes(40), "video/mp4"),
+            (b"\x00\x00\x00\x18ftypiso5" + bytes(40), "video/mp4"),
+            (b"\x00\x00\x00\x18ftypiso6" + bytes(40), "video/mp4"),
             (b"\x00\x00\x00\x18ftypqt  " + bytes(40), "video/quicktime"),
             (b"\x00\x00\x00\x18ftypM4V " + bytes(40), "video/x-m4v"),
             (b"\x1a\x45\xdf\xa3" + bytes(40) + b"webm", "video/webm"),
