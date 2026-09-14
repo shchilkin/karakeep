@@ -178,7 +178,10 @@ export default function BookmarkPreview({
     );
 
   if (
-    (bookmark.content.type === BookmarkTypes.LINK || bookmark.imageSet) &&
+    (bookmark.content.type === BookmarkTypes.LINK ||
+      bookmark.imageSet ||
+      (bookmark.content.type === BookmarkTypes.ASSET &&
+        bookmark.content.assetType === "video")) &&
     getBookmarkMedia(bookmark).length > 0
   ) {
     return (

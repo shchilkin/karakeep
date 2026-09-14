@@ -131,7 +131,7 @@ def sniff(head):
             return "video/quicktime"
         if brand in (b"M4V ", b"M4VH", b"M4VP"):
             return "video/x-m4v"
-        if brand in (b"isom", b"iso2", b"mp41", b"mp42", b"avc1", b"MSNV"):
+        if brand in (b"isom", b"iso2", b"iso3", b"iso4", b"iso5", b"iso6", b"iso7", b"iso8", b"iso9", b"dash", b"mp41", b"mp42", b"avc1", b"MSNV"):
             return "video/mp4"
         return "application/octet-stream"
     if head.startswith(b"\x1aE\xdf\xa3") and b"webm" in head[:4096]:

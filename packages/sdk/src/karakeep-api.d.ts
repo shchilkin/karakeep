@@ -913,7 +913,7 @@ export interface components {
             /** @enum {string} */
             type: "asset";
             /** @enum {string} */
-            assetType: "image" | "pdf";
+            assetType: "image" | "pdf" | "video";
             assetId: string;
             fileName?: string | null;
             sourceUrl?: string | null;

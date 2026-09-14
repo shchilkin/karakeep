@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Pressable, View } from "react-native";
 import ImageView from "react-native-image-viewing";
+import WebView from "react-native-webview";
 import BookmarkAssetImage from "@/components/bookmarks/BookmarkAssetImage";
 import { PDFViewer } from "@/components/bookmarks/PDFViewer";
 import { useAssetUrl } from "@/lib/hooks";
@@ -31,6 +32,16 @@ export default function BookmarkAssetView({
           headers={assetSource.headers}
         />
       </View>
+    );
+  }
+
+  if (bookmark.content.assetType === "video") {
+    return (
+      <WebView
+        source={assetSource}
+        allowsInlineMediaPlayback
+        mediaPlaybackRequiresUserAction
+      />
     );
   }
 

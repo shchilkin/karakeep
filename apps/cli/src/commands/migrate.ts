@@ -719,7 +719,7 @@ async function migrateBookmarks(
             break;
           }
           case BookmarkTypes.ASSET: {
-            if (opts.excludeAssets) {
+            if (opts.excludeAssets || b.content.assetType === "video") {
               // Skip migrating asset bookmarks when excluded
               skippedAssets++;
               continue;

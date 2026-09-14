@@ -1,3 +1,5 @@
+import { execFileSync } from "node:child_process";
+import { getBookmarkMedia } from "@karakeep/shared/utils/bookmarkMedia";
 import { randomUUID, createHash } from "node:crypto";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -174,7 +176,12 @@ const release = (stage: ImportProcessingStage, retry = false) =>
     requestId: randomUUID(),
     expectedGeneration: getImportProcessing(ctx, id)!.generation,
   });
-const processing = () => db.select().from(schema.importProcessing).get()!;
+const processing = () =>
+  db
+    .select()
+    .from(schema.importProcessing)
+    .where(eq(schema.importProcessing.bookmarkId, bookmarkId))
+    .get()!;
 const ai = () =>
   db
     .select()
@@ -896,4 +903,173 @@ test("an AI checkpoint in cooldown does not block a ready image", async () => {
   expect(await processNextImport(db, actions)).toBe(false);
   expect(receipt.bookmarkId).not.toBe(firstId);
   expect(MediaCatalogQueue.enqueue).toHaveBeenCalledTimes(1);
+});
+
+async function stageVideo(bytes: Buffer, name: string) {
+  const payload: ImportReservationInput = {
+    contractVersion: "deferred-copy-v1",
+    source: {
+      provider: "mymind",
+      accountScope: "synthetic",
+      objectId: name,
+      revision: "v1",
+      revisionKind: "current",
+    },
+    metadata: { sha256: hash(metadata), size: metadata.length },
+    mapping: {
+      title: "Video title",
+      note: null,
+      tags: ["Source tag"],
+      sourceUrl: null,
+      savedAt: "2024-01-02T03:04:05Z",
+    },
+    completeness: "unknown",
+    processingPolicy: "deferred",
+    storageMode: "copy",
+    attachments: [
+      {
+        slot: "original",
+        ordinal: 0,
+        role: "original",
+        originalName: name,
+        observed: { sha256: hash(bytes), size: bytes.length },
+        exported: null,
+        transport: {},
+      },
+    ],
+  };
+  const reserved = await reserveImport(ctx, payload, randomUUID());
+  id = reserved.operationId;
+  await uploadImportMetadata(ctx, id, reserved.fencingToken, metadata);
+  // Sniffing must work with fragmented streaming uploads, including WebM DocType after byte 32.
+  await uploadImportFile(
+    ctx,
+    id,
+    "original",
+    reserved.fencingToken,
+    Readable.from(Array.from(bytes, (b) => Buffer.from([b]))),
+  );
+  const receipt = await commitImport(ctx, id, reserved.fencingToken);
+  bookmarkId = receipt.bookmarkId;
+  assetId = receipt.assets[0].assetId;
+  return receipt;
+}
+
+test.each([
+  ["mp4", "video/mp4", "mp4", "isom"],
+  ["mp4", "video/mp4", "mp4", "iso5"],
+  ["mp4", "video/mp4", "mp4", "iso6"],
+  ["webm", "video/webm", "webm", ""],
+  ["mov", "video/quicktime", "mov", "qt  "],
+  ["m4v", "video/x-m4v", "ipod", "M4V "],
+])(
+  "imports %s with a retained first-frame preview, original bytes and no AI admission",
+  async (extension, mime, format, brand) => {
+    const file = path.join(directory, `fixture.${extension}`);
+    execFileSync(
+      "ffmpeg",
+      [
+        "-v",
+        "error",
+        "-nostdin",
+        "-f",
+        "lavfi",
+        "-i",
+        "testsrc2=size=160x96:rate=5:duration=0.4",
+        "-c:v",
+        extension === "webm" ? "libvpx" : "libx264",
+        "-threads",
+        "1",
+        "-f",
+        format,
+        ...(brand ? ["-brand", brand] : []),
+        file,
+      ],
+      { timeout: 15000 },
+    );
+    const bytes = await readFile(file);
+    const receipt = await stageVideo(bytes, `fixture.${extension}`);
+    const before = db
+      .select()
+      .from(schema.bookmarks)
+      .where(eq(schema.bookmarks.id, bookmarkId))
+      .get();
+    expect(
+      db.select().from(schema.assets).where(eq(schema.assets.id, assetId)).get()
+        ?.contentType,
+    ).toBe(mime);
+    release("search");
+    await processNextImport(db, actions);
+    expect(processing()).toMatchObject({
+      state: "complete",
+      previewReady: true,
+      searchReady: true,
+    });
+    const card = (await Bookmark.fromId(ctx, bookmarkId, true)).asZBookmark();
+    expect(card.content).toMatchObject({
+      type: "asset",
+      assetType: "video",
+      fileName: `fixture.${extension}`,
+    });
+    expect(getBookmarkMedia(card)).toMatchObject([
+      { id: assetId, video: { posterId: processing().previewAssetId } },
+    ]);
+    const previewBytes = await readFile(
+      path.join(
+        directory,
+        "assets",
+        "owner",
+        processing().previewAssetId,
+        "asset.bin",
+      ),
+    );
+    expect(await sharp(previewBytes).metadata()).toMatchObject({
+      format: "webp",
+      width: 160,
+      height: 96,
+    });
+    expect(
+      await readFile(
+        path.join(directory, "assets", "owner", assetId, "asset.bin"),
+      ),
+    ).toEqual(bytes);
+    expect(hash(bytes)).toBe(receipt.assets[0].storedSha256);
+    expect(readImportMetadata(ctx, id)).toEqual(metadata);
+    expect(
+      db
+        .select()
+        .from(schema.bookmarks)
+        .where(eq(schema.bookmarks.id, bookmarkId))
+        .get(),
+    ).toEqual(before);
+    expect(isImportAssetRetained(db, assetId)).toBe(true);
+    expect(concealSensitiveBookmark(card, "work")).toBe(true);
+    expect(() => release("catalog")).toThrow("preview and search");
+    expect(() => release("local_check")).toThrow("preview and search");
+    expect(MediaCatalogQueue.enqueue).not.toHaveBeenCalled();
+    expect(db.select().from(schema.mediaAiRequests).all()).toHaveLength(0);
+  },
+  30000,
+);
+
+test("an undecodable video preserves its verified original and ends with a failed preview, without AI", async () => {
+  const bytes = Buffer.concat([
+    Buffer.from([0, 0, 0, 24]),
+    Buffer.from("ftypisom"),
+    Buffer.alloc(40),
+  ]);
+  await stageVideo(bytes, "broken.mp4");
+  release("search");
+  await processNextImport(db, actions);
+  expect(processing()).toMatchObject({
+    state: "failed",
+    previewReady: false,
+    searchReady: false,
+  });
+  expect(
+    await readFile(
+      path.join(directory, "assets", "owner", assetId, "asset.bin"),
+    ),
+  ).toEqual(bytes);
+  expect(MediaCatalogQueue.enqueue).not.toHaveBeenCalled();
 });

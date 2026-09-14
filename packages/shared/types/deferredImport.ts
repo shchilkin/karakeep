@@ -94,3 +94,13 @@ export interface ImportReceipt {
   contentRevision: number;
   physicalReuse: false;
 }
+
+/** Container types accepted by the byte-verified import protocol. */
+export const importVideoMimeTypes = [
+  "video/mp4",
+  "video/webm",
+  "video/quicktime",
+  "video/x-m4v",
+] as const;
+export const isImportVideoMime = (mime: string | null | undefined) =>
+  importVideoMimeTypes.some((value) => value === mime);

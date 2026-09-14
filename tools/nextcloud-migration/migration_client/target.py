@@ -10,7 +10,7 @@ CONTRACT = "deferred-copy-v1"
 BASE = "/api/v1/import"
 MAX_FILE = 50 * 1024 * 1024
 MAX_METADATA = 4 * 1024 * 1024
-MIMES = {"image/jpeg", "image/png", "image/webp", "image/gif", "application/pdf"}
+MIMES = {"image/jpeg", "image/png", "image/webp", "image/gif", "application/pdf", "video/mp4", "video/webm", "video/quicktime", "video/x-m4v"}
 
 
 def reservation_payload(item, metadata):

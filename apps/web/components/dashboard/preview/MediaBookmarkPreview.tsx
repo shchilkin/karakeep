@@ -51,12 +51,12 @@ export default function MediaBookmarkPreview({
       )}
       <div className="flex h-full min-w-0 flex-col overflow-y-auto lg:flex-row lg:overflow-hidden">
         <div className="h-[60dvh] min-h-80 min-w-0 shrink-0 bg-muted/30 pb-1 pt-3 lg:h-full lg:min-h-0 lg:flex-1 lg:pt-5">
-          {bookmark.imageSet ? (
+          {bookmark.imageSet || bookmark.content.type === "asset" ? (
             <SavedImageGallery
               key={bookmark.id}
               images={getBookmarkMedia(bookmark)}
               initialImageId={
-                bookmark.imageSet.members.find(
+                bookmark.imageSet?.members.find(
                   (m) => m.bookmarkId === bookmark.imageSet!.coverBookmarkId,
                 )?.image.id
               }

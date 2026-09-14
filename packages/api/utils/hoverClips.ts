@@ -76,7 +76,7 @@ async function encodeClip(assetId: string, userId: string) {
         "-sn",
         "-dn",
         "-vf",
-        "fps=15,scale=w='min(480,iw)':h='min(480,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2,setsar=1",
+        "fps=15,scale=w='max(2,trunc(min(480,iw*sar*min(1,480/ih))/2)*2)':h='max(2,trunc(min(480,ih*min(1,480/(iw*sar)))/2)*2)',setsar=1",
         "-filter_threads",
         "1",
         "-c:v",
@@ -145,9 +145,13 @@ export async function serveHoverClip(
     getAssetSize({ assetId, userId }),
   ]);
   if (
-    !["video/mp4", "video/webm", "video/x-matroska"].includes(
-      metadata.contentType,
-    )
+    ![
+      "video/mp4",
+      "video/webm",
+      "video/x-matroska",
+      "video/quicktime",
+      "video/x-m4v",
+    ].includes(metadata.contentType)
   )
     return c.json({ error: "No hover clip for this file type" }, 415);
   if (size > maxInputBytes)

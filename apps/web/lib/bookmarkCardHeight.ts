@@ -17,6 +17,13 @@ function bookmarkCardCover(bookmark: ZBookmark) {
     if (!coverId && !image) return undefined;
     src = coverId ? getAssetThumbnailUrl(coverId) : image?.url;
     coverId ??= content.imageAssetId ?? content.screenshotAssetId;
+  } else if (content.type === "asset" && content.assetType === "video") {
+    coverId = bookmark.importProcessing?.previewReady
+      ? bookmark.importProcessing.previewAssetId
+      : bookmark.assets.find((asset) => asset.assetType === "assetScreenshot")
+          ?.id;
+    if (!coverId) return undefined;
+    src = getAssetThumbnailUrl(coverId);
   } else if (content.type === "asset" && content.assetType === "image") {
     coverId = content.assetId;
     src = getAssetThumbnailUrl(coverId);
