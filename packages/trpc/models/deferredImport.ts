@@ -50,12 +50,17 @@ import type { AuthedContext } from "..";
 const LEASE_MS = 120_000;
 const IO_LEASE_MS = 60_000;
 const IO_TIMEOUT_MS = 20_000;
+import {
+  importVideoMimeTypes,
+  isImportVideoMime,
+} from "@karakeep/shared/types/deferredImport";
 const MIMES = [
   "image/jpeg",
   "image/png",
   "image/gif",
   "image/webp",
   "application/pdf",
+  ...importVideoMimeTypes,
 ];
 function conflict(message: string): never {
   throw new TRPCError({ code: "CONFLICT", message });
@@ -92,7 +97,9 @@ export function importCapabilities(ctx: AuthedContext) {
     supportedMimeTypes: MIMES,
     stagePermits: guards,
     processingStages: ["preview", "search", "local_check", "catalog"],
-    processingMimeTypes: MIMES.filter((mime) => mime.startsWith("image/")),
+    processingMimeTypes: MIMES.filter(
+      (mime) => mime.startsWith("image/") || isImportVideoMime(mime),
+    ),
     historicalResolution: false,
   };
 }
@@ -534,6 +541,18 @@ function sniffMime(bytes: Buffer) {
   )
     return "image/webp";
   if (bytes.subarray(0, 5).toString() === "%PDF-") return "application/pdf";
+  if (bytes.length >= 12 && bytes.subarray(4, 8).toString() === "ftyp") {
+    const brand = bytes.subarray(8, 12).toString();
+    if (brand === "qt  ") return "video/quicktime";
+    if (["M4V ", "M4VH", "M4VP"].includes(brand)) return "video/x-m4v";
+    if (["isom", "iso2", "mp41", "mp42", "avc1", "MSNV"].includes(brand))
+      return "video/mp4";
+  }
+  if (
+    bytes.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3])) &&
+    bytes.includes(Buffer.from("webm"))
+  )
+    return "video/webm";
   return null;
 }
 export async function uploadImportFile(
@@ -578,10 +597,10 @@ export async function uploadImportFile(
               code: "PAYLOAD_TOO_LARGE",
               message: "Original exceeds its declared byte limit.",
             });
-          if (prefix.length < 32)
+          if (prefix.length < 4096)
             prefix = Buffer.concat([
               prefix,
-              bytes.subarray(0, 32 - prefix.length),
+              bytes.subarray(0, 4096 - prefix.length),
             ]);
           hash.update(bytes);
           await target.writeFile(bytes);
@@ -887,7 +906,11 @@ export async function commitImport(
             id: row.bookmarkId,
             assetId: file.assetId,
             assetType:
-              file.detectedMime === "application/pdf" ? "pdf" : "image",
+              file.detectedMime === "application/pdf"
+                ? "pdf"
+                : isImportVideoMime(file.detectedMime)
+                  ? "video"
+                  : "image",
             fileName: row.payload.attachments[0].originalName,
             sourceUrl: mapping.sourceUrl,
           })

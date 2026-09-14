@@ -808,7 +808,7 @@ export const adminAppRouter = router({
           .nullable(),
         assetInfo: z
           .object({
-            assetType: z.enum(["image", "pdf"]),
+            assetType: z.enum(["image", "pdf", "video"]),
             hasContent: z.boolean(),
             fileName: z.string().nullable(),
           })

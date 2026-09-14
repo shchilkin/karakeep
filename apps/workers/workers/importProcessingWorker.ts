@@ -3,6 +3,8 @@ import { Readable } from "node:stream";
 import { createHash, randomUUID } from "node:crypto";
 import { and, eq, gt, inArray, lt, lte, notExists, or, sql } from "drizzle-orm";
 import sharp from "sharp";
+import { importVideoFrame } from "./importVideoPreview";
+import { isImportVideoMime } from "@karakeep/shared/types/deferredImport";
 import type { DB } from "@karakeep/db";
 import { db } from "@karakeep/db";
 import {
@@ -77,7 +79,9 @@ export async function makeImportPreview(database: DB, item: Processing) {
     createHash("sha256").update(bytes).digest("hex") !== original.storedSha256
   )
     throw new ImportProcessingError("original_hash_changed");
-  const { data, info } = await sharp(bytes, {
+  const video = isImportVideoMime(original.detectedMime);
+  const frame = video ? await importVideoFrame(bytes) : bytes;
+  const { data, info } = await sharp(frame, {
     animated: false,
     limitInputPixels: 40_000_000,
   })
@@ -93,7 +97,10 @@ export async function makeImportPreview(database: DB, item: Processing) {
     .toBuffer({ resolveWithObject: true });
   if (!data.length || !info.width || !info.height)
     throw new ImportProcessingError("preview_decode_failed");
-  const dimensions = await extractImageDimensions(bytes, original.detectedMime);
+  const dimensions = await extractImageDimensions(
+    frame,
+    video ? "image/png" : original.detectedMime,
+  );
   if (!dimensions)
     throw new ImportProcessingError("preview_dimensions_missing");
   assertClaim(database, item);

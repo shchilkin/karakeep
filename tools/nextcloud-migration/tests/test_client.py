@@ -83,6 +83,24 @@ class ClientTest(unittest.TestCase):
             run_pilot(manifest, self.source, self.target)
         self.assertEqual(self.fixture.calls[len(calls):], [("GET", BASE + "/capabilities", None)])
 
+    def test_video_containers_complete_verified_copy_with_original_metadata(self):
+        samples = [
+            (b"\x00\x00\x00\x18ftypisom" + bytes(40), "video/mp4"),
+            (b"\x00\x00\x00\x18ftypqt  " + bytes(40), "video/quicktime"),
+            (b"\x00\x00\x00\x18ftypM4V " + bytes(40), "video/x-m4v"),
+            (b"\x1a\x45\xdf\xa3" + bytes(40) + b"webm", "video/webm"),
+        ]
+        with self.journal() as manifest:
+            for index, (body, mime) in enumerate(samples):
+                key = self.seed(manifest, object_id=f"video-{index}", body=body)
+                run_pilot(manifest, self.source, self.target)
+                item = manifest.get(key)
+                self.assertEqual(item["phase"], "verified")
+                self.assertEqual(item["mime"], mime)
+                op = self.fixture.operations[item["receipt"]["operationId"]]
+                self.assertEqual(op["original"], body)
+                self.assertEqual(op["metadata"], canonical(item["document"]))
+
     def test_released_mapping_accepts_only_additive_ai_tags(self):
         receipt = {"bookmarkId": "released", "assets": [{"assetId": "original"}]}
         payload = {"mapping": {"title": "Source title", "note": None, "sourceUrl": None,

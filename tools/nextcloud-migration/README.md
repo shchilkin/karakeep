@@ -165,3 +165,22 @@ scope/budget gates, cached evidence seeding, backup mapping and corruption,
 small restore and temporary-backup pilot approval. The fixture is not the actual
 foundation handler; real-handler interoperability and an approved live pilot
 must be verified separately before production readiness is claimed.
+
+### Deferred video imports
+
+The copy contract also accepts byte-detected MP4, WebM, QuickTime/MOV and M4V
+originals up to the existing 50 MiB limit. The server persists them as video asset
+bookmarks. Readback still verifies original bytes, raw metadata and mapped source
+fields before the client records completion. Images and PDF behavior is unchanged.
+
+A separate, explicit `preview` or `search` release creates a retained WebP first
+frame on CPU. The original is immutable; decoder failure leaves it available and
+marks processing failed. The feed uses the poster and the bounded hover clip;
+expansion uses the original in the existing gallery player. Original playback
+depends on the browser's codec support, while hover clips are normalized to H264.
+
+Video `local_check` and `catalog` releases are not enabled by this change. They
+remain a separate follow-up for set-level analysis. Regular bookmark creation and
+CLI server-to-server migration still accept images/PDF only; the latter skips
+video assets before uploading. Legacy clients that validate the asset subtype
+strictly need an update to read the additive `video` response subtype.

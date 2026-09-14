@@ -1,3 +1,5 @@
+import SavedImageGallery from "./SavedImageGallery";
+import { getBookmarkMedia } from "@karakeep/shared/utils/bookmarkMedia";
 import { useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
@@ -112,6 +114,13 @@ export function AssetContentSection({ bookmark }: { bookmark: ZBookmark }) {
   switch (bookmark.content.assetType) {
     case "image":
       return <ImageContentSection bookmark={bookmark} />;
+    case "video":
+      return (
+        <SavedImageGallery
+          images={getBookmarkMedia(bookmark)}
+          title={bookmark.title ?? bookmark.content.fileName ?? "Video"}
+        />
+      );
     case "pdf":
       return <PDFContentSection bookmark={bookmark} />;
     default:

@@ -230,3 +230,17 @@ it("also handles saved WebM and Matroska video without changing originals", asyn
     expect(response.headers.get("content-type")).toBe("video/mp4");
   }
 }, 20000);
+
+it.each(["video/quicktime", "video/x-m4v"])(
+  "serves a browser-compatible hover clip for imported %s",
+  async (mime) => {
+    const id = mime.split("/")[1];
+    fixture.contents.set(id, fixture.contents.get("video")!);
+    fixture.types.set(id, mime);
+    const response = await app().request(`/assets/${id}/hover-clip`);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("video/mp4");
+    expect(fixture.contents.get(id)).toEqual(fixture.contents.get("video"));
+  },
+  20000,
+);

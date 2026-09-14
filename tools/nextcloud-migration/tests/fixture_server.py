@@ -103,7 +103,7 @@ class Fixture:
                     return self.send({"contractVersion": CONTRACT, "storageMode": "copy", "physicalReuse": False,
                                       "persistentDeferred": True, "materialize": fixture.materialize,
                                       "maxAttachments": 1, "maxFileBytes": 52428800, "maxMetadataBytes": 4194304,
-                                      "supportedMimeTypes": ["image/png", "image/jpeg", "image/webp", "image/gif", "application/pdf"],
+                                      "supportedMimeTypes": ["image/png", "image/jpeg", "image/webp", "image/gif", "application/pdf", "video/mp4", "video/webm", "video/quicktime", "video/x-m4v"],
                                       "historicalResolution": False, "stagePermits": False})
                 if path in (BASE + "/lookup", BASE + "/reservations"):
                     payload = json.loads(raw)

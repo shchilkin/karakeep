@@ -1,6 +1,7 @@
 "use client";
 
-import { Images } from "lucide-react";
+import { Images, Play } from "lucide-react";
+import BookmarkCardVideo from "./BookmarkCardVideo";
 
 import Image from "next/image";
 import Link from "next/link";
@@ -11,6 +12,7 @@ import { FileText } from "lucide-react";
 import type { ZBookmarkTypeAsset } from "@karakeep/shared/types/bookmarks";
 import {
   getAssetUrl,
+  getAssetHoverClipUrl,
   getAssetThumbnailUrl,
   getAssetThumbnailSrcSet,
 } from "@karakeep/shared/utils/assetUtils";
@@ -42,6 +44,7 @@ function AssetImage({
         </Link>
       );
     }
+    case "video":
     case "pdf": {
       const screenshotAssetId = bookmark.assets.find(
         (r) => r.assetType === "assetScreenshot",
@@ -101,7 +104,7 @@ export default function AssetCard({
         )
       }
       bookmark={bookmarkedAsset}
-      imageFirst={bookmarkedAsset.content.assetType === "image"}
+      imageFirst={bookmarkedAsset.content.assetType !== "pdf"}
       className={className}
       bookmarkIndex={bookmarkIndex}
       wrapTags={true}
@@ -118,6 +121,38 @@ export default function AssetCard({
             <span>{t("duplicates.deferred_snapshot")}</span>
             <span className="underline">
               {t("duplicates.show_saved_original")}
+            </span>
+          </Link>
+        ) : bookmarkedAsset.content.assetType === "video" ? (
+          <Link
+            href={`/dashboard/preview/${bookmarkedAsset.id}`}
+            className="relative block"
+          >
+            {importedPreview ? (
+              <BookmarkCardVideo
+                src={getAssetHoverClipUrl(bookmarkedAsset.content.assetId)}
+                poster={getAssetUrl(importedPreview)}
+                alt={
+                  bookmarkedAsset.title ??
+                  bookmarkedAsset.content.fileName ??
+                  "Video"
+                }
+                dimensions={bookmarkedAsset.assets.find(
+                  (asset) => asset.id === importedPreview,
+                )}
+                naturalSize={layout === "masonry"}
+                className={className}
+              />
+            ) : (
+              <div className="flex min-h-40 items-center justify-center">
+                <Play />
+              </div>
+            )}
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute right-3 top-3 rounded-md bg-black/80 p-1.5 text-white"
+            >
+              <Play className="size-3.5" />
             </span>
           </Link>
         ) : bookmarkedAsset.content.assetType === "image" &&

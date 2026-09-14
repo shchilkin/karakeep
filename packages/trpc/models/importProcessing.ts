@@ -1,3 +1,4 @@
+import { isImportVideoMime } from "@karakeep/shared/types/deferredImport";
 import { randomUUID } from "node:crypto";
 import { TRPCError } from "@trpc/server";
 import { and, eq } from "drizzle-orm";
@@ -92,14 +93,24 @@ export function releaseImportProcessing(
       if (
         !file ||
         file.state !== "verified" ||
-        !["image/jpeg", "image/png", "image/gif", "image/webp"].includes(
-          file.detectedMime ?? "",
-        )
+        (!isImportVideoMime(file.detectedMime) &&
+          !["image/jpeg", "image/png", "image/gif", "image/webp"].includes(
+            file.detectedMime ?? "",
+          ))
+      )
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Processing release supports verified images and videos.",
+        });
+      // Video ingestion only releases CPU previews/search. Set-level AI is a separate release.
+      if (
+        isImportVideoMime(file.detectedMime) &&
+        importStageOrder[input.stage] > importStageOrder.search
       )
         throw new TRPCError({
           code: "BAD_REQUEST",
           message:
-            "Processing release currently supports verified images only.",
+            "Imported videos currently support preview and search stages only.",
         });
       const prior = tx
         .select()

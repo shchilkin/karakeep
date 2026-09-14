@@ -145,9 +145,13 @@ export async function serveHoverClip(
     getAssetSize({ assetId, userId }),
   ]);
   if (
-    !["video/mp4", "video/webm", "video/x-matroska"].includes(
-      metadata.contentType,
-    )
+    ![
+      "video/mp4",
+      "video/webm",
+      "video/x-matroska",
+      "video/quicktime",
+      "video/x-m4v",
+    ].includes(metadata.contentType)
   )
     return c.json({ error: "No hover clip for this file type" }, 415);
   if (size > maxInputBytes)

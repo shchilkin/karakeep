@@ -8,6 +8,19 @@ export type BookmarkMedia = BookmarkImage & { video?: { posterId?: string } };
 /** Ordered originals; generated video posters never become extra slides. */
 export function getBookmarkMedia(bookmark: ZBookmark): BookmarkMedia[] {
   if (bookmark.imageSet) return bookmark.imageSet.members.map((m) => m.image);
+  if (
+    bookmark.content.type === BookmarkTypes.ASSET &&
+    bookmark.content.assetType === "video"
+  ) {
+    const { assetId } = bookmark.content;
+    const original = bookmark.assets.find((asset) => asset.id === assetId);
+    if (!original) return [];
+    const posterId = bookmark.importProcessing?.previewReady
+      ? (bookmark.importProcessing.previewAssetId ?? undefined)
+      : bookmark.assets.find((asset) => asset.assetType === "assetScreenshot")
+          ?.id;
+    return [{ ...original, video: { posterId } }];
+  }
   if (bookmark.content.type !== BookmarkTypes.LINK) return [];
   const originals = bookmark.assets.filter(
     (asset) =>
