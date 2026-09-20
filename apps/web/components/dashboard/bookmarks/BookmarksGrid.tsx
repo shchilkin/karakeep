@@ -6,6 +6,7 @@ import ActionConfirmingDialog from "@/components/ui/action-confirming-dialog";
 import useBulkActionsStore from "@/lib/bulkActions";
 import { bookmarkCardImageRatio } from "@/lib/bookmarkCardHeight";
 import { useBookmarkKeyboardNavigation } from "@/lib/hooks/useBookmarkKeyboardNavigation";
+import { useAutoLoadMore } from "@/lib/hooks/useAutoLoadMore";
 import { useTranslation } from "@/lib/i18n/client";
 import { useInBookmarkGridStore } from "@/lib/store/useInBookmarkGridStore";
 import { useKeyboardNavigationStore } from "@/lib/store/useKeyboardNavigationStore";
@@ -153,6 +154,12 @@ export default function BookmarksGrid({
   );
   const withinListContext = useBookmarkListContext();
   const { ref: loadMoreRef, inView: loadMoreButtonInView } = useInView();
+  const requestNextPage = useAutoLoadMore({
+    inView: loadMoreButtonInView,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
+  });
 
   // For list/compact layouts, navigation is single-column
   const isListLayout = layout === "list" || layout === "compact";
@@ -174,7 +181,7 @@ export default function BookmarksGrid({
     columns: navColumns,
     hasNextPage,
     isFetchingNextPage,
-    fetchNextPage,
+    fetchNextPage: requestNextPage,
   });
 
   useEffect(() => {
@@ -193,12 +200,6 @@ export default function BookmarksGrid({
       setInBookmarkGrid(false);
     };
   }, [setInBookmarkGrid]);
-
-  useEffect(() => {
-    if (loadMoreButtonInView && hasNextPage && !isFetchingNextPage) {
-      fetchNextPage();
-    }
-  }, [fetchNextPage, hasNextPage, isFetchingNextPage, loadMoreButtonInView]);
 
   const ids = useMemo(
     () => [
@@ -277,12 +278,14 @@ export default function BookmarksGrid({
         }
       />
       {hasNextPage && (
-        <div className="flex justify-center">
+        // The virtual grid manages its own scroll anchor. Its trailing button
+        // must not become a browser anchor that follows every appended page.
+        <div className="flex justify-center [overflow-anchor:none]">
           <ActionButton
             ref={loadMoreRef}
             ignoreDemoMode={true}
             loading={isFetchingNextPage}
-            onClick={() => fetchNextPage()}
+            onClick={() => void requestNextPage()}
             variant="ghost"
           >
             Load More

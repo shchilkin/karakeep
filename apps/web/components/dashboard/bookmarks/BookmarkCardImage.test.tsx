@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import type { CardImageDimensionsSlot } from "@/lib/cardImageDimensions";
 import { CardImageDimensionsContext } from "@/lib/cardImageDimensions";
@@ -11,6 +17,71 @@ vi.mock("@/lib/i18n/client", () => ({
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.useRealTimers();
+});
+
+it("retries a failed thumbnail with its responsive sources and preserves geometry", () => {
+  vi.useFakeTimers();
+  vi.spyOn(Math, "random").mockReturnValue(0);
+  const src = "/api/assets/photo/thumbnail?width=640";
+  const srcSet = `${src} 640w, /api/assets/photo/thumbnail?width=1280 1280w`;
+  const { container } = render(
+    <BookmarkCardImage
+      src={src}
+      srcSet={srcSet}
+      alt="Retry"
+      naturalSize
+      dimensions={{ width: 640, height: 960 }}
+    />,
+  );
+  const first = screen.getByAltText("Retry");
+  fireEvent.error(first);
+  expect(container.querySelector('[aria-busy="true"]')).toBeTruthy();
+  expect(screen.queryByText("preview.gallery.load_error")).toBeNull();
+  act(() => {
+    vi.advanceTimersByTime(1000);
+  });
+  const retried = screen.getByAltText("Retry");
+  expect(retried).not.toBe(first);
+  expect(retried.getAttribute("src")).toBe(src);
+  expect(retried.getAttribute("srcset")).toBe(srcSet);
+  expect(
+    container.querySelector<HTMLElement>("[aria-busy]")!.style.aspectRatio,
+  ).toBe("640 / 960");
+  fireEvent.load(retried);
+  expect(container.querySelector('[aria-busy="true"]')).toBeNull();
+  act(() => {
+    vi.runAllTimers();
+  });
+  expect(screen.getByAltText("Retry")).toBe(retried);
+});
+
+it("bounds thumbnail retries and cancels pending work on unmount", () => {
+  vi.useFakeTimers();
+  vi.spyOn(Math, "random").mockReturnValue(0);
+  const tree = (
+    <BookmarkCardImage
+      src="/api/assets/broken/thumbnail?width=640"
+      alt="Broken"
+      naturalSize
+    />
+  );
+  const { unmount } = render(tree);
+  for (const delay of [1000, 2000, 4000]) {
+    fireEvent.error(screen.getByAltText("Broken"));
+    act(() => {
+      vi.advanceTimersByTime(delay);
+    });
+  }
+  fireEvent.error(screen.getByAltText("Broken"));
+  expect(screen.getByText("preview.gallery.load_error")).toBeTruthy();
+  expect(vi.getTimerCount()).toBe(0);
+  unmount();
+  const next = render(tree);
+  fireEvent.error(screen.getByAltText("Broken"));
+  expect(vi.getTimerCount()).toBe(1);
+  next.unmount();
+  expect(vi.getTimerCount()).toBe(0);
 });
 
 it("reserves a placeholder until loaded, resets on replacement and handles failure", () => {

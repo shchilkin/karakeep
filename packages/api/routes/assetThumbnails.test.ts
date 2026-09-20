@@ -45,6 +45,27 @@ vi.mock("@karakeep/trpc/models/assets", () => ({
 vi.mock("../utils/upload", () => ({ uploadAsset: vi.fn() }));
 vi.mock("../utils/assets", () => ({ serveAsset: vi.fn() }));
 import assets from "./assets";
+import {
+  MediaPreviewCache,
+  PreviewBusyError,
+} from "../utils/mediaPreviewCache";
+
+it("does not cache temporary overload and allows the same thumbnail to recover", async () => {
+  const get = vi
+    .spyOn(MediaPreviewCache.prototype, "get")
+    .mockRejectedValueOnce(new PreviewBusyError());
+  try {
+    const response = await app().request("/assets/photo/thumbnail?width=320");
+    expect(response.status).toBe(503);
+    expect(response.headers.get("retry-after")).toBe("1");
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(
+      (await app().request("/assets/photo/thumbnail?width=320")).status,
+    ).toBe(200);
+  } finally {
+    get.mockRestore();
+  }
+});
 
 function app(user = "owner", scopes?: string[]) {
   return new Hono<{ Variables: { ctx: AuthedContext } }>()

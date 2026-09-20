@@ -84,6 +84,7 @@ export async function serveThumbnail(
     return c.body(new Uint8Array(buffer));
   } catch (error) {
     if (error instanceof PreviewBusyError) {
+      c.header("Cache-Control", "no-store");
       c.header("Retry-After", "1");
       return c.json({ error: "Thumbnail generation is busy" }, 503);
     }

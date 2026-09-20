@@ -1,4 +1,4 @@
-import { useCallback, useContext, useState } from "react";
+import { useCallback, useContext, useEffect, useState } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   CardImageDimensionsContext,
@@ -30,9 +30,25 @@ export default function BookmarkCardImage({
   const [learnedDimensions, setDimensions] = useState(() =>
     savedDimensions?.current?.src === src ? savedDimensions.current : undefined,
   );
-  const [status, setStatus] = useState<"loading" | "ready" | "error">(
-    "loading",
-  );
+  const [status, setStatus] = useState<
+    "loading" | "retrying" | "ready" | "error"
+  >("loading");
+  const [attempt, setAttempt] = useState(0);
+  const loading = status === "loading" || status === "retrying";
+  useEffect(() => {
+    if (status !== "retrying") return;
+    // img errors do not expose HTTP status. Retry only our generated thumbnails,
+    // at most three times, keeping native lazy loading and responsive sources.
+    // Wait at least the endpoint's Retry-After: 1; jitter avoids another burst.
+    const timer = setTimeout(
+      () => {
+        setAttempt((value) => value + 1);
+        setStatus("loading");
+      },
+      1000 * 2 ** attempt * (1 + Math.random() * 0.5),
+    );
+    return () => clearTimeout(timer);
+  }, [status, attempt]);
   const loaded = useCallback(
     (image: HTMLImageElement) => {
       if (image.naturalWidth > 0 && image.naturalHeight > 0) {
@@ -69,7 +85,7 @@ export default function BookmarkCardImage({
         !naturalSize && "h-full",
       )}
       style={naturalSize ? { aspectRatio } : undefined}
-      aria-busy={status === "loading"}
+      aria-busy={loading}
     >
       {status === "error" ? (
         <span
@@ -90,18 +106,19 @@ export default function BookmarkCardImage({
             aria-hidden="true"
             className={cn(
               "pointer-events-none absolute inset-0 animate-none rounded-[inherit] bg-muted-foreground/25 transition-opacity duration-150 motion-reduce:transition-none",
-              status === "loading" ? "opacity-100" : "opacity-0 delay-150",
+              loading ? "opacity-100" : "opacity-0 delay-150",
             )}
           >
             <span
               className="motion-safe:animate-media-shimmer absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/30 to-transparent motion-reduce:hidden"
               style={{
-                animationPlayState: status === "loading" ? "running" : "paused",
+                animationPlayState: loading ? "running" : "paused",
               }}
             />
           </Skeleton>
           {/* eslint-disable-next-line @next/next/no-img-element -- Authenticated server thumbnails supply responsive sources directly. */}
           <img
+            key={attempt}
             ref={imageRef}
             src={src}
             alt={alt}
@@ -117,10 +134,17 @@ export default function BookmarkCardImage({
             decoding="async"
             loading="lazy"
             onLoad={(event) => loaded(event.currentTarget)}
-            onError={() => setStatus("error")}
+            onError={() =>
+              setStatus(
+                attempt < 3 &&
+                  /^\/api\/assets\/[^/]+\/thumbnail(?:\?|$)/.test(src)
+                  ? "retrying"
+                  : "error",
+              )
+            }
             className={cn(
               "relative block w-full transition-opacity duration-150 motion-reduce:transition-none",
-              status === "loading" ? "opacity-0" : "opacity-100",
+              loading ? "opacity-0" : "opacity-100",
               naturalSize
                 ? "absolute inset-0 h-full object-contain"
                 : "aspect-square h-full",
