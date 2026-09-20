@@ -153,9 +153,10 @@ export default function BookmarksGrid({
     (state) => state.setInBookmarkGrid,
   );
   const withinListContext = useBookmarkListContext();
-  const { ref: loadMoreRef, inView: loadMoreButtonInView } = useInView();
+  const { ref: loadMoreRef, inView: loadMoreButtonInView, entry } = useInView();
   const requestNextPage = useAutoLoadMore({
     inView: loadMoreButtonInView,
+    boundary: entry?.target,
     hasNextPage,
     isFetchingNextPage,
     fetchNextPage,
