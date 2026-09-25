@@ -4,7 +4,10 @@ import { createHash, randomUUID } from "node:crypto";
 import { and, eq, gt, inArray, lt, lte, notExists, or, sql } from "drizzle-orm";
 import sharp from "sharp";
 import { importVideoFrame } from "./importVideoPreview";
-import { isImportVideoMime } from "@karakeep/shared/types/deferredImport";
+import {
+  isImportVideoMime,
+  MAX_IMPORT_PREVIEW_BYTES,
+} from "@karakeep/shared/types/deferredImport";
 import type { DB } from "@karakeep/db";
 import { db } from "@karakeep/db";
 import {
@@ -48,7 +51,7 @@ export async function makeImportPreview(database: DB, item: Processing) {
     original.state !== "verified" ||
     !original.storedSha256 ||
     !original.storedSize ||
-    original.storedSize > 50 * 1024 * 1024 ||
+    original.storedSize > MAX_IMPORT_PREVIEW_BYTES ||
     original.assetId === item.previewAssetId
   )
     throw new ImportProcessingError("original_not_verified");

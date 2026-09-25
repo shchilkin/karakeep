@@ -15,6 +15,9 @@ const security = [{ [BearerAuth.name]: [] }];
 const tags = ["Deferred imports"];
 const json = (schema: z.ZodType) => ({ "application/json": { schema } });
 const errors = {
+  400: {
+    description: "Invalid input or unsupported processing representation.",
+  },
   401: UnauthorizedResponse,
   403: {
     description:
@@ -41,11 +44,11 @@ registry.registerPath({
   security,
   summary: "Read deferred copy import capabilities",
   description:
-    "Requires imports:read. Check contractVersion=deferred-copy-v1 and materialize=true before using the pilot. One original per revision, <=50 MiB, raw JSON metadata <=4 MiB. JPEG/PNG/GIF/WebP/PDF MIME signatures are accepted; no image decode or model is run. Historical resolution remains unavailable. Processing release supports verified images. Supported filesystem and all immutable-policy database barriers are required.",
+    "Requires imports:read. Check contractVersion=deferred-copy-v1 and materialize=true. One original per asset revision, or native link/text content with no attachments when supportedBookmarkTypes advertises it. maxFileBytes and ioTimeoutSeconds reflect configured import limits (defaults 50 MiB and 20 seconds); raw JSON metadata <=4 MiB. JPEG/PNG/GIF/WebP/PDF and MP4/WebM/QuickTime/M4V/Matroska signatures are accepted without decoding or models. Native support requires its additional database guards. Historical resolution remains unavailable. Processing is separate: native cards, PDFs and originals above maxProcessingFileBytes cannot be released.",
   responses: {
     200: {
       description:
-        "Contract version, materialize/persistentDeferred flags, storageMode=copy, physicalReuse=false, maxAttachments=1, maxFileBytes, maxMetadataBytes, supportedMimeTypes, stagePermits=true, processingStages=[preview,search,local_check,catalog], historicalResolution=false.",
+        "Contract version, materialize/persistentDeferred flags, supportedBookmarkTypes, storageMode=copy, physicalReuse=false, maxAttachments=1, maxFileBytes, ioTimeoutSeconds, maxMetadataBytes, supportedMimeTypes, maxProcessingFileBytes, processingBookmarkTypes, stagePermits, processingStages, historicalResolution=false.",
     },
     ...errors,
   },
@@ -58,7 +61,7 @@ registry.registerPath({
   security,
   summary: "Look up source identity and exact owner file matches",
   description:
-    "Read-only advisory lookup with imports:read. Requires the same body as reservation. Returns sourceMatch (new_source/same_revision/source_conflict), canonical operationId or null, at most 20 owner-only contentMatches, physicalReuse=false. Matching bytes never move an existing asset or overwrite a prior card.",
+    "Read-only advisory lookup with imports:read. Requires the same body as reservation. Returns sourceMatch (new_source/same_revision/source_conflict), canonical operationId or null, at most 20 owner-only contentMatches (empty for native content), physicalReuse=false. Matching bytes or native URLs never authorize moving an existing asset or overwriting a prior card.",
   request: { body: { required: true, content: json(zImportReservation) } },
   responses: {
     200: { description: "Advisory source and content matches." },
@@ -73,7 +76,7 @@ registry.registerPath({
   security,
   summary: "Reserve an immutable source revision",
   description:
-    "Requires imports:readwrite. Stable Idempotency-Key plus canonical-json-v1 payload identity: recursively sorted object keys, array order retained, UTF-8 JSON without Unicode normalization. The same source revision and payload returns its canonical operation even with another transport key. Conflict never updates the old source. Nonterminal expired leases renew fencingToken. Staging capacity is 16 nonterminal operations per owner and 64 globally; retained staging and metadata count toward quota. Raw reservation JSON is capped at 256 KiB.",
+    "Requires imports:readwrite. Without content, attachments must contain exactly one original (legacy identity unchanged). With content={type:link,url} or {type:text,text}, attachments must be empty and revisionKind current. Link URL must be HTTP(S); text must be nonblank and <=100000 characters. Stable Idempotency-Key plus canonical-json-v1 payload identity: recursively sorted keys, retained array order, UTF-8 JSON without Unicode normalization. Exact source revision/payload retries return the same operation across transport keys; conflicts never overwrite. Expired nonterminal leases renew fencingToken. Capacity is 16 nonterminal operations per owner and 64 globally; retained originals, metadata and native projections count toward quota. Reservation JSON <=256 KiB. The configured file cap applies to new reservations, not recovery of an existing receipt.",
   request: {
     headers: z.object({ "Idempotency-Key": z.string().min(1).max(200) }),
     body: { required: true, content: json(zImportReservation) },
@@ -151,7 +154,7 @@ registry.registerPath({
   security,
   summary: "Stream one original into private staging",
   description:
-    "Requires imports:readwrite. Server computes SHA-256/count, detects MIME signature, fsyncs and rereads the staged bytes. One shared I/O lease, 20-second stream deadlines, <=50 MiB. A declared historical revision, source/export mismatch or unsupported MIME remains held. Never creates a fake image or URL. An incomplete .part is not a verified file; no model, decoder, crawler or source URL fetch occurs.",
+    "Requires imports:readwrite. Asset reservations only. Server computes SHA-256/count, detects MIME signature, fsyncs and rereads staged bytes under one shared I/O lease. Configured original I/O deadlines and the reserved declared size are enforced. Historical revisions, source/export mismatches and unsupported MIME remain held. An incomplete .part is not verified. No model, decoder, crawler, source URL fetch or implicit conversion occurs.",
   request: {
     params: id.extend({ slot: z.string() }),
     headers: fenceHeaders,
@@ -190,9 +193,9 @@ registry.registerPath({
   path: "/import/reservations/{id}/commit",
   tags,
   security,
-  summary: "Atomically publish a deferred copied original",
+  summary: "Atomically publish a deferred source snapshot",
   description:
-    "Requires imports:readwrite. Verifies stage and target bytes, quota and fence, then commits a new asset bookmark, occurrence, source receipt, exact hash index and held internal import.committed outbox event together. A retry returns the same receipt. Separate sources or revisions receive separate cards and asset IDs even when bytes or source URLs match. The snapshot remains deferred and immutable; no release, generated thumbnail, AI, crawl, embeddings, rule or webhook is admitted. Private staged originals remain retained and count toward quota in addition to target copies. Normal legacy import APIs retain their previous semantics.",
+    "Requires imports:readwrite. Verifies raw metadata, quota and fence, plus staged/target bytes for assets. Atomically commits the native link/text projection or copied asset, source receipt and held import.committed outbox event. Native receipts have assets=[]; file receipts include the exact hash index and occurrence. A retry returns the same receipt. Distinct source identities remain separate even with identical bytes or URLs. The snapshot stays deferred and immutable: no release, thumbnail, AI, crawl, embeddings, rule or webhook is admitted. Private staged originals remain retained and count toward quota in addition to target copies. Legacy import APIs are unchanged.",
   request: {
     params: id,
     body: { required: true, content: json(zImportFence) },
@@ -229,9 +232,10 @@ registry.registerPath({
   path: "/import/reservations/{id}/release",
   tags,
   security,
-  summary: "Release a verified image through an explicit cumulative stage",
+  summary:
+    "Release bounded verified media through an explicit cumulative stage",
   description:
-    "Requires imports:readwrite. requestId is an immutable UUID for this request; expectedGeneration prevents stale transitions. Stages preview -> search -> local_check -> catalog preserve source fields and only add derived data. local_check runs local admission only; catalog requires enforced hybrid routing. Failed steps need an explicit retry. This does not enable ordinary crawler, OCR, embeddings, rules or webhooks. Read-only mode rejects writes.",
+    "Requires imports:readwrite. Native link/text, PDF and originals over 50 MiB are rejected before queuing; raising ingestion limits does not raise preview limits. Images support preview -> search -> local_check -> catalog; videos support preview/search only. requestId is an immutable UUID; expectedGeneration prevents stale transitions. Source fields remain retained. local_check runs local admission only; catalog requires enforced hybrid routing. Failed steps need explicit retry. Ordinary crawler, OCR, embeddings, rules and webhooks remain disabled. Read-only mode rejects writes.",
   request: {
     params: id,
     body: { required: true, content: json(zReleaseImport) },

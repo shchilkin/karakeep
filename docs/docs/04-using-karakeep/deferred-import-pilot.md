@@ -1,17 +1,43 @@
 # Deferred source import pilot
 
-The `/api/v1/import` API imports one original and its full source metadata into a new, private asset bookmark. This bounded pilot is separate from the older import-session API. Existing capture and import-session behavior remains unchanged.
+The `/api/v1/import` API imports a source snapshot and its full metadata into a new, private bookmark: one copied original, or native link/text content without a fake file. This bounded pilot is separate from the older import-session API. Existing capture and import-session behavior remains unchanged.
 
-The client must first check `GET /api/v1/import/capabilities`: contract version `deferred-copy-v1`, `persistentDeferred: true` and `materialize: true`. The server requires filesystem asset storage and all policy/retention barriers from migration `0099_deferred_import_foundation`. It supports one original per source revision, up to 50 MiB, and a raw UTF-8 JSON metadata envelope up to 4 MiB. MIME is detected from the original signature, independently of the filename. Supported representations are JPEG, PNG, GIF, WebP and PDF; validation does not decode images or prove that every file is renderable.
+The client must first check `GET /api/v1/import/capabilities`: contract version `deferred-copy-v1`, `persistentDeferred: true` and `materialize: true`. The server requires filesystem asset storage and all policy/retention barriers from migration `0099_deferred_import_foundation`. An asset has one original, bounded by advertised `maxFileBytes`, and a raw UTF-8 JSON metadata envelope up to 4 MiB. MIME is detected independently of the filename. Supported signatures are JPEG, PNG, GIF, WebP, PDF, MP4, WebM, QuickTime, M4V and Matroska. EBML imports require a bounded header with a real DocType, not a word elsewhere in the file. Signature recognition does not decode or prove renderability; successful MKV archival does not guarantee browser playback.
+
+### Configurable ingestion, separately bounded processing
+
+`IMPORT_MAX_FILE_SIZE_MB` defaults to **50 MiB** and accepts integer values 1–4096. `IMPORT_IO_TIMEOUT_SEC` defaults to **20 seconds** and accepts 20–600 for each original read/copy pass. Capabilities report both settings. Writer leases cover the bounded passes; hash, declared-size, disk headroom, quota and fencing checks remain mandatory. Existing reservations/receipts can recover after the admission cap is lowered. These settings do not change ordinary `MAX_ASSET_SIZE_MB` uploads. Metadata upload stays bounded at 4 MiB/20 seconds.
+
+Larger admission is opt-in on both server and migration client, not a deployment performed by this patch. Choose a cap from measured source sizes and disk capacity, and align client/proxy timeouts with the slowest copy/readback path. No setting bypasses upstream transport limits. Preview still reads the entire original into memory and remains capped at **50 MiB** (`maxProcessingFileBytes`). Release rejects larger originals before queuing; native cards and PDFs also remain unreleasable. No search or AI work is implicitly released by import.
+
+### Native link/text snapshot
+
+Require `supportedBookmarkTypes` to explicitly contain the intended type; absence means asset-only. Migration `0103_deferred_native_content` installs additional link/text update, delete and replacement barriers. Missing guards disable native admission, including writes to already reserved native operations. Legacy requests omit `content`; no defaults or transforms change their canonical payload digest.
+
+Use the same reservation body, replacing the single attachment with `attachments: []` and adding exactly one of:
+
+```json
+{"content": {"type": "link", "url": "https://example.invalid/saved-page"}, "attachments": []}
+```
+
+```json
+{"content": {"type": "text", "text": "Original note\nSecond paragraph."}, "attachments": []}
+```
+
+These are fragments, not complete requests. Source identity, `revisionKind: current`, metadata hash/size, mapping, completeness and deferred/copy policy remain required. Links must be HTTP(S), text nonblank and at most 100000 characters; the entire reservation remains bounded at 256 KiB. The URL is never fetched. The mapped title, note, tags and saved date are retained, with text source URL in its projection and all fields in the immutable payload/raw envelope. No rich-text conversion or attachment discovery is implied. Different source IDs with the same URL create distinct snapshots; identical-source retries reuse the receipt.
+
+Upload only the reserved raw metadata, then verify/commit normally. Native status has `files: []` and receipts have `assets: []`. Completion requires independently hashing the returned metadata and reading back exact link URL/text and source mapping, plus deferred policy and held generation 0. A native card is not evidence that its referenced images, carousel, screenshot or video bytes were saved. Keep unknown completeness and unresolved descriptors explicit.
+
+Before the first native commit, verify a consistent backup and a native-aware rollback plan. Older binaries assume an original attachment in every reservation: an image-only downgrade after native records exist is not a safe import rollback. Do not rewrite/delete native records to make old code run; recovery requires a separately approved compatible build or consistent restore plan.
 
 ## Import sequence
 
 Use an API key with `imports:readwrite`, `assets:read` and `bookmarks:read` for import plus independent original and card-metadata verification. Read-only import inspection can use `imports:read`. The authenticated user is the owner; requests cannot choose another owner or supply a server filesystem path. Transport locators in metadata are provenance, never URLs the server fetches.
 
 1. Send the strict reservation body defined by `packages/shared/types/deferredImport.ts` to `POST /lookup` for advisory source/content matches, then `POST /reservations` with a stable `Idempotency-Key`. All routes here use the `/api/v1/import` prefix.
-2. Upload the exact reserved metadata bytes with `PUT /reservations/{id}/metadata` and the original stream with `PUT /reservations/{id}/files/{slot}`. Both require `X-Import-Fence` from the reservation. Preserve all unknown/not-exported source fields in the raw envelope; mapped title, note, source URL, dates and tags supplement it.
+2. Upload the exact reserved metadata bytes with `PUT /reservations/{id}/metadata`; for assets also upload the original stream with `PUT /reservations/{id}/files/{slot}`. Both require `X-Import-Fence` from the reservation. Preserve all unknown/not-exported source fields in the raw envelope; mapped title, note, source URL, dates and tags supplement it.
 3. Call `POST /reservations/{id}/verify`, then `/commit`, with `{ "fencingToken": 1 }` using the current token. The server rereads the stage and the promoted target before publishing any card.
-4. Save the commit receipt. Independently download the full original from `/api/v1/assets/{assetId}` and the exact metadata from the receipt's relative `metadataUrl`; compare their SHA-256 checksums and actual byte counts. Do not substitute a thumbnail, Range response, HTTP success code or receipt field for this readback.
+4. Save the commit receipt. Independently download the full original (assets only) from `/api/v1/assets/{assetId}` and the exact metadata from the receipt's relative `metadataUrl`; compare their SHA-256 checksums and actual byte counts. Read back the card mapping/content. Do not substitute a thumbnail, Range response, HTTP success code or receipt field for this readback.
 
 `GET /reservations/{id}` recovers status and a committed receipt after a lost response. `leaseUntil` is epoch milliseconds. Re-reserving the same nonterminal payload after expiry renews the fence; a stale writer cannot publish. A concurrent I/O request returns 429 busy: inspect status, then retry the same operation later with the same approved subset. This temporary refusal does not hold the source. Exact source revision/payload retries converge on one card and receipt even with different transport keys. The same key or source revision with another payload is a 409 conflict.
 

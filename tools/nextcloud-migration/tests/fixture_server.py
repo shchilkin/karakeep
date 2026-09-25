@@ -32,6 +32,7 @@ class Fixture:
         self.corrupt_date = False
         self.source_truncate_once = False
         self.materialize = True
+        self.bookmark_types = ["asset", "link", "text"]
         self.content_matches = []
         self.fence = 1
         self.recipe_error = None
@@ -102,8 +103,9 @@ class Fixture:
                 if path == BASE + "/capabilities":
                     return self.send({"contractVersion": CONTRACT, "storageMode": "copy", "physicalReuse": False,
                                       "persistentDeferred": True, "materialize": fixture.materialize,
+                                      "supportedBookmarkTypes": fixture.bookmark_types,
                                       "maxAttachments": 1, "maxFileBytes": 52428800, "maxMetadataBytes": 4194304,
-                                      "supportedMimeTypes": ["image/png", "image/jpeg", "image/webp", "image/gif", "application/pdf", "video/mp4", "video/webm", "video/quicktime", "video/x-m4v"],
+                                      "supportedMimeTypes": ["image/png", "image/jpeg", "image/webp", "image/gif", "application/pdf", "video/mp4", "video/webm", "video/quicktime", "video/x-m4v", "video/x-matroska"],
                                       "historicalResolution": False, "stagePermits": False})
                 if path in (BASE + "/lookup", BASE + "/reservations"):
                     payload = json.loads(raw)
@@ -151,7 +153,7 @@ class Fixture:
                     if suffix in ("verify", "commit"):
                         if json.loads(raw)["fencingToken"] != op["fencingToken"]:
                             return self.send({}, 409)
-                        if op["metadata"] is None or op["original"] is None:
+                        if op["metadata"] is None or "content" not in op["payload"] and op["original"] is None:
                             return self.send({}, 409)
                         if suffix == "verify":
                             op["state"] = "verified"
@@ -159,12 +161,13 @@ class Fixture:
                         op["state"] = "committed"
                         if not op["receipt"]:
                             num = rest[0].split("-")[-1]
-                            expected = op["payload"]["attachments"][0]["observed"]
+                            original = op["payload"]["attachments"]
+                            expected = original[0]["observed"] if original else None
                             op["receipt"] = {"operationId": rest[0], "sourceRevisionId": rest[0],
                                              "bookmarkId": "bookmark-" + num,
                                              "assets": [{"slot": "original", "assetId": "asset-" + num,
                                                          "storedSha256": expected["sha256"], "storedSize": expected["size"],
-                                                         "storageGeneration": "generation-" + num}],
+                                                         "storageGeneration": "generation-" + num}] if expected else [],
                                              "metadataSha256": op["payload"]["metadata"]["sha256"],
                                              "metadataSize": op["payload"]["metadata"]["size"],
                                              "metadataUrl": BASE + "/reservations/" + rest[0] + "/metadata",
@@ -175,7 +178,7 @@ class Fixture:
                     receipt = op["receipt"]
                     if not receipt:
                         continue
-                    if path == "/api/v1/assets/" + receipt["assets"][0]["assetId"]:
+                    if receipt["assets"] and path == "/api/v1/assets/" + receipt["assets"][0]["assetId"]:
                         value = op["original"]
                         return self.send(value[:-1] + b"X" if fixture.corrupt_original else value)
                     if path == "/api/v1/bookmarks/" + receipt["bookmarkId"]:
@@ -184,12 +187,17 @@ class Fixture:
                         if mapping['savedAt']:
                             date = datetime.fromisoformat(mapping['savedAt'].replace('Z', '+00:00'))
                             projected_date = (date.replace(microsecond=0) + timedelta(seconds=int(fixture.corrupt_date))).isoformat()
+                        content = op["payload"].get("content")
+                        content = dict(content) if content else {"type": "asset", "assetId": receipt["assets"][0]["assetId"]}
+                        if content["type"] != "link":
+                            content["sourceUrl"] = mapping["sourceUrl"]
                         return self.send({"id": receipt["bookmarkId"],
                                           "title": "Wrong mapping" if fixture.corrupt_mapping else mapping["title"],
                                           "note": mapping["note"], "createdAt": projected_date,
                                           "tags": [{"name": tag.strip().lstrip("#").strip()} for tag in mapping["tags"]],
-                                          "content": {"type": "asset", "assetId": receipt["assets"][0]["assetId"],
-                                                      "sourceUrl": mapping["sourceUrl"]}})
+                                          "processingPolicy": "deferred",
+                                          "importProcessing": {"state": "held", "generation": 0},
+                                          "content": content})
                 return self.send({}, 404)
 
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
@@ -197,7 +205,8 @@ class Fixture:
         self.origin = "http://127.0.0.1:" + str(self.server.server_port)
 
     def status(self, op):
-        expected = op["payload"]["attachments"][0]["observed"]
+        original = op["payload"]["attachments"]
+        expected = original[0]["observed"] if original else None
         return {"operationId": op["operationId"], "sourceRevisionId": op["operationId"],
                 "state": op["state"], "payloadDigest": op["payloadDigest"],
                 "fencingToken": op["fencingToken"], "leaseUntil": 2000000000000,
@@ -205,8 +214,17 @@ class Fixture:
                 "files": [{"slot": "original", "state": "verified" if op["original"] else "pending",
                            "detectedMime": sniff(op["original"] or b""),
                            "storedSha256": expected["sha256"] if op["original"] else None,
-                           "storedSize": expected["size"] if op["original"] else None}],
+                           "storedSize": expected["size"] if op["original"] else None}] if expected else [],
                 "receipt": op["receipt"]}
+
+    def native_document(self, kind="link", object_id=None):
+        return {"provider": "mymind", "accountScope": "synthetic-native", "sourceObjectId": object_id or kind,
+                "revisionKind": "current",
+                "content": {"type": "link", "url": "https://example.invalid/never-fetch"} if kind == "link"
+                           else {"type": "text", "text": "Сохранённая заметка\nSecond line."},
+                "mapping": {"title": "Cached title", "note": "Source note", "sourceUrl": "https://example.invalid/source",
+                            "savedAt": "2021-03-30T10:13:53.743900Z", "tags": ["#reference", "source tag"]},
+                "metadata": {"unmappedFields": {"attachments": ["preserved-reference-not-downloaded"]}}}
 
     def document(self, object_id="synthetic-one", body=PNG, filename="misleading.json"):
         path = "MyMind/Files/" + object_id + "/" + filename

@@ -10,7 +10,7 @@ CONTRACT = "deferred-copy-v1"
 BASE = "/api/v1/import"
 MAX_FILE = 50 * 1024 * 1024
 MAX_METADATA = 4 * 1024 * 1024
-MIMES = {"image/jpeg", "image/png", "image/webp", "image/gif", "application/pdf", "video/mp4", "video/webm", "video/quicktime", "video/x-m4v"}
+MIMES = {"image/jpeg", "image/png", "image/webp", "image/gif", "application/pdf", "video/mp4", "video/webm", "video/quicktime", "video/x-m4v", "video/x-matroska"}
 
 
 def reservation_payload(item, metadata):
@@ -50,9 +50,12 @@ def reservation_payload(item, metadata):
 
 
 class Target:
-    def __init__(self, http, minimum_write_gap=3):
+    def __init__(self, http, minimum_write_gap=3, max_file_bytes=MAX_FILE):
+        if type(max_file_bytes) is not int or not 1 <= max_file_bytes <= 4096 * 1024**2:
+            raise Failure("invalid_client_file_limit")
         self.http = http
         self.minimum_write_gap = minimum_write_gap
+        self.max_file_bytes = max_file_bytes
 
     def capabilities(self):
         try:
@@ -69,9 +72,11 @@ class Target:
                 or type(caps.get("maxFileBytes")) is not int or caps["maxFileBytes"] < 1
                 or type(caps.get("maxMetadataBytes")) is not int or caps["maxMetadataBytes"] < 1):
             raise Failure("foundation_capabilities_unavailable")
-        return {"maxFileBytes": min(caps["maxFileBytes"], MAX_FILE),
+        return {"maxFileBytes": min(caps["maxFileBytes"], self.max_file_bytes),
                 "maxMetadataBytes": min(caps["maxMetadataBytes"], MAX_METADATA),
-                "supportedMimeTypes": set(caps["supportedMimeTypes"]) & MIMES}
+                "supportedMimeTypes": set(caps["supportedMimeTypes"]) & MIMES,
+                # Absence means an older, asset-only server, never native support.
+                "supportedBookmarkTypes": caps.get("supportedBookmarkTypes", ["asset"])}
 
     def check_status(self, status, payload, operation_id=None):
         operation_id = opaque(operation_id or status.get("operationId"))
@@ -135,15 +140,21 @@ class Target:
         manifest.pace_write(self.minimum_write_gap)
         result = self.http.upload(path + "/metadata", io.BytesIO(metadata), len(metadata), fence, "application/json")
         self.check_status(result, payload, operation_id)
-        manifest.pace_write(self.minimum_write_gap)
-        with original.open("rb") as source:
-            result = self.http.upload(path + "/files/original", source, original.stat().st_size, fence,
-                                      "application/octet-stream")
-        self.check_status(result, payload, operation_id)
+        if "content" not in payload:
+            manifest.pace_write(self.minimum_write_gap)
+            with original.open("rb") as source:
+                result = self.http.upload(path + "/files/original", source, original.stat().st_size, fence,
+                                          "application/octet-stream")
+            self.check_status(result, payload, operation_id)
         manifest.pace_write(self.minimum_write_gap)
         result = self.http.json("POST", path + "/verify", {"fencingToken": fence})
         self.check_status(result, payload, operation_id)
         files = result.get("files")
+        if "content" in payload:
+            if result["state"] != "verified" or result.get("metadataVerified") is not True or files != []:
+                raise Failure("target_stage_not_verified")
+            manifest.update(item["key"], phase="uploaded")
+            return result
         observed = payload["attachments"][0]["observed"]
         if (result["state"] != "verified" or result.get("metadataVerified") is not True
                 or not isinstance(files, list) or len(files) != 1 or files[0].get("slot") != "original"
@@ -175,20 +186,26 @@ class Target:
     def check_receipt(self, receipt, payload, operation_id):
         if not isinstance(receipt, dict):
             raise Failure("invalid_target_receipt")
-        expected = payload["attachments"][0]["observed"]
         assets = receipt.get("assets")
         if (receipt.get("operationId") != operation_id or receipt.get("sourceRevisionId") != operation_id
                 or receipt.get("processingPolicy") != "deferred" or receipt.get("physicalReuse") is not False
                 or receipt.get("policyRevision") != 1 or receipt.get("contentRevision") != 1
                 or receipt.get("metadataSha256") != payload["metadata"]["sha256"]
-                or receipt.get("metadataSize") != payload["metadata"]["size"]
-                or not isinstance(assets, list) or len(assets) != 1 or assets[0].get("slot") != "original"
-                or assets[0].get("storedSha256") != expected["sha256"]
-                or assets[0].get("storedSize") != expected["size"]
-                or not isinstance(assets[0].get("storageGeneration"), str) or not assets[0]["storageGeneration"]):
+                or receipt.get("metadataSize") != payload["metadata"]["size"]):
             raise Failure("target_receipt_mismatch")
         opaque(receipt.get("bookmarkId"))
-        opaque(assets[0].get("assetId"))
+        if "content" in payload:
+            if assets != []:
+                raise Failure("target_receipt_mismatch")
+        else:
+            expected = payload["attachments"][0]["observed"]
+            if (not isinstance(assets, list) or len(assets) != 1 or not isinstance(assets[0], dict)
+                    or assets[0].get("slot") != "original"
+                    or assets[0].get("storedSha256") != expected["sha256"]
+                    or assets[0].get("storedSize") != expected["size"]
+                    or not isinstance(assets[0].get("storageGeneration"), str) or not assets[0]["storageGeneration"]):
+                raise Failure("target_receipt_mismatch")
+            opaque(assets[0].get("assetId"))
         expected_path = BASE + "/reservations/" + opaque(operation_id) + "/metadata"
         locator = receipt.get("metadataUrl")
         if locator != expected_path:
@@ -224,7 +241,16 @@ class Target:
         if (bookmark.get("id") != receipt["bookmarkId"] or bookmark.get("title") != mapping["title"]
                 or bookmark.get("note") != mapping["note"]
                 or {tag.get("name") for tag in mapped_tags} != normalized_tags
-                or not isinstance(content, dict) or content.get("type") != "asset"
+                or not isinstance(content, dict)):
+            raise Failure("target_mapping_mismatch")
+        if "content" in payload:
+            if (any(content.get(field) != value for field, value in payload["content"].items())
+                    or bookmark.get("processingPolicy") != "deferred"
+                    or not isinstance(processing, dict) or processing.get("state") != "held"
+                    or processing.get("generation") != 0
+                    or content.get("type") == "text" and content.get("sourceUrl") != mapping["sourceUrl"]):
+                raise Failure("target_mapping_mismatch")
+        elif (content.get("type") != "asset"
                 or content.get("assetId") != receipt["assets"][0]["assetId"]
                 or content.get("sourceUrl") != mapping["sourceUrl"]):
             raise Failure("target_mapping_mismatch")
@@ -243,10 +269,12 @@ class Target:
 
     def readback(self, manifest, item, payload, receipt):
         self.check_receipt(receipt, payload, receipt["operationId"])
-        self.verify_download("/api/v1/assets/" + opaque(receipt["assets"][0]["assetId"]),
-                             payload["attachments"][0]["observed"])
+        if "content" not in payload:
+            self.verify_download("/api/v1/assets/" + opaque(receipt["assets"][0]["assetId"]),
+                                 payload["attachments"][0]["observed"])
         self.verify_download(BASE + "/reservations/" + opaque(receipt["operationId"]) + "/metadata",
                              payload["metadata"])
         self.verify_mapping(receipt, payload)
-        manifest.event(item["key"], "original_metadata_and_mapping_readback_verified")
+        manifest.event(item["key"], "native_metadata_and_mapping_readback_verified" if "content" in payload
+                       else "original_metadata_and_mapping_readback_verified")
         manifest.update(item["key"], phase="verified", error=None)

@@ -722,6 +722,13 @@
       "when": 1789290069151,
       "tag": "0102_manual_image_sets",
       "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "6",
+      "when": 1790329288480,
+      "tag": "0103_deferred_native_content",
+      "breakpoints": true
     }
   ]
 }

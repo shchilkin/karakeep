@@ -21,6 +21,8 @@ def run_pilot(manifest, source, target, limit=1, max_bytes=256 * 1024 * 1024, fa
         if any(item["hold"] for item in approved):
             raise Failure("approved_item_held")
         selected = [item for item in approved if item["phase"] != "verified"][:limit]
+    if any("content" in item["document"] for item in selected):
+        raise Failure("native_requires_exact_pilot")
     total = sum(item["document"]["observed"]["size"] for item in selected)
     if total > max_bytes:
         raise Failure("pilot_byte_limit")
