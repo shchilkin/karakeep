@@ -134,6 +134,45 @@ def sniff(head):
         if brand in (b"isom", b"iso2", b"iso3", b"iso4", b"iso5", b"iso6", b"iso7", b"iso8", b"iso9", b"dash", b"mp41", b"mp42", b"avc1", b"MSNV"):
             return "video/mp4"
         return "application/octet-stream"
-    if head.startswith(b"\x1aE\xdf\xa3") and b"webm" in head[:4096]:
-        return "video/webm"
+    if head.startswith(b"\x1aE\xdf\xa3"):
+        return sniff_ebml(head)
     return "application/octet-stream"
+
+
+def sniff_ebml(head):
+    # RFC 8794: only the declared, bounded EBML header can supply DocType.
+    def vint(offset, is_id=False):
+        if offset >= len(head) or not head[offset]:
+            return None
+        first, width, marker = head[offset], 1, 0x80
+        while not first & marker:
+            width, marker = width + 1, marker >> 1
+        if width > (4 if is_id else 8) or offset + width > len(head):
+            return None
+        value = first if is_id else first & (marker - 1)
+        unknown = not is_id and value == marker - 1
+        for byte in head[offset + 1:offset + width]:
+            value = value * 256 + byte
+            unknown = unknown and byte == 255
+        return None if unknown or value > 2**53 - 1 else (value, offset + width)
+
+    header = vint(4)
+    if not header:
+        return "application/octet-stream"
+    size, offset = header
+    end = offset + size
+    if end > min(len(head), 4096):
+        return "application/octet-stream"
+    doc_type = None
+    while offset < end:
+        element = vint(offset, True)
+        data = vint(element[1]) if element else None
+        if not element or not data or data[1] + data[0] > end:
+            return "application/octet-stream"
+        size, start = data
+        if element[0] == 0x4282:
+            if doc_type is not None:
+                return "application/octet-stream"
+            doc_type = head[start:start + size]
+        offset = start + size
+    return {b"webm": "video/webm", b"matroska": "video/x-matroska"}.get(doc_type, "application/octet-stream")

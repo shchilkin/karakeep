@@ -1,0 +1,103 @@
+# gha-runner-scale-set 0.14.2; installed only in the isolated ARC VM.
+githubConfigUrl: https://github.com/shchilkin/karakeep
+githubConfigSecret: github-auth
+runnerScaleSetName: arc-karakeep-e2e
+minRunners: 0
+maxRunners: 1
+controllerServiceAccount:
+  namespace: arc-system
+  name: arc-controller
+listenerTemplate:
+  spec:
+    containers:
+      - name: listener
+        resources:
+          requests: { cpu: 50m, memory: 64Mi }
+          limits: { cpu: 250m, memory: 256Mi }
+template:
+  metadata:
+    labels:
+      ci-component: runner
+  spec:
+    automountServiceAccountToken: false
+    securityContext:
+      fsGroup: 123
+    terminationGracePeriodSeconds: 60
+    initContainers:
+      - name: init-dind-externals
+        image: homeserver-arc-runner:2.337.0-pilot1
+        imagePullPolicy: Never
+        command: [cp, -r, /home/runner/externals/., /home/runner/tmpDir/]
+        resources:
+          requests: { cpu: 100m, memory: 128Mi }
+          limits: { memory: 512Mi }
+        volumeMounts:
+          - { name: dind-externals, mountPath: /home/runner/tmpDir }
+      - name: dind
+        image: docker:29.7.2-dind
+        command: [/bin/sh, -ec]
+        args:
+          - |
+            # Privileged DinD sees the VM cgroup root. Its default /docker
+            # otherwise bypasses the pod limits for containers and BuildKit.
+            container_group="$(awk -F: '$1 == "0" { print $3 }' /proc/self/cgroup)"
+            pod_group="${container_group%/*}"
+            case "$pod_group" in
+              /kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod*.slice) ;;
+              *) echo 'Unexpected cgroup layout; refusing unbounded Docker' >&2; exit 1 ;;
+            esac
+            test "$(cat "/sys/fs/cgroup$pod_group/memory.max")" = 11811160064
+            # Kubelet on this VM sets aggregate memory but not aggregate CPU.
+            echo '400000 100000' > "/sys/fs/cgroup$pod_group/cpu.max"
+            docker_group="$pod_group/karakeep-docker"
+            mkdir -p "/sys/fs/cgroup$docker_group"
+            echo '325000 100000' > "/sys/fs/cgroup$docker_group/cpu.max"
+            echo 8589934592 > "/sys/fs/cgroup$docker_group/memory.max"
+            exec dockerd-entrypoint.sh dockerd --host=unix:///var/run/docker.sock \
+              --group=123 --exec-opt=native.cgroupdriver=cgroupfs \
+              --cgroup-parent="$docker_group"
+        securityContext:
+          privileged: true
+        restartPolicy: Always
+        resources:
+          requests: { cpu: 3250m, memory: 8Gi }
+          limits: { cpu: 3250m, memory: 8Gi }
+        startupProbe:
+          exec:
+            command: [docker, info]
+          failureThreshold: 30
+          periodSeconds: 5
+        volumeMounts:
+          - { name: work, mountPath: /home/runner/_work }
+          - { name: dind-sock, mountPath: /var/run }
+          - { name: dind-externals, mountPath: /home/runner/externals }
+          - { name: docker-data, mountPath: /var/lib/docker }
+          - { name: tool-cache, mountPath: /opt/hostedtoolcache }
+    containers:
+      - name: runner
+        image: homeserver-arc-runner:2.337.0-pilot1
+        imagePullPolicy: Never
+        command: [/home/runner/run.sh]
+        env:
+          - { name: DOCKER_HOST, value: "unix:///var/run/docker.sock" }
+          - { name: RUNNER_WAIT_FOR_DOCKER_IN_SECONDS, value: "150" }
+        # 3750m total requests plus 650m existing/control requests fit 4500m.
+        # Heavy E2E waits for other pools to drain; do not raise VM capacity.
+        resources:
+          requests: { cpu: 500m, memory: 1Gi }
+          limits: { cpu: 750m, memory: 3Gi }
+        volumeMounts:
+          - { name: work, mountPath: /home/runner/_work }
+          - { name: dind-sock, mountPath: /var/run }
+          - { name: tool-cache, mountPath: /opt/hostedtoolcache }
+    volumes:
+      - name: work
+        emptyDir: { sizeLimit: 20Gi }
+      - name: dind-sock
+        emptyDir: {}
+      - name: dind-externals
+        emptyDir: {}
+      - name: docker-data
+        emptyDir: { sizeLimit: 30Gi }
+      - name: tool-cache
+        emptyDir: { sizeLimit: 3Gi }

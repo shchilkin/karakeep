@@ -22,6 +22,8 @@ import {
   AssetTypes,
   bookmarks,
   bookmarkAssets,
+  bookmarkLinks,
+  bookmarkTexts,
   bookmarkTags,
   tagsOnBookmarks,
   duplicateGroups,
@@ -39,8 +41,8 @@ import {
   importVideoMimeTypes,
   isImportVideoMime,
   IMPORT_CONTRACT_VERSION,
-  MAX_IMPORT_FILE_BYTES,
   MAX_IMPORT_METADATA_BYTES,
+  MAX_IMPORT_PREVIEW_BYTES,
   zImportReservation,
 } from "@karakeep/shared/types/deferredImport";
 import type {
@@ -49,9 +51,11 @@ import type {
 } from "@karakeep/shared/types/deferredImport";
 import type { AuthedContext } from "..";
 
-const LEASE_MS = 120_000;
-const IO_LEASE_MS = 60_000;
-const IO_TIMEOUT_MS = 20_000;
+const IO_TIMEOUT_MS = serverConfig.importLimits.ioTimeoutSeconds * 1000;
+// Commit can hash the stage, copy it, then hash the target. Its lease covers all
+// bounded passes plus transaction overhead; it never changes the writer fence.
+const IO_LEASE_MS = 4 * IO_TIMEOUT_MS + 30_000;
+const LEASE_MS = IO_LEASE_MS + 60_000;
 const MIMES = [
   "image/jpeg",
   "image/png",
@@ -83,6 +87,11 @@ export function importCapabilities(ctx: AuthedContext) {
     ctx.db.get<{ total: number }>(
       sql`SELECT count(*) AS total FROM sqlite_master WHERE type = 'trigger' AND name IN ('deferred_bookmark_update','deferred_bookmark_delete','deferred_asset_update','retained_import_asset_delete','deferred_asset_subtype_update','deferred_list_attachment','deferred_tag_attachment','deferred_tag_delete','deferred_tag_update','deferred_tag_name_update','retained_import_user_delete')`,
     )?.total === 11;
+  const nativeGuards =
+    guards &&
+    ctx.db.get<{ total: number }>(
+      sql`SELECT count(*) AS total FROM sqlite_master WHERE type='trigger' AND name IN ('deferred_link_update','deferred_link_delete','deferred_link_insert','deferred_text_update','deferred_text_delete','deferred_text_insert')`,
+    )?.total === 6;
   return {
     contractVersion: IMPORT_CONTRACT_VERSION,
     storageMode: "copy" as const,
@@ -90,7 +99,13 @@ export function importCapabilities(ctx: AuthedContext) {
     persistentDeferred: guards,
     materialize: guards && serverConfig.assetStore.type === "filesystem",
     maxAttachments: 1,
-    maxFileBytes: MAX_IMPORT_FILE_BYTES,
+    supportedBookmarkTypes: nativeGuards
+      ? ["asset", "link", "text"]
+      : ["asset"],
+    maxFileBytes: serverConfig.importLimits.maxFileBytes,
+    ioTimeoutSeconds: serverConfig.importLimits.ioTimeoutSeconds,
+    maxProcessingFileBytes: MAX_IMPORT_PREVIEW_BYTES,
+    processingBookmarkTypes: ["asset"],
     maxMetadataBytes: MAX_IMPORT_METADATA_BYTES,
     supportedMimeTypes: MIMES,
     stagePermits: guards,
@@ -101,8 +116,13 @@ export function importCapabilities(ctx: AuthedContext) {
     historicalResolution: false,
   };
 }
-function requireStorage(ctx: AuthedContext) {
-  if (!importCapabilities(ctx).materialize)
+function requireStorage(ctx: AuthedContext, input?: ImportReservationInput) {
+  const caps = importCapabilities(ctx);
+  if (
+    !caps.materialize ||
+    (input?.content &&
+      !caps.supportedBookmarkTypes.includes(input.content.type))
+  )
     throw new TRPCError({
       code: "PRECONDITION_FAILED",
       message:
@@ -149,7 +169,7 @@ function assertFence(
 }
 export function importStatus(ctx: AuthedContext, id: string) {
   const row = revision(ctx, id);
-  const file = attachment(ctx, id);
+  const file = row.payload.content ? null : attachment(ctx, id);
   return {
     operationId: id,
     sourceRevisionId: id,
@@ -158,15 +178,17 @@ export function importStatus(ctx: AuthedContext, id: string) {
     fencingToken: row.fencingToken,
     leaseUntil: row.leaseUntil,
     metadataVerified: row.metadataRaw !== null,
-    files: [
-      {
-        slot: file.slot,
-        state: file.state,
-        detectedMime: file.detectedMime,
-        storedSha256: file.storedSha256,
-        storedSize: file.storedSize,
-      },
-    ],
+    files: file
+      ? [
+          {
+            slot: file.slot,
+            state: file.state,
+            detectedMime: file.detectedMime,
+            storedSha256: file.storedSha256,
+            storedSize: file.storedSize,
+          },
+        ]
+      : [],
     receipt: row.receipt,
   };
 }
@@ -198,24 +220,27 @@ export function lookupImport(
         ),
       )
       .get();
-  const contentMatches = ctx.db
-    .select({ assetId: assets.id, bookmarkId: assets.bookmarkId })
-    .from(assetContentHashes)
-    .innerJoin(assets, eq(assets.id, assetContentHashes.assetId))
-    .innerJoin(bookmarks, eq(bookmarks.id, assets.bookmarkId))
-    .where(
-      and(
-        eq(assets.userId, ctx.user.id),
-        eq(bookmarks.userId, ctx.user.id),
-        eq(assetContentHashes.userId, ctx.user.id),
-        eq(assetContentHashes.sha256, input.attachments[0].observed.sha256),
-        eq(assetContentHashes.size, input.attachments[0].observed.size),
-        eq(assetContentHashes.status, "verified"),
-        eq(assetContentHashes.size, assets.size),
-      ),
-    )
-    .limit(20)
-    .all();
+  const original = input.attachments[0];
+  const contentMatches = original
+    ? ctx.db
+        .select({ assetId: assets.id, bookmarkId: assets.bookmarkId })
+        .from(assetContentHashes)
+        .innerJoin(assets, eq(assets.id, assetContentHashes.assetId))
+        .innerJoin(bookmarks, eq(bookmarks.id, assets.bookmarkId))
+        .where(
+          and(
+            eq(assets.userId, ctx.user.id),
+            eq(bookmarks.userId, ctx.user.id),
+            eq(assetContentHashes.userId, ctx.user.id),
+            eq(assetContentHashes.sha256, original.observed.sha256),
+            eq(assetContentHashes.size, original.observed.size),
+            eq(assetContentHashes.status, "verified"),
+            eq(assetContentHashes.size, assets.size),
+          ),
+        )
+        .limit(20)
+        .all()
+    : [];
   return {
     sourceMatch: old
       ? old.payloadDigest === digest(canonicalImportJson(input))
@@ -251,8 +276,7 @@ function checkQuota(
     .where(eq(importSourceRevisions.userId, userId))
     .all();
   const retained = reservations.reduce(
-    (n, r) =>
-      n + r.payload.metadata.size + r.payload.attachments[0].observed.size,
+    (n, r) => n + retainedBytes(r.payload),
     0,
   );
   const pending = reservations.filter((r) => r.state !== "committed").length;
@@ -266,18 +290,31 @@ function checkQuota(
   )
     conflict("Import exceeds bookmark quota, including reservations.");
 }
+function retainedBytes(input: ImportReservationInput) {
+  const native = input.content;
+  // Native content exists in both the immutable payload and its card projection.
+  return (
+    input.metadata.size +
+    (input.attachments[0]?.observed.size ?? 0) +
+    (native
+      ? 2 * Buffer.byteLength(native.type === "link" ? native.url : native.text)
+      : 0)
+  );
+}
 export async function reserveImport(
   ctx: AuthedContext,
   input: ImportReservationInput,
   idempotencyKey: string,
 ) {
-  requireStorage(ctx);
+  requireStorage(ctx, input);
   if (!idempotencyKey || idempotencyKey.length > 200)
     throw new TRPCError({
       code: "BAD_REQUEST",
       message: "A stable Idempotency-Key (1–200 characters) is required.",
     });
   input = zImportReservation.parse(input);
+  if (input.content && input.source.revisionKind !== "current")
+    conflict("Historical native content resolution is not supported.");
   if (Buffer.byteLength(canonicalImportJson(input)) > 256 * 1024)
     throw new TRPCError({
       code: "PAYLOAD_TOO_LARGE",
@@ -350,9 +387,18 @@ export async function reserveImport(
       if (row && row.payloadDigest !== payloadDigest)
         conflict("Source revision has a different payload.");
       if (!row) {
+        const original = input.attachments[0];
+        if (
+          original &&
+          original.observed.size > serverConfig.importLimits.maxFileBytes
+        )
+          throw new TRPCError({
+            code: "PAYLOAD_TOO_LARGE",
+            message: "Original exceeds the configured import limit.",
+          });
         if (
           disk.bavail * disk.bsize <
-          input.attachments[0].observed.size * 2 + 64 * 1024 * 1024
+          retainedBytes(input) * 2 + 64 * 1024 * 1024
         )
           conflict("Insufficient staging disk headroom.");
         const count = tx
@@ -375,12 +421,7 @@ export async function reserveImport(
             code: "TOO_MANY_REQUESTS",
             message: "Import staging capacity is full.",
           });
-        checkQuota(
-          tx,
-          ctx.user.id,
-          input.attachments[0].observed.size + input.metadata.size,
-          1,
-        );
+        checkQuota(tx, ctx.user.id, retainedBytes(input), 1);
         row = tx
           .insert(importSourceRevisions)
           .values({
@@ -397,14 +438,15 @@ export async function reserveImport(
           })
           .returning()
           .get();
-        tx.insert(importSourceAttachments)
-          .values({
-            sourceRevisionId: row.id,
-            slot: input.attachments[0].slot,
-            assetId: randomUUID(),
-            state: "pending",
-          })
-          .run();
+        if (original)
+          tx.insert(importSourceAttachments)
+            .values({
+              sourceRevisionId: row.id,
+              slot: original.slot,
+              assetId: randomUUID(),
+              state: "pending",
+            })
+            .run();
       } else if (row.state !== "committed" && row.leaseUntil <= Date.now()) {
         tx.update(importSourceRevisions)
           .set({
@@ -436,8 +478,9 @@ async function withIo<T>(
   fence: number,
   fn: (token: string) => Promise<T>,
 ) {
-  requireStorage(ctx);
-  assertFence(revision(ctx, id), fence);
+  const sourceRevision = revision(ctx, id);
+  requireStorage(ctx, sourceRevision.payload);
+  assertFence(sourceRevision, fence);
   ctx.db.run(sql`PRAGMA synchronous = FULL`);
   const token = randomUUID();
   ctx.db.transaction(
@@ -459,6 +502,10 @@ async function withIo<T>(
           target: assetHashScanLease.id,
           set: { token, expiresAt: Date.now() + IO_LEASE_MS },
         })
+        .run();
+      tx.update(importSourceRevisions)
+        .set({ leaseUntil: Date.now() + LEASE_MS })
+        .where(eq(importSourceRevisions.id, id))
         .run();
     },
     { behavior: "immediate" },
@@ -563,11 +610,52 @@ function sniffMime(bytes: Buffer) {
     )
       return "video/mp4";
   }
-  if (
-    bytes.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3])) &&
-    bytes.includes(Buffer.from("webm"))
-  )
-    return "video/webm";
+  return sniffEbml(bytes);
+}
+/** Bounded EBML header only (RFC 8794); words in segment payloads are not DocTypes. */
+function sniffEbml(bytes: Buffer) {
+  if (!bytes.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3])))
+    return null;
+  function vint(offset: number, id: boolean) {
+    const first = bytes[offset];
+    if (!first) return null;
+    let width = 1,
+      marker = 0x80;
+    while (!(first & marker)) {
+      width++;
+      marker >>= 1;
+    }
+    if (width > (id ? 4 : 8) || offset + width > bytes.length) return null;
+    let value = id ? first : first & (marker - 1);
+    let unknown = !id && value === marker - 1;
+    for (let i = 1; i < width; i++) {
+      value = value * 256 + bytes[offset + i];
+      unknown = unknown && bytes[offset + i] === 255;
+    }
+    return !Number.isSafeInteger(value) || unknown
+      ? null
+      : { value, next: offset + width };
+  }
+  const header = vint(4, false);
+  if (!header) return null;
+  const end = header.next + header.value;
+  if (end > Math.min(bytes.length, 4096)) return null;
+  let offset = header.next;
+  let docType: string | null = null;
+  while (offset < end) {
+    const id = vint(offset, true);
+    const size = id && vint(id.next, false);
+    if (!id || !size || size.next + size.value > end) return null;
+    if (id.value === 0x4282) {
+      if (docType !== null) return null;
+      docType = bytes
+        .subarray(size.next, size.next + size.value)
+        .toString("utf8");
+    }
+    offset = size.next + size.value;
+  }
+  if (docType === "webm") return "video/webm";
+  if (docType === "matroska") return "video/x-matroska";
   return null;
 }
 export async function uploadImportFile(
@@ -607,7 +695,7 @@ export async function uploadImportFile(
         for await (const data of source) {
           const bytes = Buffer.isBuffer(data) ? data : Buffer.from(data);
           size += bytes.length;
-          if (size > expected.observed.size || size > MAX_IMPORT_FILE_BYTES)
+          if (size > expected.observed.size)
             throw new TRPCError({
               code: "PAYLOAD_TOO_LARGE",
               message: "Original exceeds its declared byte limit.",
@@ -727,9 +815,16 @@ export function readImportMetadata(ctx: AuthedContext, id: string) {
 }
 async function verifyStage(ctx: AuthedContext, id: string) {
   const row = revision(ctx, id);
-  const file = attachment(ctx, id);
   if (
     row.state === "hold" ||
+    row.metadataRaw === null ||
+    Buffer.byteLength(row.metadataRaw) !== row.payload.metadata.size ||
+    digest(Buffer.from(row.metadataRaw)) !== row.payload.metadata.sha256
+  )
+    conflict("Import has incomplete, held or changed metadata evidence.");
+  if (row.payload.content) return { row, file: null, stored: null };
+  const file = attachment(ctx, id);
+  if (
     file.state !== "verified" ||
     !file.stageName ||
     !file.detectedMime ||
@@ -774,89 +869,91 @@ export async function commitImport(
   if (existing.receipt) return existing.receipt;
   return withIo(ctx, id, fence, async (token) => {
     const { row, file, stored } = await verifyStage(ctx, id);
-    const target = targetRoot(ctx.user.id, file.assetId);
-    const parent = path.dirname(target);
-    await mkdir(parent, { recursive: true, mode: 0o700 });
-    await syncDirectory(serverConfig.assetsDir);
-    await syncDirectory(path.dirname(serverConfig.assetsDir));
-    const disk = await statfs(parent);
-    if (disk.bavail * disk.bsize < stored.size + 64 * 1024 * 1024)
-      conflict("Insufficient target disk headroom.");
-    ctx.db.transaction((tx) => checkQuota(tx, ctx.user.id, stored.size, 0), {
-      behavior: "immediate",
-    });
-    const pending = path.join(parent, `.import-${file.assetId}`);
-    const targetExists = await stat(target).then(
-      () => true,
-      () => false,
-    );
-    if (!targetExists) {
-      await rm(pending, { recursive: true, force: true });
-      await mkdir(pending, { mode: 0o700 });
-      const source = createReadStream(
-        path.join(stageRoot(id), file.stageName!),
+    const receiptAssets: ImportReceipt["assets"] = [];
+    if (file && stored) {
+      const target = targetRoot(ctx.user.id, file.assetId);
+      const parent = path.dirname(target);
+      await mkdir(parent, { recursive: true, mode: 0o700 });
+      await syncDirectory(serverConfig.assetsDir);
+      await syncDirectory(path.dirname(serverConfig.assetsDir));
+      const disk = await statfs(parent);
+      if (disk.bavail * disk.bsize < stored.size + 64 * 1024 * 1024)
+        conflict("Insufficient target disk headroom.");
+      ctx.db.transaction((tx) => checkQuota(tx, ctx.user.id, stored.size, 0), {
+        behavior: "immediate",
+      });
+      const pending = path.join(parent, `.import-${file.assetId}`);
+      const targetExists = await stat(target).then(
+        () => true,
+        () => false,
       );
-      const destination = await open(
-        path.join(pending, "asset.bin"),
-        "wx",
-        0o600,
-      );
-      const timer = setTimeout(
-        () => source.destroy(new Error("Import promotion deadline exceeded")),
-        IO_TIMEOUT_MS,
-      );
-      try {
-        for await (const bytes of source) await destination.writeFile(bytes);
-        await destination.sync();
-      } finally {
-        clearTimeout(timer);
-        source.destroy();
-        await destination.close();
+      if (!targetExists) {
+        await rm(pending, { recursive: true, force: true });
+        await mkdir(pending, { mode: 0o700 });
+        const source = createReadStream(
+          path.join(stageRoot(id), file.stageName!),
+        );
+        const destination = await open(
+          path.join(pending, "asset.bin"),
+          "wx",
+          0o600,
+        );
+        const timer = setTimeout(
+          () => source.destroy(new Error("Import promotion deadline exceeded")),
+          IO_TIMEOUT_MS,
+        );
+        try {
+          for await (const bytes of source) await destination.writeFile(bytes);
+          await destination.sync();
+        } finally {
+          clearTimeout(timer);
+          source.destroy();
+          await destination.close();
+        }
+        await writePrivateFile(
+          path.join(pending, "metadata.json"),
+          Buffer.from(
+            JSON.stringify({
+              contentType: file.detectedMime,
+              fileName: row.payload.attachments[0].originalName,
+            }),
+          ),
+        );
+        await syncDirectory(pending);
+        assertWriter(ctx, id, fence, token);
+        await rename(pending, target);
+        await syncDirectory(parent);
       }
-      await writePrivateFile(
-        path.join(pending, "metadata.json"),
-        Buffer.from(
-          JSON.stringify({
-            contentType: file.detectedMime,
-            fileName: row.payload.attachments[0].originalName,
-          }),
-        ),
+      const targetHash = await hashFile(
+        path.join(target, "asset.bin"),
+        stored.size,
       );
-      await syncDirectory(pending);
-      assertWriter(ctx, id, fence, token);
-      await rename(pending, target);
-      await syncDirectory(parent);
+      const targetMetadata = JSON.parse(
+        await readFile(path.join(target, "metadata.json"), "utf8"),
+      );
+      if (
+        targetHash.sha256 !== stored.sha256 ||
+        targetHash.size !== stored.size ||
+        targetMetadata.contentType !== file.detectedMime ||
+        targetMetadata.fileName !== row.payload.attachments[0].originalName
+      )
+        conflict(
+          "Target readback failed. Existing target bytes were not overwritten.",
+        );
+      receiptAssets.push({
+        slot: file.slot,
+        assetId: file.assetId,
+        storedSha256: stored.sha256,
+        storedSize: stored.size,
+        storageGeneration: file.storageGeneration!,
+      });
     }
-    const targetHash = await hashFile(
-      path.join(target, "asset.bin"),
-      stored.size,
-    );
-    const targetMetadata = JSON.parse(
-      await readFile(path.join(target, "metadata.json"), "utf8"),
-    );
-    if (
-      targetHash.sha256 !== stored.sha256 ||
-      targetHash.size !== stored.size ||
-      targetMetadata.contentType !== file.detectedMime ||
-      targetMetadata.fileName !== row.payload.attachments[0].originalName
-    )
-      conflict(
-        "Target readback failed. Existing target bytes were not overwritten.",
-      );
     assertWriter(ctx, id, fence, token);
     const receipt: ImportReceipt = {
       operationId: id,
       sourceRevisionId: id,
       bookmarkId: row.bookmarkId,
-      assets: [
-        {
-          slot: file.slot,
-          assetId: file.assetId,
-          storedSha256: stored.sha256,
-          storedSize: stored.size,
-          storageGeneration: file.storageGeneration!,
-        },
-      ],
+      assets: receiptAssets,
       metadataSha256: row.payload.metadata.sha256,
       metadataSize: row.payload.metadata.size,
       metadataUrl: `/api/v1/import/reservations/${id}/metadata`,
@@ -882,13 +979,18 @@ export async function commitImport(
           .get();
         if (!lease || lease.expiresAt <= Date.now())
           conflict("Import writer lease expired before commit.");
-        checkQuota(tx, ctx.user.id, stored.size, 0);
+        checkQuota(tx, ctx.user.id, stored?.size ?? 0, 0);
         const mapping = row.payload.mapping;
         tx.insert(bookmarks)
           .values({
             id: row.bookmarkId,
             userId: ctx.user.id,
-            type: BookmarkTypes.ASSET,
+            type:
+              row.payload.content?.type === "link"
+                ? BookmarkTypes.LINK
+                : row.payload.content?.type === "text"
+                  ? BookmarkTypes.TEXT
+                  : BookmarkTypes.ASSET,
             source: "import",
             title: mapping.title,
             note: mapping.note,
@@ -905,31 +1007,50 @@ export async function commitImport(
             createdAt: mapping.savedAt ? new Date(mapping.savedAt) : new Date(),
           })
           .run();
-        tx.insert(assets)
-          .values({
-            id: file.assetId,
-            userId: ctx.user.id,
-            bookmarkId: row.bookmarkId,
-            assetType: AssetTypes.BOOKMARK_ASSET,
-            contentType: file.detectedMime,
-            size: stored.size,
-            fileName: row.payload.attachments[0].originalName,
-          })
-          .run();
-        tx.insert(bookmarkAssets)
-          .values({
-            id: row.bookmarkId,
-            assetId: file.assetId,
-            assetType:
-              file.detectedMime === "application/pdf"
-                ? "pdf"
-                : isImportVideoMime(file.detectedMime)
-                  ? "video"
-                  : "image",
-            fileName: row.payload.attachments[0].originalName,
-            sourceUrl: mapping.sourceUrl,
-          })
-          .run();
+        if (file && stored) {
+          tx.insert(assets)
+            .values({
+              id: file.assetId,
+              userId: ctx.user.id,
+              bookmarkId: row.bookmarkId,
+              assetType: AssetTypes.BOOKMARK_ASSET,
+              contentType: file.detectedMime,
+              size: stored.size,
+              fileName: row.payload.attachments[0].originalName,
+            })
+            .run();
+          tx.insert(bookmarkAssets)
+            .values({
+              id: row.bookmarkId,
+              assetId: file.assetId,
+              assetType:
+                file.detectedMime === "application/pdf"
+                  ? "pdf"
+                  : isImportVideoMime(file.detectedMime)
+                    ? "video"
+                    : "image",
+              fileName: row.payload.attachments[0].originalName,
+              sourceUrl: mapping.sourceUrl,
+            })
+            .run();
+        } else if (row.payload.content?.type === "link") {
+          tx.insert(bookmarkLinks)
+            .values({
+              id: row.bookmarkId,
+              url: row.payload.content.url,
+              crawlStatus: null,
+              crawlStatusCode: null,
+            })
+            .run();
+        } else if (row.payload.content?.type === "text") {
+          tx.insert(bookmarkTexts)
+            .values({
+              id: row.bookmarkId,
+              text: row.payload.content.text,
+              sourceUrl: mapping.sourceUrl,
+            })
+            .run();
+        }
         for (const name of new Set(
           mapping.tags.map((tag) => normalizeTagName(tag).trim()),
         )) {
@@ -955,24 +1076,26 @@ export async function commitImport(
             })
             .run();
         }
-        tx.insert(assetContentHashes)
-          .values({
-            assetId: file.assetId,
-            userId: ctx.user.id,
-            sha256: stored.sha256,
-            size: stored.size,
-            status: "verified",
-            verifiedAt: new Date(),
-          })
-          .run();
-        tx.insert(duplicateGroups)
-          .values({
-            userId: ctx.user.id,
-            sha256: stored.sha256,
-            size: stored.size,
-          })
-          .onConflictDoNothing()
-          .run();
+        if (file && stored) {
+          tx.insert(assetContentHashes)
+            .values({
+              assetId: file.assetId,
+              userId: ctx.user.id,
+              sha256: stored.sha256,
+              size: stored.size,
+              status: "verified",
+              verifiedAt: new Date(),
+            })
+            .run();
+          tx.insert(duplicateGroups)
+            .values({
+              userId: ctx.user.id,
+              sha256: stored.sha256,
+              size: stored.size,
+            })
+            .onConflictDoNothing()
+            .run();
+        }
         tx.insert(importProcessing)
           .values({
             bookmarkId: row.bookmarkId,

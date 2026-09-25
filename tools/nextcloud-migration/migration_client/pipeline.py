@@ -2,6 +2,7 @@ import time
 
 from .core import Failure, canonical, check_file, inside
 from .target import reservation_payload
+from .transfer import finish_import, item_attempt
 
 
 def run_pilot(manifest, source, target, limit=1, max_bytes=256 * 1024 * 1024, fault=None, item_keys=None):
@@ -21,16 +22,26 @@ def run_pilot(manifest, source, target, limit=1, max_bytes=256 * 1024 * 1024, fa
         if any(item["hold"] for item in approved):
             raise Failure("approved_item_held")
         selected = [item for item in approved if item["phase"] != "verified"][:limit]
+    if any("content" in item["document"] for item in selected):
+        raise Failure("native_requires_exact_pilot")
     total = sum(item["document"]["observed"]["size"] for item in selected)
     if total > max_bytes:
         raise Failure("pilot_byte_limit")
     for selected_item in selected:
         key = selected_item["key"]
-        try:
+        with item_attempt(manifest, key):
             item = manifest.get(key)
             if item["hold"]:
                 continue
-            original, metadata, mime = source.stage(manifest, item, caps["maxFileBytes"])
+            file_limit = caps["maxFileBytes"]
+            size = item["document"]["observed"]["size"]
+            if file_limit < size <= target.max_file_bytes:
+                # A lower server admission cap does not revoke an exact existing
+                # reservation. Confirm it before staging, without reserving anew.
+                payload = reservation_payload(item, canonical(item["document"]))
+                if target.recover_reservation(manifest, item, payload) is not None:
+                    file_limit = size
+            original, metadata, mime = source.stage(manifest, item, file_limit)
             item = manifest.get(key)
             if fault:
                 fault("after_stage")
@@ -39,31 +50,14 @@ def run_pilot(manifest, source, target, limit=1, max_bytes=256 * 1024 * 1024, fa
             if len(metadata) > caps["maxMetadataBytes"]:
                 raise Failure("unsupported_metadata_size")
             payload = reservation_payload(item, metadata)
-            status = target.reserve(manifest, item, payload)
-            if fault:
-                fault("after_reserve")
-            if status["state"] == "committed":
-                receipt = status.get("receipt")
-                target.check_receipt(receipt, payload, status["operationId"])
-                manifest.update(key, phase="committed", receipt=receipt)
-            else:
-                status = target.upload(manifest, item, payload, status, original, metadata)
-                if fault:
-                    fault("after_upload")
+
+            def check_source_before_commit():
                 # Detect source edits during staging/upload before materialization.
                 source.check(item["document"])
                 check_file(original, item["document"]["observed"]["sha256"], item["document"]["observed"]["size"])
-                receipt = target.commit(manifest, item, payload, status)
-            if fault:
-                fault("after_commit")
-            target.readback(manifest, item, payload, receipt)
-            if fault:
-                fault("after_readback")
-        except Failure as error:
-            manifest.update(key, error=error.code, **({} if error.retryable else {"hold": error.code}))
-            manifest.event(key, error.code)
-            # Stop this chunk. There is no implicit retry, skip-as-success or cleanup.
-            raise
+
+            finish_import(manifest, target, item, payload, metadata, original=original,
+                          before_commit=check_source_before_commit, fault=fault)
     return manifest.summary()
 
 

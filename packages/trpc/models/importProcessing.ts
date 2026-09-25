@@ -1,4 +1,7 @@
-import { isImportVideoMime } from "@karakeep/shared/types/deferredImport";
+import {
+  isImportVideoMime,
+  MAX_IMPORT_PREVIEW_BYTES,
+} from "@karakeep/shared/types/deferredImport";
 import { randomUUID } from "node:crypto";
 import { TRPCError } from "@trpc/server";
 import { and, eq } from "drizzle-orm";
@@ -93,6 +96,8 @@ export function releaseImportProcessing(
       if (
         !file ||
         file.state !== "verified" ||
+        !file.storedSize ||
+        file.storedSize > MAX_IMPORT_PREVIEW_BYTES ||
         (!isImportVideoMime(file.detectedMime) &&
           !["image/jpeg", "image/png", "image/gif", "image/webp"].includes(
             file.detectedMime ?? "",
@@ -100,7 +105,8 @@ export function releaseImportProcessing(
       )
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "Processing release supports verified images and videos.",
+          message:
+            "Processing release supports verified images and videos up to 50 MiB; larger originals remain safely archived.",
         });
       // Video ingestion only releases CPU previews/search. Set-level AI is a separate release.
       if (

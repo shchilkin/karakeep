@@ -30,11 +30,16 @@ source bytes. It has no AI invocation, processing release, cleanup or delete com
   disk reserve; target writes are spaced at least three seconds across resume.
   Any failure stops the chunk. Retryable transport errors retain retry state;
   conflicts and mismatches stay held. No implicit retry loop runs.
-- The client currently permits JPEG, PNG, WebP, GIF and PDF, within the server's
-  stricter advertised limits and a 50 MiB client cap. Videos, unsupported binary
-  content and larger objects stay outside this pilot even though they belong in
-  the backup. Header sniffing is not full decoding; the foundation verifies its
-  own staged bytes and accepted formats.
+- The client permits JPEG, PNG, WebP, GIF, PDF, MP4, WebM, QuickTime, M4V and
+  Matroska within the smaller of server and explicit client limits. The client
+  cap still defaults to 50 MiB; `target.maxFileBytes` can raise it (1 byte–4 GiB),
+  without raising the CLI's independently approved **256 MiB per-run** ceiling.
+  If the server cap decreases, recovery first confirms the exact journaled
+  reservation by lookup/status, then revalidates retained bytes. This exception
+  does not admit a new file, override the client cap or expand the approved run
+  budget. A recorded intent without a matching server reservation is not admission.
+  Unsupported bytes and larger objects stay held, not converted to fake images.
+  Header sniffing is not full decoding; the foundation verifies its own bytes.
 - Verification downloads the complete target original and raw metadata and
   checks the bookmark's title, note, tags, source URL, asset and saved timestamp.
   The existing bookmark SQL column projects time to whole seconds; the exact
@@ -64,7 +69,9 @@ media paths or real media belong in this repository or on the Mac.
   },
   "target": {
     "origin": "https://karakeep.example.invalid",
-    "tokenFile": "/private/server/path/scoped-import-token"
+    "tokenFile": "/private/server/path/scoped-import-token",
+    "maxFileBytes": 52428800,
+    "timeoutSeconds": 60
   },
   "backupPlanFile": "/private/server/path/client-state/backup-plan.json",
   "backupDestination": {
@@ -81,6 +88,43 @@ NEXTCLOUD_FOLDER and NEXTCLOUD_APP_PASSWORD. The first three must agree with the
 configuration. The target token needs the foundation's scoped import and
 original/bookmark read permissions. Origins are fixed; redirects are refused.
 Raw server error bodies and credentials never appear in CLI output.
+
+The optional target timeout defaults to 60 seconds (allowed range 1–120). A lost
+response is uncertain, not permission to start another operation: rerun only the
+same approved subset after status reconciliation. Raising server admission alone
+does not remove the client limit. For example, a separately approved 128 MiB cap
+requires server `IMPORT_MAX_FILE_SIZE_MB=128` and client `maxFileBytes=134217728`.
+The bounded WebDAV CLI cannot import a file above its 256 MiB run budget. None of
+these options deploys configuration, clears existing holds or downloads sources.
+
+## Cached native link/text pilot (library only)
+
+`migration_client.native.run_native_pilot(manifest, target, item_keys)` accepts
+**1–12 exact approved keys**, at most 16 MiB of metadata per invocation and at most
+the advertised metadata bound per card. It uses the existing durable reservation,
+fence, commit-recovery and readback protocol; it has no source client, source GET,
+original upload, processing release, cleanup or automatic retry. A committed
+native receipt has `assets: []`; full metadata hash and card content/mapping,
+deferred policy and held generation 0 are required before recording `verified`.
+Capability absence/asset-only servers, held keys and ambiguous input fail closed.
+Repeated invocation never selects another pending key.
+
+This helper is **not exposed by the WebDAV CLI** and does not scan/interpret a
+mymind catalog. A separate, owner-approved source adapter must select cached
+records, resolve rich text where necessary and retain the entire source record.
+Use a separate private `Manifest` directory/namespace. Do not seed native cards
+into the file pilot's manifest or reuse its file-only backup/reconcile commands.
+The caller must establish backup/restore evidence and exact owner approval before
+calling the library; a metadata reference is not a copied attachment.
+
+Each seeded document contains stable `provider`, `accountScope`, `sourceObjectId`,
+`revisionKind: "current"`, explicit `content`, explicit `mapping` and full cached
+`metadata`. Content is either `{ "type": "link", "url": "https://example.invalid/page" }`
+or `{ "type": "text", "text": "Original note" }`. Mapping contains `title`, `note`,
+`sourceUrl`, `savedAt` (nullable) and `tags` (array), using the API limits. The exact
+canonical document becomes the raw envelope and revision digest. Keep unresolved
+attachments/collections/fields there; completeness stays `unknown`. Neither a
+link nor its card receipt proves that referenced pictures or videos were archived.
 
 Run from this directory **on the server** after configuration:
 
@@ -169,12 +213,15 @@ must be verified separately before production readiness is claimed.
 ### Deferred video imports
 
 The copy contract also accepts byte-detected MP4, WebM, QuickTime/MOV and M4V
-originals up to the existing 50 MiB limit. The server persists them as video asset
+originals up to the negotiated limit (50 MiB by default), plus Matroska detected
+from the EBML header's DocType. The server persists them as video asset
 bookmarks. Readback still verifies original bytes, raw metadata and mapped source
 fields before the client records completion. Images and PDF behavior is unchanged.
 
 A separate, explicit `preview` or `search` release creates a retained WebP first
-frame on CPU. The original is immutable; decoder failure leaves it available and
+frame on CPU for originals up to **50 MiB**, independently of ingestion limits.
+Larger originals remain archived but release is rejected before queuing.
+The original is immutable; decoder failure leaves it available and
 marks processing failed. The feed uses the poster and the bounded hover clip;
 expansion uses the original in the existing gallery player. Original playback
 depends on the browser's codec support, while hover clips are normalized to H264.

@@ -1,2 +1,3 @@
 # Docker logs captured during test runs
 setup/docker-logs/
+setup/e2e-run.log

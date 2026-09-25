@@ -182,6 +182,8 @@ const allEnv = z.object({
   DATA_DIR: z.string().default(""),
   ASSETS_DIR: z.string().optional(),
   MAX_ASSET_SIZE_MB: z.coerce.number().default(50),
+  IMPORT_MAX_FILE_SIZE_MB: z.coerce.number().int().min(1).max(4096).default(50),
+  IMPORT_IO_TIMEOUT_SEC: z.coerce.number().int().min(20).max(600).default(20),
   HTML_CONTENT_SIZE_INLINE_THRESHOLD_BYTES: z.coerce.number().default(5 * 1024),
   INFERENCE_LANG: z.string().default("english"),
   WEBHOOK_TIMEOUT_SEC: z.coerce.number().default(5),
@@ -489,6 +491,10 @@ const serverConfigSchema = allEnv.transform((val, ctx) => {
     dataDir: val.DATA_DIR,
     assetsDir: val.ASSETS_DIR ?? path.join(val.DATA_DIR, "assets"),
     maxAssetSizeMb: val.MAX_ASSET_SIZE_MB,
+    importLimits: {
+      maxFileBytes: val.IMPORT_MAX_FILE_SIZE_MB * 1024 * 1024,
+      ioTimeoutSeconds: val.IMPORT_IO_TIMEOUT_SEC,
+    },
     legal: {
       termsOfServiceUrl: val.TERMS_OF_SERVICE_URL,
       privacyPolicyUrl: val.PRIVACY_POLICY_URL,

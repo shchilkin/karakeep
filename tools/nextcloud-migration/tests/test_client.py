@@ -83,6 +83,104 @@ class ClientTest(unittest.TestCase):
             run_pilot(manifest, self.source, self.target)
         self.assertEqual(self.fixture.calls[len(calls):], [("GET", BASE + "/capabilities", None)])
 
+    def test_larger_advertised_cap_remains_bounded_by_explicit_client_cap(self):
+        caps = self.target.http.json("GET", BASE + "/capabilities")
+        caps["maxFileBytes"] = 134217728
+        with patch.object(self.target.http, "json", return_value=caps):
+            self.assertEqual(self.target.capabilities()["maxFileBytes"], 52428800)
+            approved = Target(self.target.http, max_file_bytes=100663296)
+            self.assertEqual(approved.capabilities()["maxFileBytes"], 100663296)
+        for invalid in (0, -1, True, 4294967297):
+            with self.assertRaisesRegex(Failure, "invalid_client_file_limit"):
+                Target(self.target.http, max_file_bytes=invalid)
+
+    def test_lower_server_cap_preserves_admitted_import_recovery(self):
+        for checkpoint in ("after_reserve", "after_upload", "after_commit", "lost_reserve", "lost_commit"):
+            with self.subTest(checkpoint=checkpoint):
+                self.state = self.root / checkpoint
+                self.fixture.max_file_bytes = 52428800
+                before_operations = len(self.fixture.operations)
+                if checkpoint == "lost_reserve":
+                    self.fixture.drop_once = ("POST", BASE + "/reservations")
+                elif checkpoint == "lost_commit":
+                    self.fixture.drop_once = ("POST", BASE + f"/reservations/operation-{before_operations + 1}/commit")
+                def fault(point):
+                    if point == checkpoint:
+                        raise Crash()
+                with self.journal() as manifest:
+                    key = self.seed(manifest, checkpoint)
+                    with self.assertRaises(Failure if checkpoint.startswith("lost_") else Crash):
+                        run_pilot(manifest, self.source, self.target, fault=fault, item_keys=[key])
+                self.fixture.max_file_bytes = len(PNG) - 1
+                before_resume = len(self.fixture.calls)
+                with self.journal() as manifest:
+                    run_pilot(manifest, self.source, self.target, item_keys=[key], max_bytes=len(PNG))
+                    self.assertEqual(manifest.get(key)["phase"], "verified")
+                    self.assertIsNone(manifest.get(key)["hold"])
+                self.assertEqual(len(self.fixture.operations), before_operations + 1)
+                resumed = self.fixture.calls[before_resume:]
+                self.assertFalse(any(method == "GET" and path.startswith("/remote.php/") for method, path, _ in resumed))
+                if checkpoint in ("after_commit", "lost_commit"):
+                    self.assertFalse(any(method == "PUT" or path.endswith("/commit") for method, path, _ in resumed))
+
+    def test_lower_server_cap_recovery_keeps_admission_budget_and_byte_checks(self):
+        for scenario, expected in (("new", "unsupported_source_size"),
+                                   ("intent_only", "unsupported_source_size"),
+                                   ("client_limit", "unsupported_source_size"),
+                                   ("budget", "pilot_byte_limit"),
+                                   ("corrupt_stage", "stored_bytes_mismatch")):
+            with self.subTest(scenario=scenario):
+                self.state = self.root / scenario
+                self.fixture.max_file_bytes = 52428800
+                with self.journal() as manifest:
+                    key = self.seed(manifest, scenario)
+                    if scenario == "intent_only":
+                        self.fixture.busy_once = ("POST", BASE + "/reservations")
+                        with self.assertRaises(Failure):
+                            run_pilot(manifest, self.source, self.target, item_keys=[key])
+                    elif scenario != "new":
+                        def fault(point):
+                            if point == "after_reserve":
+                                raise Crash()
+                        with self.assertRaises(Crash):
+                            run_pilot(manifest, self.source, self.target, item_keys=[key], fault=fault)
+                        if scenario == "corrupt_stage":
+                            (self.state / manifest.get(key)["stage"]).write_bytes(PNG[:-1] + b"X")
+                self.fixture.max_file_bytes = len(PNG) - 1
+                before_resume = len(self.fixture.calls)
+                target = Target(self.target.http, minimum_write_gap=0, max_file_bytes=len(PNG) - 1) if scenario == "client_limit" else self.target
+                budget = len(PNG) - 1 if scenario == "budget" else len(PNG)
+                with self.journal() as manifest:
+                    with self.assertRaisesRegex(Failure, expected):
+                        run_pilot(manifest, self.source, target, item_keys=[key], max_bytes=budget)
+                    self.assertNotEqual(manifest.get(key)["phase"], "verified")
+                resumed = self.fixture.calls[before_resume:]
+                self.assertFalse(any(method == "PUT" or method == "POST" and path != BASE + "/lookup"
+                                     or method == "GET" and path.startswith("/remote.php/") for method, path, _ in resumed))
+
+    def test_native_pilot_keeps_metadata_and_content_without_fetching_source(self):
+        from migration_client.native import run_native_pilot
+        with self.journal() as manifest:
+            outside = self.seed(manifest, "outside-native-approval")
+            keys = [manifest.seed(self.fixture.native_document(kind)) for kind in ("link", "text")]
+            run_native_pilot(manifest, self.target, keys)
+            for key in keys:
+                item = manifest.get(key)
+                self.assertEqual(item["phase"], "verified")
+                self.assertEqual(item["receipt"]["assets"], [])
+                op = self.fixture.operations[item["receipt"]["operationId"]]
+                self.assertEqual(op["metadata"], canonical(item["document"]))
+                self.assertEqual(op["payload"]["content"], item["document"]["content"])
+                self.assertIsNone(op["original"])
+                self.assertIsNone(item["stage"])
+            self.assertEqual(manifest.get(outside)["phase"], "discovered")
+        before = list(self.fixture.calls)
+        with self.journal() as manifest:
+            run_native_pilot(manifest, self.target, keys)
+        self.assertEqual(self.fixture.calls[len(before):], [("GET", BASE + "/capabilities", None)])
+        self.assertFalse(any("/assets/" in path or "/files/" in path or "processing" in path
+                             or method == "PROPFIND" for method, path, _ in self.fixture.calls))
+
     def test_video_containers_complete_verified_copy_with_original_metadata(self):
         samples = [
             (b"\x00\x00\x00\x18ftypisom" + bytes(40), "video/mp4"),
@@ -90,7 +188,8 @@ class ClientTest(unittest.TestCase):
             (b"\x00\x00\x00\x18ftypiso6" + bytes(40), "video/mp4"),
             (b"\x00\x00\x00\x18ftypqt  " + bytes(40), "video/quicktime"),
             (b"\x00\x00\x00\x18ftypM4V " + bytes(40), "video/x-m4v"),
-            (b"\x1a\x45\xdf\xa3" + bytes(40) + b"webm", "video/webm"),
+            (bytes.fromhex("1a45dfa3874282847765626d"), "video/webm"),
+            (bytes.fromhex("1a45dfa38b4282886d6174726f736b61"), "video/x-matroska"),
         ]
         with self.journal() as manifest:
             for index, (body, mime) in enumerate(samples):
@@ -102,6 +201,80 @@ class ClientTest(unittest.TestCase):
                 op = self.fixture.operations[item["receipt"]["operationId"]]
                 self.assertEqual(op["original"], body)
                 self.assertEqual(op["metadata"], canonical(item["document"]))
+
+    def test_native_crash_resume_each_transaction_checkpoint_preserves_one_copy(self):
+        from migration_client.native import run_native_pilot
+        for phase in ("after_reserve", "after_upload", "after_commit", "after_readback"):
+            with self.subTest(phase=phase):
+                self.state = self.root / phase
+                before = len(self.fixture.operations)
+                def fault(point):
+                    if point == phase:
+                        raise Crash()
+                with self.journal() as manifest:
+                    key = manifest.seed(self.fixture.native_document("text", phase))
+                    with self.assertRaises(Crash):
+                        run_native_pilot(manifest, self.target, [key], fault=fault)
+                with self.journal() as manifest:
+                    run_native_pilot(manifest, self.target, [key])
+                    item = manifest.get(key)
+                    self.assertEqual(item["phase"], "verified")
+                    self.assertEqual(item["receipt"]["assets"], [])
+                    self.assertEqual(self.fixture.operations[item["receipt"]["operationId"]]["metadata"],
+                                     canonical(item["document"]))
+                self.assertEqual(len(self.fixture.operations), before + 1)
+        self.assertFalse(any("/files/" in path or method == "PROPFIND" for method, path, _ in self.fixture.calls))
+
+    def test_native_commit_uncertainty_is_reconciled_without_reupload_or_recommit(self):
+        from migration_client.native import run_native_pilot
+        self.fixture.drop_once = ("POST", BASE + "/reservations/operation-1/commit")
+        with self.journal() as manifest:
+            key = manifest.seed(self.fixture.native_document("text"))
+            with self.assertRaises(Failure) as failure:
+                run_native_pilot(manifest, self.target, [key])
+            self.assertTrue(failure.exception.retryable)
+            self.assertIsNone(manifest.get(key)["hold"])
+        before = list(self.fixture.calls)
+        with self.journal() as manifest:
+            run_native_pilot(manifest, self.target, [key])
+            self.assertEqual(manifest.get(key)["phase"], "verified")
+        self.assertTrue(all(method == "GET" for method, _, _ in self.fixture.calls[len(before):]))
+        self.assertEqual(len(self.fixture.operations), 1)
+
+    def test_native_corrupt_metadata_or_mapping_is_not_a_verified_import(self):
+        from migration_client.native import run_native_pilot
+        for flag, expected in [("corrupt_metadata", "target_readback_mismatch"),
+                               ("corrupt_mapping", "target_mapping_mismatch")]:
+            with self.subTest(flag=flag):
+                self.state = self.root / flag
+                setattr(self.fixture, flag, True)
+                with self.journal() as manifest:
+                    key = manifest.seed(self.fixture.native_document("link", flag))
+                    with self.assertRaisesRegex(Failure, expected):
+                        run_native_pilot(manifest, self.target, [key])
+                    self.assertEqual(manifest.get(key)["hold"], expected)
+                    self.assertNotEqual(manifest.get(key)["phase"], "verified")
+                setattr(self.fixture, flag, False)
+
+    def test_native_pilot_rejects_unapproved_or_unsupported_work_before_mutations(self):
+        from migration_client.native import run_native_pilot
+        with self.journal() as manifest:
+            key = manifest.seed(self.fixture.native_document("text"))
+            for selection in (None, [], [key, key]):
+                with self.assertRaisesRegex(Failure, "exact_pilot_selection_required"):
+                    run_native_pilot(manifest, self.target, selection)
+            self.fixture.bookmark_types = ["asset"]
+            with self.assertRaisesRegex(Failure, "native_capabilities_unavailable"):
+                run_native_pilot(manifest, self.target, [key])
+            self.fixture.bookmark_types = ["asset", "link", "text"]
+            with self.assertRaisesRegex(Failure, "pilot_byte_limit"):
+                run_native_pilot(manifest, self.target, [key], max_bytes=1)
+            with self.assertRaisesRegex(Failure, "native_requires_exact_pilot"):
+                run_pilot(manifest, self.source, self.target)
+            self.assertTrue(all(method == "GET" for method, _, _ in self.fixture.calls))
+
+    def test_malformed_ebml_is_held_even_when_it_contains_container_names(self):
+        self.assert_hold("unsupported_source_format", body=bytes.fromhex("1a45dfa380") + b"matroska webm")
 
     def test_released_mapping_accepts_only_additive_ai_tags(self):
         receipt = {"bookmarkId": "released", "assets": [{"assetId": "original"}]}

@@ -33,6 +33,23 @@ The app is mainly configured by environment variables. All the used environment 
 
 ## Asset Storage
 
+### Deferred source import limits (fork)
+
+These settings apply only to `/api/v1/import`, independently of ordinary uploads:
+
+| Name | Default | Bounds and behavior |
+| --- | --- | --- |
+| IMPORT_MAX_FILE_SIZE_MB | 50 | Integer 1–4096 MiB for new original reservations. Existing reservations and receipts remain recoverable after lowering it. Clients must also explicitly permit larger files. |
+| IMPORT_IO_TIMEOUT_SEC | 20 | Integer 20–600 seconds for each original stream/read/copy pass. The writer lease covers the bounded passes. Metadata upload remains 4 MiB/20 seconds. |
+
+Defaults preserve the previous limits. Invalid values fail configuration validation.
+Raising ingestion does not raise preview processing: originals above 50 MiB and
+native link/text snapshots remain held and cannot be released in this phase.
+See [deferred import](../04-using-karakeep/deferred-import-pilot.md) for capability
+negotiation, durable receipts, retention and separate deployment/pilot approval.
+
+### Storage backend
+
 Karakeep supports two storage backends for assets: local filesystem (default) and S3-compatible object storage. S3 storage is automatically detected when an S3 endpoint is passed.
 
 | Name                             | Required          | Default | Description                                                                                               |

@@ -2,10 +2,30 @@ import { z } from "zod";
 import { normalizeTagName } from "../utils/tag";
 
 export const IMPORT_CONTRACT_VERSION = "deferred-copy-v1";
-export const MAX_IMPORT_FILE_BYTES = 50 * 1024 * 1024;
+// Absolute protocol ceiling; the server applies its lower configured admission limit.
+export const MAX_IMPORT_FILE_BYTES = 4096 * 1024 * 1024;
+// Preview still buffers the original. Raising ingestion limits must not raise this.
+export const MAX_IMPORT_PREVIEW_BYTES = 50 * 1024 * 1024;
 export const MAX_IMPORT_METADATA_BYTES = 4 * 1024 * 1024;
 export const zImportDigest = z.string().regex(/^[a-f0-9]{64}$/);
 const key = z.string().min(1).max(512);
+const sourceUrl = z
+  .url()
+  .max(8192)
+  .refine((v) => /^https?:\/\//.test(v));
+const nativeContent = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("link"), url: sourceUrl }).strict(),
+  z
+    .object({
+      type: z.literal("text"),
+      text: z
+        .string()
+        .min(1)
+        .max(100_000)
+        .refine((v) => v.trim().length > 0),
+    })
+    .strict(),
+]);
 const evidence = z
   .object({
     sha256: zImportDigest,
@@ -52,6 +72,8 @@ export const zImportReservation = z
       })
       .strict(),
     completeness: z.enum(["unknown", "partial", "complete"]),
+    // Absent for legacy asset payloads: do not default, transform or re-digest them.
+    content: nativeContent.optional(),
     attachments: z
       .array(
         z
@@ -66,11 +88,15 @@ export const zImportReservation = z
           })
           .strict(),
       )
-      .length(1),
+      .max(1),
     processingPolicy: z.literal("deferred"),
     storageMode: z.literal("copy"),
   })
-  .strict();
+  .strict()
+  .refine((v) => v.attachments.length === (v.content ? 0 : 1), {
+    path: ["attachments"],
+    message: "Native content has no original; an asset requires exactly one.",
+  });
 export type ImportReservationInput = z.infer<typeof zImportReservation>;
 export const zImportFence = z
   .object({ fencingToken: z.number().int().positive() })
@@ -101,6 +127,7 @@ export const importVideoMimeTypes = [
   "video/webm",
   "video/quicktime",
   "video/x-m4v",
+  "video/x-matroska",
 ] as const;
 export const isImportVideoMime = (mime: string | null | undefined) =>
   importVideoMimeTypes.some((value) => value === mime);

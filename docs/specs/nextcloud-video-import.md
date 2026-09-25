@@ -16,3 +16,11 @@ unsupported files.
 - Do not grant local/catalog video admission as part of this transfer.
 - Verify fixtures for all four containers, failure retention and no AI admission.
   Production transfer is a distinct pilot and frozen resumable queue, not a fixture.
+
+## 25 September follow-up: ingestion is not processing
+
+The later native/large-source import change adds Matroska recognition through
+bounded EBML DocType validation and makes original admission configurable, keeping
+the 50 MiB default. The preview worker remains independently capped at 50 MiB;
+larger receipts cannot be released. See the current [import contract](../docs/04-using-karakeep/deferred-import-pilot.md).
+No conversion, mass transfer, deployment or video AI is implied by those changes.

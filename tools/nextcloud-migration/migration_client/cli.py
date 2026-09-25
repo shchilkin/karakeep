@@ -59,7 +59,9 @@ def connections(config):
     token = private_file(config["target"]["tokenFile"]).read_text().strip()
     if not token or "\n" in token or "\r" in token:
         raise Failure("target_credential_invalid")
-    target = Target(Http(config["target"]["origin"], "Bearer " + token))
+    target = Target(Http(config["target"]["origin"], "Bearer " + token,
+                         timeout=config["target"].get("timeoutSeconds", 60)),
+                    max_file_bytes=config["target"].get("maxFileBytes", 50 * 1024**2))
     return source, target
 
 
