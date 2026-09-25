@@ -202,6 +202,29 @@ class ClientTest(unittest.TestCase):
                 self.assertEqual(op["original"], body)
                 self.assertEqual(op["metadata"], canonical(item["document"]))
 
+    def test_native_crash_resume_each_transaction_checkpoint_preserves_one_copy(self):
+        from migration_client.native import run_native_pilot
+        for phase in ("after_reserve", "after_upload", "after_commit", "after_readback"):
+            with self.subTest(phase=phase):
+                self.state = self.root / phase
+                before = len(self.fixture.operations)
+                def fault(point):
+                    if point == phase:
+                        raise Crash()
+                with self.journal() as manifest:
+                    key = manifest.seed(self.fixture.native_document("text", phase))
+                    with self.assertRaises(Crash):
+                        run_native_pilot(manifest, self.target, [key], fault=fault)
+                with self.journal() as manifest:
+                    run_native_pilot(manifest, self.target, [key])
+                    item = manifest.get(key)
+                    self.assertEqual(item["phase"], "verified")
+                    self.assertEqual(item["receipt"]["assets"], [])
+                    self.assertEqual(self.fixture.operations[item["receipt"]["operationId"]]["metadata"],
+                                     canonical(item["document"]))
+                self.assertEqual(len(self.fixture.operations), before + 1)
+        self.assertFalse(any("/files/" in path or method == "PROPFIND" for method, path, _ in self.fixture.calls))
+
     def test_native_commit_uncertainty_is_reconciled_without_reupload_or_recommit(self):
         from migration_client.native import run_native_pilot
         self.fixture.drop_once = ("POST", BASE + "/reservations/operation-1/commit")

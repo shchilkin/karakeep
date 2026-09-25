@@ -8,6 +8,7 @@ from urllib.parse import urlsplit
 
 from .core import Failure, canonical, digest
 from .target import CONTRACT
+from .transfer import finish_import, item_attempt
 
 
 def native_payload(item, metadata):
@@ -69,25 +70,6 @@ def run_native_pilot(manifest, target, item_keys, max_bytes=16 * 1024 * 1024, fa
     if sum(len(metadata) for _, metadata, _ in prepared) > max_bytes:
         raise Failure("pilot_byte_limit")
     for item, metadata, payload in prepared:
-        key = item["key"]
-        try:
-            status = target.reserve(manifest, item, payload)
-            if fault:
-                fault("after_reserve")
-            if status["state"] == "committed":
-                receipt = status.get("receipt")
-                target.check_receipt(receipt, payload, status["operationId"])
-                manifest.update(key, phase="committed", receipt=receipt)
-            else:
-                status = target.upload(manifest, item, payload, status, None, metadata)
-                if fault:
-                    fault("after_upload")
-                receipt = target.commit(manifest, item, payload, status)
-            if fault:
-                fault("after_commit")
-            target.readback(manifest, item, payload, receipt)
-        except Failure as error:
-            manifest.update(key, error=error.code, **({} if error.retryable else {"hold": error.code}))
-            manifest.event(key, error.code)
-            raise
+        with item_attempt(manifest, item["key"]):
+            finish_import(manifest, target, item, payload, metadata, fault=fault)
     return manifest.summary()
