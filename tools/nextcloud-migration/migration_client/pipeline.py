@@ -32,7 +32,15 @@ def run_pilot(manifest, source, target, limit=1, max_bytes=256 * 1024 * 1024, fa
             item = manifest.get(key)
             if item["hold"]:
                 continue
-            original, metadata, mime = source.stage(manifest, item, caps["maxFileBytes"])
+            file_limit = caps["maxFileBytes"]
+            size = item["document"]["observed"]["size"]
+            if file_limit < size <= target.max_file_bytes:
+                # A lower server admission cap does not revoke an exact existing
+                # reservation. Confirm it before staging, without reserving anew.
+                payload = reservation_payload(item, canonical(item["document"]))
+                if target.recover_reservation(manifest, item, payload) is not None:
+                    file_limit = size
+            original, metadata, mime = source.stage(manifest, item, file_limit)
             item = manifest.get(key)
             if fault:
                 fault("after_stage")

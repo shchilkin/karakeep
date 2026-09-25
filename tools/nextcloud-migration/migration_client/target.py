@@ -98,30 +98,37 @@ class Target:
         status = self.http.json("GET", BASE + "/reservations/" + opaque(operation_id))
         return self.check_status(status, payload, operation_id)
 
+    def recover_reservation(self, manifest, item, payload):
+        """Read-only recovery of a journaled intent; never admits a new file."""
+        operation = manifest.find_operation(item["key"], "reserve")
+        if not operation:
+            return None
+        if operation["payload_digest"] != digest(payload):
+            raise Failure("operation_payload_changed")
+        previous = json.loads(operation["response"]) if operation["response"] else None
+        if previous:
+            return self.status(previous["operationId"], payload)
+        lookup = self.http.json("POST", BASE + "/lookup", payload)
+        if lookup.get("physicalReuse") is not False:
+            raise Failure("copy_mode_required")
+        match = lookup.get("sourceMatch")
+        if match == "source_conflict":
+            raise Failure("target_source_conflict")
+        if match not in ("new_source", "same_revision"):
+            raise Failure("invalid_lookup_shape")
+        if match == "same_revision":
+            return self.status(opaque(lookup.get("operationId")), payload)
+        return None
+
     def reserve(self, manifest, item, payload):
         key = item["key"]
         operation = manifest.operation(key, "reserve", payload)
-        previous = json.loads(operation["response"]) if operation["response"] else None
-        if previous:
-            status = self.status(previous["operationId"], payload)
-            if status["state"] == "committed":
-                return status
-            # Re-reserve with the original body/key renews an expired lease/fence.
-            # No new source revision, transport key, or metadata is invented.
-        else:
-            lookup = self.http.json("POST", BASE + "/lookup", payload)
-            if lookup.get("physicalReuse") is not False:
-                raise Failure("copy_mode_required")
-            match = lookup.get("sourceMatch")
-            if match == "source_conflict":
-                raise Failure("target_source_conflict")
-            if match not in ("new_source", "same_revision"):
-                raise Failure("invalid_lookup_shape")
-            if match == "same_revision":
-                status = self.status(opaque(lookup.get("operationId")), payload)
-                if status["state"] == "committed":
-                    manifest.record_response(key, "reserve", status)
-                    return status
+        status = self.recover_reservation(manifest, item, payload)
+        if status and status["state"] == "committed":
+            manifest.record_response(key, "reserve", status)
+            return status
+        # Re-reserve with the original body/key renews an expired lease/fence.
+        # No new source revision, transport key, or metadata is invented.
         manifest.pace_write(self.minimum_write_gap)
         status = self.http.json("POST", BASE + "/reservations", payload,
                                 {"Idempotency-Key": operation["idempotency_key"]})

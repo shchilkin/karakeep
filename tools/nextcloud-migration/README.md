@@ -34,6 +34,10 @@ source bytes. It has no AI invocation, processing release, cleanup or delete com
   Matroska within the smaller of server and explicit client limits. The client
   cap still defaults to 50 MiB; `target.maxFileBytes` can raise it (1 byte–4 GiB),
   without raising the CLI's independently approved **256 MiB per-run** ceiling.
+  If the server cap decreases, recovery first confirms the exact journaled
+  reservation by lookup/status, then revalidates retained bytes. This exception
+  does not admit a new file, override the client cap or expand the approved run
+  budget. A recorded intent without a matching server reservation is not admission.
   Unsupported bytes and larger objects stay held, not converted to fake images.
   Header sniffing is not full decoding; the foundation verifies its own bytes.
 - Verification downloads the complete target original and raw metadata and

@@ -94,6 +94,70 @@ class ClientTest(unittest.TestCase):
             with self.assertRaisesRegex(Failure, "invalid_client_file_limit"):
                 Target(self.target.http, max_file_bytes=invalid)
 
+    def test_lower_server_cap_preserves_admitted_import_recovery(self):
+        for checkpoint in ("after_reserve", "after_upload", "after_commit", "lost_reserve", "lost_commit"):
+            with self.subTest(checkpoint=checkpoint):
+                self.state = self.root / checkpoint
+                self.fixture.max_file_bytes = 52428800
+                before_operations = len(self.fixture.operations)
+                if checkpoint == "lost_reserve":
+                    self.fixture.drop_once = ("POST", BASE + "/reservations")
+                elif checkpoint == "lost_commit":
+                    self.fixture.drop_once = ("POST", BASE + f"/reservations/operation-{before_operations + 1}/commit")
+                def fault(point):
+                    if point == checkpoint:
+                        raise Crash()
+                with self.journal() as manifest:
+                    key = self.seed(manifest, checkpoint)
+                    with self.assertRaises(Failure if checkpoint.startswith("lost_") else Crash):
+                        run_pilot(manifest, self.source, self.target, fault=fault, item_keys=[key])
+                self.fixture.max_file_bytes = len(PNG) - 1
+                before_resume = len(self.fixture.calls)
+                with self.journal() as manifest:
+                    run_pilot(manifest, self.source, self.target, item_keys=[key], max_bytes=len(PNG))
+                    self.assertEqual(manifest.get(key)["phase"], "verified")
+                    self.assertIsNone(manifest.get(key)["hold"])
+                self.assertEqual(len(self.fixture.operations), before_operations + 1)
+                resumed = self.fixture.calls[before_resume:]
+                self.assertFalse(any(method == "GET" and path.startswith("/remote.php/") for method, path, _ in resumed))
+                if checkpoint in ("after_commit", "lost_commit"):
+                    self.assertFalse(any(method == "PUT" or path.endswith("/commit") for method, path, _ in resumed))
+
+    def test_lower_server_cap_recovery_keeps_admission_budget_and_byte_checks(self):
+        for scenario, expected in (("new", "unsupported_source_size"),
+                                   ("intent_only", "unsupported_source_size"),
+                                   ("client_limit", "unsupported_source_size"),
+                                   ("budget", "pilot_byte_limit"),
+                                   ("corrupt_stage", "stored_bytes_mismatch")):
+            with self.subTest(scenario=scenario):
+                self.state = self.root / scenario
+                self.fixture.max_file_bytes = 52428800
+                with self.journal() as manifest:
+                    key = self.seed(manifest, scenario)
+                    if scenario == "intent_only":
+                        self.fixture.busy_once = ("POST", BASE + "/reservations")
+                        with self.assertRaises(Failure):
+                            run_pilot(manifest, self.source, self.target, item_keys=[key])
+                    elif scenario != "new":
+                        def fault(point):
+                            if point == "after_reserve":
+                                raise Crash()
+                        with self.assertRaises(Crash):
+                            run_pilot(manifest, self.source, self.target, item_keys=[key], fault=fault)
+                        if scenario == "corrupt_stage":
+                            (self.state / manifest.get(key)["stage"]).write_bytes(PNG[:-1] + b"X")
+                self.fixture.max_file_bytes = len(PNG) - 1
+                before_resume = len(self.fixture.calls)
+                target = Target(self.target.http, minimum_write_gap=0, max_file_bytes=len(PNG) - 1) if scenario == "client_limit" else self.target
+                budget = len(PNG) - 1 if scenario == "budget" else len(PNG)
+                with self.journal() as manifest:
+                    with self.assertRaisesRegex(Failure, expected):
+                        run_pilot(manifest, self.source, target, item_keys=[key], max_bytes=budget)
+                    self.assertNotEqual(manifest.get(key)["phase"], "verified")
+                resumed = self.fixture.calls[before_resume:]
+                self.assertFalse(any(method == "PUT" or method == "POST" and path != BASE + "/lookup"
+                                     or method == "GET" and path.startswith("/remote.php/") for method, path, _ in resumed))
+
     def test_native_pilot_keeps_metadata_and_content_without_fetching_source(self):
         from migration_client.native import run_native_pilot
         with self.journal() as manifest:

@@ -133,6 +133,11 @@ class Manifest:
                 raise Failure("operation_payload_changed")
         return dict(row)
 
+    def find_operation(self, key, name):
+        row = self.connection.execute("SELECT * FROM operations WHERE item_key=? AND name=?",
+                                      (key, name)).fetchone()
+        return dict(row) if row else None
+
     def record_response(self, key, name, response):
         with self.connection:
             self.connection.execute("UPDATE operations SET response=? WHERE item_key=? AND name=?",

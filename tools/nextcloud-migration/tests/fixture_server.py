@@ -32,6 +32,7 @@ class Fixture:
         self.corrupt_date = False
         self.source_truncate_once = False
         self.materialize = True
+        self.max_file_bytes = 52428800
         self.bookmark_types = ["asset", "link", "text"]
         self.content_matches = []
         self.fence = 1
@@ -104,7 +105,7 @@ class Fixture:
                     return self.send({"contractVersion": CONTRACT, "storageMode": "copy", "physicalReuse": False,
                                       "persistentDeferred": True, "materialize": fixture.materialize,
                                       "supportedBookmarkTypes": fixture.bookmark_types,
-                                      "maxAttachments": 1, "maxFileBytes": 52428800, "maxMetadataBytes": 4194304,
+                                      "maxAttachments": 1, "maxFileBytes": fixture.max_file_bytes, "maxMetadataBytes": 4194304,
                                       "supportedMimeTypes": ["image/png", "image/jpeg", "image/webp", "image/gif", "application/pdf", "video/mp4", "video/webm", "video/quicktime", "video/x-m4v", "video/x-matroska"],
                                       "historicalResolution": False, "stagePermits": False})
                 if path in (BASE + "/lookup", BASE + "/reservations"):
@@ -124,6 +125,8 @@ class Fixture:
                             return self.send({}, 409)
                         found["fencingToken"] = fixture.fence
                         return self.send(fixture.status(found))
+                    if payload["attachments"] and payload["attachments"][0]["observed"]["size"] > fixture.max_file_bytes:
+                        return self.send({}, 400)
                     opid = "operation-" + str(len(fixture.operations) + 1)
                     op = {"operationId": opid, "sourceKey": source_key, "payload": payload,
                           "payloadDigest": digest(payload), "state": "reserved", "fencingToken": fixture.fence,
