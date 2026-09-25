@@ -1,0 +1,83 @@
+# gha-runner-scale-set 0.14.2; installed only in the isolated ARC VM.
+githubConfigUrl: https://github.com/shchilkin/karakeep
+githubConfigSecret: github-auth
+runnerScaleSetName: arc-karakeep-e2e
+minRunners: 0
+maxRunners: 1
+controllerServiceAccount:
+  namespace: arc-system
+  name: arc-controller
+listenerTemplate:
+  spec:
+    containers:
+      - name: listener
+        resources:
+          requests: { cpu: 50m, memory: 64Mi }
+          limits: { cpu: 250m, memory: 256Mi }
+template:
+  metadata:
+    labels:
+      ci-component: runner
+  spec:
+    automountServiceAccountToken: false
+    securityContext:
+      fsGroup: 123
+    terminationGracePeriodSeconds: 60
+    initContainers:
+      - name: init-dind-externals
+        image: homeserver-arc-runner:2.337.0-pilot1
+        imagePullPolicy: Never
+        command: [cp, -r, /home/runner/externals/., /home/runner/tmpDir/]
+        resources:
+          requests: { cpu: 100m, memory: 128Mi }
+          limits: { memory: 512Mi }
+        volumeMounts:
+          - { name: dind-externals, mountPath: /home/runner/tmpDir }
+      - name: dind
+        image: docker:29.7.2-dind
+        args: [dockerd, "--host=unix:///var/run/docker.sock", "--group=123"]
+        securityContext:
+          privileged: true
+        restartPolicy: Always
+        resources:
+          requests: { cpu: 3250m, memory: 8Gi }
+          limits: { cpu: 3250m, memory: 9Gi }
+        startupProbe:
+          exec:
+            command: [docker, info]
+          failureThreshold: 30
+          periodSeconds: 5
+        volumeMounts:
+          - { name: work, mountPath: /home/runner/_work }
+          - { name: dind-sock, mountPath: /var/run }
+          - { name: dind-externals, mountPath: /home/runner/externals }
+          - { name: docker-data, mountPath: /var/lib/docker }
+          - { name: tool-cache, mountPath: /opt/hostedtoolcache }
+    containers:
+      - name: runner
+        image: homeserver-arc-runner:2.337.0-pilot1
+        imagePullPolicy: Never
+        command: [/home/runner/run.sh]
+        env:
+          - { name: DOCKER_HOST, value: "unix:///var/run/docker.sock" }
+          - { name: RUNNER_WAIT_FOR_DOCKER_IN_SECONDS, value: "150" }
+        # 3750m total requests plus 650m existing/control requests fit 4500m.
+        # Heavy E2E waits for other pools to drain; do not raise VM capacity.
+        resources:
+          requests: { cpu: 500m, memory: 1Gi }
+          limits: { cpu: 750m, memory: 2Gi }
+        volumeMounts:
+          - { name: work, mountPath: /home/runner/_work }
+          - { name: dind-sock, mountPath: /var/run }
+          - { name: tool-cache, mountPath: /opt/hostedtoolcache }
+    volumes:
+      - name: work
+        emptyDir: { sizeLimit: 20Gi }
+      - name: dind-sock
+        emptyDir: {}
+      - name: dind-externals
+        emptyDir: {}
+      - name: docker-data
+        emptyDir: { sizeLimit: 30Gi }
+      - name: tool-cache
+        emptyDir: { sizeLimit: 3Gi }
