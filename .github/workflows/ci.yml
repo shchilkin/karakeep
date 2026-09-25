@@ -128,6 +128,21 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Install Docker Compose
+        id: docker-compose
+        uses: docker/setup-compose-action@2fe291b7677a45ee1269ec56a42604c143505e7e # v1
+        with:
+          version: v5.5.1
+
+      - name: Install Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+        with:
+          version: v0.37.1
+          driver: docker
+
+      - name: Install native module build tools
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential python3
+
       - name: Setup
         uses: ./tooling/github/setup
 
@@ -143,7 +158,7 @@ jobs:
       # Vitest's teardown is not registered if global setup fails. Collect logs
       # and clean the explicit per-run project even after a build/startup error.
       - name: Collect E2E diagnostics
-        if: always()
+        if: always() && steps.docker-compose.outcome == 'success'
         working-directory: packages/e2e_tests
         run: |
           mkdir -p setup/docker-logs
@@ -151,7 +166,7 @@ jobs:
           docker compose logs --no-color > setup/docker-logs/compose.log 2>&1 || true
 
       - name: Stop E2E services
-        if: always()
+        if: always() && steps.docker-compose.outcome == 'success'
         working-directory: packages/e2e_tests
         run: docker compose down --volumes --remove-orphans
 

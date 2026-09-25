@@ -20,6 +20,7 @@ host Docker socket or private-network access is supplied.
   limits 4 CPU / 11 GiB. Heavy E2E waits for other pools to drain rather than
   overcommitting admission (4500m node allocatable, 650m control/other requests at
   installation). Recheck capacity before adding more pools.
+  Of the 11 GiB limit, 3 GiB is for pnpm/native-module setup and 8 GiB for Docker.
 - Ephemeral work (20 GiB), Docker data (30 GiB), tool cache (3 GiB); no host mounts.
   Docker is a privileged sidecar **inside the CI VM**, not the homeserver daemon.
 - Apply `runner-network-policy.yaml` before creating runner pods. It denies ingress
@@ -57,6 +58,11 @@ To roll back, route E2E to `ubuntu-latest`, let jobs drain, then uninstall **onl
 and network guards untouched. Do not delete shared credentials or production data.
 
 ## MinIO fixture
+
+The minimal shared runner image does not include Compose or native compilers.
+The job explicitly installs pinned Compose5.5.1/Buildx0.37.1 through pinned official
+Docker actions and `build-essential`/Python before dependency setup. Buildx uses
+the sidecar's existing Docker driver, not another daemon or host socket.
 
 The previously pinned Quay release and Docker Hub tag both failed to resolve on
 2026-09-25, before any E2E tests ran. MinIO's official repository now distributes

@@ -41,7 +41,7 @@ template:
         restartPolicy: Always
         resources:
           requests: { cpu: 3250m, memory: 8Gi }
-          limits: { cpu: 3250m, memory: 9Gi }
+          limits: { cpu: 3250m, memory: 8Gi }
         startupProbe:
           exec:
             command: [docker, info]
@@ -65,7 +65,7 @@ template:
         # Heavy E2E waits for other pools to drain; do not raise VM capacity.
         resources:
           requests: { cpu: 500m, memory: 1Gi }
-          limits: { cpu: 750m, memory: 2Gi }
+          limits: { cpu: 750m, memory: 3Gi }
         volumeMounts:
           - { name: work, mountPath: /home/runner/_work }
           - { name: dind-sock, mountPath: /var/run }
