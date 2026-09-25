@@ -21,6 +21,12 @@ host Docker socket or private-network access is supplied.
   overcommitting admission (4500m node allocatable, 650m control/other requests at
   installation). Recheck capacity before adding more pools.
   Of the 11 GiB limit, 3 GiB is for pnpm/native-module setup and 8 GiB for Docker.
+- DinD explicitly parents nested containers/BuildKit beneath this job's pod,
+  with an 8 GiB / 3250m Docker subtree and an aggregate 11 GiB / 4 CPU pod ceiling.
+  Startup rejects an unexpected cgroup layout or memory ceiling. The existing VM
+  uses cgroup v2/systemd paths; revalidate this bootstrap before changing K3s/OS
+  or resource values. Default privileged DinD's `/docker` does not inherit pod
+  limits; daemon-only metrics are not proof of build resource enforcement.
 - Ephemeral work (20 GiB), Docker data (30 GiB), tool cache (3 GiB); no host mounts.
   Docker is a privileged sidecar **inside the CI VM**, not the homeserver daemon.
 - Apply `runner-network-policy.yaml` before creating runner pods. It denies ingress
@@ -72,7 +78,10 @@ the source archive SHA256 and builder/runtime image digests are pinned. The fixt
 runs non-root, with its license retained. This old test release is **not** a
 recommendation for a production object store.
 
-Compose builds are serialized to bound memory. A workflow-level `always()` cleanup
+Compose service builds use an explicit sequential loop (`minio`, `chrome`, `web`)
+before the unchanged full `test:no-build` suite. `COMPOSE_PARALLEL_LIMIT` alone
+does not serialize Bake's image targets. The Docker cgroup bounds parallel stages
+within each image. A workflow-level `always()` cleanup
 uses the unique per-run Compose project even if Vitest global setup fails; logs are
 retained for seven days. The ephemeral runner also removes Docker state after the
 job, including interruption/timeout. No cross-repository mutable Docker cache is

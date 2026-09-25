@@ -121,7 +121,7 @@ jobs:
     timeout-minutes: 60
     env:
       COMPOSE_PROJECT_NAME: karakeep-e2e-${{ github.run_id }}-${{ github.run_attempt }}
-      # Serialize image builds within the bounded Docker-in-Docker resource limit.
+      # Limit engine calls. Bake image builds need the explicit loop below.
       COMPOSE_PARALLEL_LIMIT: 1
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -153,7 +153,12 @@ jobs:
         working-directory: packages/e2e_tests
         run: |
           set -o pipefail
-          pnpm test 2>&1 | tee setup/e2e-run.log
+          # Compose's Bake backend does not honor COMPOSE_PARALLEL_LIMIT for
+          # builds. Keep the large Go/Rust/Node build graphs in separate calls.
+          for service in minio chrome web; do
+            docker compose build "$service" 2>&1 | tee -a setup/e2e-run.log
+          done
+          pnpm test:no-build 2>&1 | tee -a setup/e2e-run.log
 
       # Vitest's teardown is not registered if global setup fails. Collect logs
       # and clean the explicit per-run project even after a build/startup error.

@@ -35,7 +35,27 @@ template:
           - { name: dind-externals, mountPath: /home/runner/tmpDir }
       - name: dind
         image: docker:29.7.2-dind
-        args: [dockerd, "--host=unix:///var/run/docker.sock", "--group=123"]
+        command: [/bin/sh, -ec]
+        args:
+          - |
+            # Privileged DinD sees the VM cgroup root. Its default /docker
+            # otherwise bypasses the pod limits for containers and BuildKit.
+            container_group="$(awk -F: '$1 == "0" { print $3 }' /proc/self/cgroup)"
+            pod_group="${container_group%/*}"
+            case "$pod_group" in
+              /kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod*.slice) ;;
+              *) echo 'Unexpected cgroup layout; refusing unbounded Docker' >&2; exit 1 ;;
+            esac
+            test "$(cat "/sys/fs/cgroup$pod_group/memory.max")" = 11811160064
+            # Kubelet on this VM sets aggregate memory but not aggregate CPU.
+            echo '400000 100000' > "/sys/fs/cgroup$pod_group/cpu.max"
+            docker_group="$pod_group/karakeep-docker"
+            mkdir -p "/sys/fs/cgroup$docker_group"
+            echo '325000 100000' > "/sys/fs/cgroup$docker_group/cpu.max"
+            echo 8589934592 > "/sys/fs/cgroup$docker_group/memory.max"
+            exec dockerd-entrypoint.sh dockerd --host=unix:///var/run/docker.sock \
+              --group=123 --exec-opt=native.cgroupdriver=cgroupfs \
+              --cgroup-parent="$docker_group"
         securityContext:
           privileged: true
         restartPolicy: Always
