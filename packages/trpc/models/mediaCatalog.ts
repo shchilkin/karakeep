@@ -955,6 +955,9 @@ export async function recoverLocalMediaCatalog(db: DB, now = Date.now()) {
           .get();
         const stop =
           paid ||
+          // Classification-only releases never repeat a failed/uncertain model
+          // attempt. A still-pending, undispatched job may retain its queue key.
+          (state.classificationOnly && state.status !== "pending") ||
           state.status === "processing" ||
           (state.status !== "pending" && (state.localRecoveries ?? 0) >= 2);
         // A long backlog is not a failed attempt. Re-enqueue its existing key:

@@ -20,9 +20,13 @@ import {
 } from "@karakeep/shared/types/importProcessing";
 import type { zReleaseImport } from "@karakeep/shared/types/importProcessing";
 import type { AuthedContext } from "..";
+interface ProcessingContext {
+  db: Pick<AuthedContext["db"], "select" | "transaction">;
+  user: Pick<AuthedContext["user"], "id"> & Partial<AuthedContext["user"]>;
+}
 
 function ownedRevision(
-  ctx: { db: Pick<AuthedContext["db"], "select">; user: AuthedContext["user"] },
+  ctx: { db: Pick<AuthedContext["db"], "select">; user: { id: string } },
   id: string,
 ) {
   const row = ctx.db
@@ -66,7 +70,7 @@ export function getImportProcessing(ctx: AuthedContext, id: string) {
 
 /** Persist intent only. Workers perform I/O; this API cannot enable ordinary automation. */
 export function releaseImportProcessing(
-  ctx: AuthedContext,
+  ctx: ProcessingContext,
   id: string,
   input: z.infer<typeof zReleaseImport>,
 ) {

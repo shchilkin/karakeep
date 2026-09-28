@@ -585,6 +585,45 @@ export const importProcessing = sqliteTable(
     index("importProcessing_leaseUntil_idx").on(t.leaseUntil),
   ],
 );
+export const importLocalCheckBatches = sqliteTable(
+  "importLocalCheckBatches",
+  {
+    id: text("id").primaryKey(),
+    userId: text("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    selectionKey: text("selectionKey").notNull(),
+    status: text("status", {
+      enum: ["draft", "running", "paused", "complete"],
+    }).notNull(),
+    createdAt: integer("createdAt").notNull(),
+  },
+  (t) => [index("importLocalCheckBatches_user_idx").on(t.userId, t.createdAt)],
+);
+
+export const importLocalCheckItems = sqliteTable(
+  "importLocalCheckItems",
+  {
+    batchId: text("batchId")
+      .notNull()
+      .references(() => importLocalCheckBatches.id, { onDelete: "cascade" }),
+    bookmarkId: text("bookmarkId").notNull(),
+    sourceRevisionId: text("sourceRevisionId").notNull(),
+    requestId: text("requestId").notNull(),
+    generation: integer("generation").notNull(),
+    policyRevision: integer("policyRevision").notNull(),
+    contentRevision: integer("contentRevision").notNull(),
+    state: text("state", {
+      enum: ["ready", "released", "complete", "failed", "skipped"],
+    }).notNull(),
+    reason: text("reason"),
+  },
+  (t) => [
+    primaryKey({ columns: [t.batchId, t.bookmarkId] }),
+    index("importLocalCheckItems_state_idx").on(t.state, t.batchId),
+  ],
+);
+
 export const processingOutbox = sqliteTable("processingOutbox", {
   id: text("id").primaryKey(),
   userId: text("userId")
