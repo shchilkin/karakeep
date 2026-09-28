@@ -4,6 +4,18 @@ import {
   releaseImportProcessing,
 } from "../models/importProcessing";
 import { z } from "zod";
+import {
+  zPrepareLocalCheckBatch,
+  zChangeLocalCheckBatch,
+  zLocalCheckBatchItems,
+} from "@karakeep/shared/types/importLocalCheckBatch";
+import {
+  getLocalCheckBatch,
+  prepareLocalCheckBatch,
+  changeLocalCheckBatch,
+  listLocalCheckBatches,
+  getLocalCheckBatchItems,
+} from "../models/importLocalCheckBatches";
 import { createScopedAuthedProcedure, router } from "..";
 import {
   zImportFence,
@@ -20,6 +32,19 @@ import {
 const read = createScopedAuthedProcedure("imports");
 const write = createScopedAuthedProcedure("imports");
 export const deferredImportRouter = router({
+  localCheckBatchItems: read
+    .input(zLocalCheckBatchItems)
+    .query(({ ctx, input }) => getLocalCheckBatchItems(ctx, input)),
+  localCheckBatches: read.query(({ ctx }) => listLocalCheckBatches(ctx)),
+  changeLocalCheckBatch: write
+    .input(zChangeLocalCheckBatch)
+    .mutation(({ ctx, input }) => changeLocalCheckBatch(ctx, input)),
+  prepareLocalCheckBatch: write
+    .input(zPrepareLocalCheckBatch)
+    .mutation(({ ctx, input }) => prepareLocalCheckBatch(ctx, input)),
+  localCheckBatch: read
+    .input(z.object({ id: z.string().uuid() }))
+    .query(({ ctx, input }) => getLocalCheckBatch(ctx, input.id)),
   processing: read
     .input(z.object({ id: z.string() }))
     .query(({ ctx, input }) => getImportProcessing(ctx, input.id)),

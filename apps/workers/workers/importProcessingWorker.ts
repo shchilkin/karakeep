@@ -31,6 +31,7 @@ import { getSearchClient } from "@karakeep/shared/search";
 import logger from "@karakeep/shared/logger";
 import { requestMediaCatalog } from "@karakeep/trpc/models/mediaCatalog";
 import { runIndex } from "./searchWorker";
+import { advanceLocalCheckBatches } from "@karakeep/trpc/models/importLocalCheckBatches";
 
 type Processing = typeof importProcessing.$inferSelect;
 const LEASE_MS = 300_000;
@@ -473,7 +474,12 @@ export async function processNextImport(
 }
 
 export class ImportProcessingWorker {
-  static async build(processNext = () => processNextImport(db)) {
+  static async build(
+    processNext = async () => {
+      const advanced = advanceLocalCheckBatches(db);
+      return (await processNextImport(db)) || advanced;
+    },
+  ) {
     let stopped = false;
     let errorBackoff = POLL_MS;
     let wake: (() => void) | undefined;

@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import AiControls from "@/components/admin/AiControls";
 import AiQueueDialog from "./AiQueueDialog";
 import AiHistory from "./AiHistory";
+import ImportLocalCheckBatches from "./ImportLocalCheckBatches";
 
 export default function AiBackoffice({
   administration = false,
@@ -87,6 +88,7 @@ export default function AiBackoffice({
           {t("ai_control.disabled")}
         </p>
       )}
+      <ImportLocalCheckBatches selectedIds={selected} />
       <section className="space-y-4" aria-label={t("ai_control.cards")}>
         <h2 className="text-lg font-semibold">{t("ai_control.cards")}</h2>
         <form
