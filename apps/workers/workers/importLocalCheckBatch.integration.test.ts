@@ -2,16 +2,18 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
+import { fork } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
+import { createServer } from "node:http";
+import { once } from "node:events";
+import { setTimeout as delay } from "node:timers/promises";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import sharp from "sharp";
 import { expect, test, vi } from "vitest";
 import type { ImportReservationInput } from "@karakeep/shared/types/deferredImport";
-import type {
-  BookmarkSearchDocument,
-  SearchIndexClient,
-} from "@karakeep/shared/search";
+import type { BookmarkSearchDocument } from "@karakeep/shared/search";
 
-test("batch worker classifies saved pixels only, preserves originals and does not retry an unknown result", async () => {
+test("real workers reopen their queue and SQLite, retain pause, and never replay an interrupted or unknown local check", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "karakeep-local-batch-"));
   vi.stubEnv("DATA_DIR", directory);
   vi.stubEnv("ASSETS_DIR", path.join(directory, "assets"));
@@ -23,15 +25,8 @@ test("batch worker classifies saved pixels only, preserves originals and does no
   const { loadAllPlugins, readAsset } = await import("@karakeep/shared-server");
   const { PluginManager, PluginType } =
     await import("@karakeep/shared/plugins");
-  const { getQueueClient } = await import("@karakeep/shared/queueing");
   const { createCallerFactory } = await import("@karakeep/trpc");
   const { appRouter } = await import("@karakeep/trpc/routers/_app");
-  const { advanceLocalCheckBatches } =
-    await import("@karakeep/trpc/models/importLocalCheckBatches");
-  const { recoverLocalMediaCatalog } =
-    await import("@karakeep/trpc/models/mediaCatalog");
-  const { processNextImport } = await import("./importProcessingWorker");
-  const { runMediaCatalog } = await import("./inference/mediaCatalogWorker");
   migrate(db, {
     migrationsFolder: path.resolve(
       import.meta.dirname,
@@ -49,52 +44,123 @@ test("batch worker classifies saved pixels only, preserves originals and does no
     model: "synthetic-model",
   });
   await loadAllPlugins();
-  await (await getQueueClient()).prepare();
   const indexed = new Map<string, BookmarkSearchDocument>();
-  const search: SearchIndexClient = {
-    async addDocuments(docs) {
-      for (const doc of docs) indexed.set(doc.id, doc);
-    },
-    async deleteDocuments(ids) {
-      for (const id of ids) indexed.delete(id);
-    },
-    async clearIndex() {
-      indexed.clear();
-    },
-    async search() {
-      return {
-        hits: [...indexed.keys()].map((id) => ({ id })),
-        totalHits: indexed.size,
-        processingTimeMs: 0,
-      };
-    },
-  };
-  PluginManager.register({
-    type: PluginType.Search,
-    name: "Batch test search service",
-    provider: { getClient: async () => search },
-  });
   const calls: string[] = [];
-  let unknown = false;
-  // Only the external classifier and search service are substituted. The real
-  // SQLite queue, API, import controller, ffmpeg and catalog worker run locally.
-  vi.stubGlobal("fetch", async (url: URL, options: RequestInit) => {
-    calls.push(String(url));
-    if (String(url) !== "http://classifier.test/check")
-      throw new Error("Unexpected external request");
-    expect(
-      Buffer.from(JSON.parse(String(options.body)).image, "base64").length,
-    ).toBeGreaterThan(0);
-    return Response.json({
-      model: "google/shieldgemma-2-4b-it",
-      revision: "eaf60452b5fc41a911338a022e628b0c15283897",
-      policy: "shieldgemma-native-v1",
-      precision: "bf16",
-      status: unknown ? "unknown" : "complete",
-      categories: unknown ? [] : ["sexual"],
-      scores: unknown ? null : { dangerous: 0.01, violence: 0.01, sexual: 0.9 },
-    });
+  const unexpected: string[] = [];
+  const server = createServer(async (request, response) => {
+    let body = "";
+    for await (const chunk of request) body += String(chunk);
+    if (request.url === "/index") {
+      if (request.method === "GET") {
+        response.setHeader("Content-Type", "application/json");
+        response.end(JSON.stringify([...indexed.keys()]));
+        return;
+      }
+      for (const doc of JSON.parse(body) as BookmarkSearchDocument[])
+        indexed.set(doc.id, doc);
+      response.end("{}");
+      return;
+    }
+    if (request.url !== "/check") {
+      unexpected.push(request.url ?? "missing-url");
+      response.writeHead(404).end();
+      return;
+    }
+    calls.push(body);
+    // The second request stays in flight until its worker is killed. No outcome
+    // is delivered: reopening must mark this attempt uncertain, never replay it.
+    if (calls.length === 2) return;
+    const unknown = calls.length === 3;
+    response.setHeader("Content-Type", "application/json");
+    response.end(
+      JSON.stringify({
+        model: "google/shieldgemma-2-4b-it",
+        revision: "eaf60452b5fc41a911338a022e628b0c15283897",
+        policy: "shieldgemma-native-v1",
+        precision: "bf16",
+        status: unknown ? "unknown" : "complete",
+        categories: unknown ? [] : ["sexual"],
+        scores: unknown
+          ? null
+          : { dangerous: 0.01, violence: 0.01, sexual: 0.9 },
+      }),
+    );
   });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("No test port");
+  const endpoint = `http://127.0.0.1:${address.port}`;
+  let child: ChildProcess | undefined;
+  let output = "";
+  const start = async (importOnly = false, clockOffset = 0) => {
+    output = "";
+    child = fork(
+      path.join(import.meta.dirname, "fixtures/importLocalCheckProcess.ts"),
+      {
+        execArgv: ["--import", "tsx"],
+        // Deliberate allowlist: never inherit production credentials or .env.
+        env: {
+          PATH: process.env.PATH,
+          NODE_ENV: "test",
+          TZ: "UTC",
+          NO_COLOR: "true",
+          DOTENV_CONFIG_PATH: path.join(directory, "absent.env"),
+          DATA_DIR: directory,
+          ASSETS_DIR: path.join(directory, "assets"),
+          MEDIA_AI_ENABLED: "true",
+          MEDIA_AI_HYBRID_ENABLED: "true",
+          MEDIA_AI_LOCAL_MODE: "enforce",
+          MEDIA_AI_LOCAL_URL: `${endpoint}/check`,
+          MEDIA_AI_LOCAL_TOKEN: "synthetic",
+          MEDIA_AI_API_KEY: "synthetic",
+          MEDIA_AI_LOCAL_CATALOG_URL: `${endpoint}/caption`,
+          MEDIA_AI_LOCAL_CATALOG_TOKEN: "synthetic",
+          TEST_SERVICES_URL: endpoint,
+          TEST_IMPORT_ONLY: String(importOnly),
+          TEST_CLOCK_OFFSET_MS: String(clockOffset),
+        },
+        stdio: ["ignore", "pipe", "pipe", "ipc"],
+      },
+    );
+    child.stdout?.on("data", (data) => {
+      output += String(data);
+    });
+    child.stderr?.on("data", (data) => {
+      output += String(data);
+    });
+    child.on("message", (message: { type: string; url?: string }) => {
+      if (message.type === "unexpected-request") unexpected.push(message.url!);
+    });
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error(`Worker startup timeout: ${output}`)),
+        15_000,
+      );
+      child!.once("exit", (code, signal) => {
+        clearTimeout(timer);
+        reject(new Error(`Worker exited ${code}/${signal}: ${output}`));
+      });
+      child!.on("message", (message: { type: string }) => {
+        if (message.type === "ready") {
+          clearTimeout(timer);
+          resolve();
+        }
+      });
+    });
+  };
+  const stop = async (crash = false) => {
+    if (!child || child.exitCode !== null || child.signalCode !== null) return;
+    const exited = once(child, "exit");
+    const timeout = setTimeout(() => child?.kill("SIGKILL"), 5000);
+    if (crash) child.kill("SIGKILL");
+    else child.send("stop");
+    const [code, signal] = await exited;
+    clearTimeout(timeout);
+    expect({ code, signal }, output).toEqual(
+      crash ? { code: null, signal: "SIGKILL" } : { code: 0, signal: null },
+    );
+  };
   try {
     db.insert(schema.users)
       .values({
@@ -117,7 +183,7 @@ test("batch worker classifies saved pixels only, preserves originals and does no
       .toBuffer();
     const sha256 = createHash("sha256").update(original).digest("hex");
     const store = (await PluginManager.getClient(PluginType.AssetStore))!;
-    for (const id of ["one", "two"]) {
+    for (const id of ["one", "two", "z-three"]) {
       const payload: ImportReservationInput = {
         contractVersion: "deferred-copy-v1",
         source: {
@@ -258,42 +324,105 @@ test("batch worker classifies saved pixels only, preserves originals and does no
       id: batch.id,
       action: "start",
     });
-    for (const id of ["one", "two"]) {
-      unknown = id === "two";
-      advanceLocalCheckBatches(db);
-      await processNextImport(db);
-      const processing = await api.deferredImport.processing({ id });
-      expect(processing, JSON.stringify(processing)).toMatchObject({
-        stage: "local_check",
-        state: "waiting_ai",
-      });
-      const pending = await api.bookmarks.getBookmark({ bookmarkId: id });
-      await runMediaCatalog({
-        id,
-        data: {
-          bookmarkId: id,
-          userId: "owner",
-          runId: pending.mediaAi!.runId,
-        },
-        priority: 50,
-        runNumber: 1,
-        abortSignal: new AbortController().signal,
-      });
-      // Recovery must not silently repeat an unknown/error outcome after a crash.
-      await recoverLocalMediaCatalog(db, Date.now() + 1_200_000);
-      await processNextImport(db);
-      advanceLocalCheckBatches(db);
-    }
+    await start(true);
+    await vi.waitFor(
+      async () => {
+        expect(
+          await api.deferredImport.processing({ id: "one" }),
+          output,
+        ).toMatchObject({
+          stage: "local_check",
+          state: "waiting_ai",
+        });
+      },
+      { timeout: 15_000 },
+    );
+    await api.deferredImport.changeLocalCheckBatch({
+      id: batch.id,
+      action: "pause",
+    });
+    await stop();
+    expect(calls).toHaveLength(0);
+    await start();
+    await vi.waitFor(
+      async () => {
+        const view = await api.deferredImport.localCheckBatch({ id: batch.id });
+        expect(
+          view,
+          JSON.stringify({ view, unexpected, calls: calls.length, output }),
+        ).toMatchObject({
+          status: "paused",
+          counts: { complete: 1, ready: 2, released: 0 },
+        });
+      },
+      { timeout: 15_000 },
+    );
+    await delay(1500); // Allow another admission poll while paused.
+    expect(calls).toHaveLength(1);
+    expect(await api.deferredImport.processing({ id: "two" })).toMatchObject({
+      stage: "search",
+    });
+
+    await api.deferredImport.changeLocalCheckBatch({
+      id: batch.id,
+      action: "resume",
+    });
+    await vi.waitFor(() => expect(calls).toHaveLength(2), { timeout: 15_000 });
+    await stop(true);
+    // Real process restart reopens both SQLite files. Advance only wall-clock
+    // time so startup recovery sees the expired interrupted attempt immediately.
+    await start(false, 1_200_000);
+    await vi.waitFor(
+      async () => {
+        expect(
+          await api.deferredImport.localCheckBatch({ id: batch.id }),
+          output,
+        ).toMatchObject({
+          status: "paused",
+          counts: { complete: 1, failed: 1, ready: 1, released: 0 },
+        });
+      },
+      { timeout: 15_000 },
+    );
+    expect(calls).toHaveLength(2);
+    await api.deferredImport.changeLocalCheckBatch({
+      id: batch.id,
+      action: "resume",
+    });
+    await vi.waitFor(
+      async () => {
+        const view = await api.deferredImport.localCheckBatch({ id: batch.id });
+        expect(
+          view,
+          JSON.stringify({
+            view,
+            processing: await api.deferredImport.processing({ id: "z-three" }),
+            calls: calls.length,
+            unexpected,
+            output,
+          }),
+        ).toMatchObject({
+          status: "complete",
+          counts: { complete: 1, failed: 2, ready: 0, released: 0 },
+        });
+      },
+      { timeout: 15_000 },
+    );
+    await stop();
+    await start(false, 2_400_000);
+    await delay(1500);
     expect(
       await api.deferredImport.localCheckBatch({ id: batch.id }),
     ).toMatchObject({
       status: "complete",
-      counts: { complete: 1, failed: 1, ready: 0, released: 0 },
+      counts: { complete: 1, failed: 2, ready: 0, released: 0 },
     });
-    expect(calls).toEqual([
-      "http://classifier.test/check",
-      "http://classifier.test/check",
-    ]);
+    expect(calls).toHaveLength(3);
+    for (const body of calls)
+      expect(
+        Buffer.from(JSON.parse(body).image, "base64").length,
+      ).toBeGreaterThan(0);
+    expect(unexpected).toEqual([]);
     expect(await api.ai.controls()).toMatchObject({ used: 0 });
     const card = await api.bookmarks.getBookmark({ bookmarkId: "one" });
     expect(card).toMatchObject({
@@ -313,11 +442,13 @@ test("batch worker classifies saved pixels only, preserves originals and does no
       (await readAsset({ userId: "owner", assetId: "original-one" })).asset,
     ).toEqual(original);
   } finally {
-    await (await getQueueClient()).shutdown?.();
+    await stop(true);
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
     db.$client.close();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
     await rm(directory, { recursive: true, force: true });
   }
-}, 30_000);
+}, 90_000);

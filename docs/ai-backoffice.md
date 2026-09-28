@@ -92,11 +92,18 @@ Validation: `importLocalCheckBatches.test.ts` exercises the authenticated API an
 durable admission controller, including >200 selections, pauses, owner isolation,
 failures and stale permits. `ImportLocalCheckBatches.test.tsx` uses actual tRPC
 React hooks with a fake HTTP service for review/start/pause/resume and paged results.
-`importLocalCheckBatch.integration.test.ts` runs the real API, SQLite queue,
-retained filesystem assets, FFmpeg and workers against synthetic classifier/search
-adapters. It verifies no cloud/caption dispatch, no paid reservation, preserved
-originals and no automatic retry of an unknown result. These are local tests, not
-production or real-GPU acceptance evidence.
+`importLocalCheckBatch.integration.test.ts` starts real worker processes and the
+SQLite queue runner, against loopback classifier/search adapters and synthetic
+filesystem assets. It stops/restarts the processes against the same database and
+queue files to verify persisted pause, delivery of an already admitted item, and
+resume. It also kills a worker during a classifier request, then reopens both
+SQLite files with an advanced test clock: the uncertain attempt fails without
+re-dispatch. A further restart verifies that an `unknown` result is not replayed.
+Assertions use the public API and external service observations, not direct writes
+of terminal checkpoints. The test verifies no cloud/caption requests or paid
+reservations and unchanged originals. The UI interaction test is included in CI's
+explicit Media UI Tests list. These are local tests, not production or real-GPU
+acceptance evidence.
 
 ## Bounds and follow-up
 

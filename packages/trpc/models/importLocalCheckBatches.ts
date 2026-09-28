@@ -26,6 +26,12 @@ interface Context {
   db: Pick<DB, "select" | "insert" | "update" | "transaction">;
   user: { id: string };
 }
+function localCheckingEnabled() {
+  const config = serverConfig.mediaAi;
+  return (
+    config.enabled && config.hybridEnabled && config.localMode === "enforce"
+  );
+}
 interface Candidate {
   source: { receipt: unknown };
   bookmark: { processingPolicy: string; mediaAi: unknown };
@@ -82,7 +88,7 @@ export function getLocalCheckBatch(
     failed: 0,
     skipped: 0,
   };
-  const skipReasons: Record<string, number> = {};
+  const outcomeReasons: Record<string, number> = {};
   for (const row of ctx.db
     .select({
       state: items.state,
@@ -95,7 +101,8 @@ export function getLocalCheckBatch(
     .all()) {
     counts[row.state] += row.count;
     if (row.reason)
-      skipReasons[row.reason] = (skipReasons[row.reason] ?? 0) + row.count;
+      outcomeReasons[row.reason] =
+        (outcomeReasons[row.reason] ?? 0) + row.count;
   }
   return {
     id,
@@ -103,7 +110,7 @@ export function getLocalCheckBatch(
     createdAt: batch.createdAt,
     total: Object.values(counts).reduce((a, b) => a + b, 0),
     counts,
-    skipReasons,
+    outcomeReasons,
   };
 }
 
@@ -168,11 +175,7 @@ export function changeLocalCheckBatch(
             code: "CONFLICT",
             message: "Refresh the batch before changing its state.",
           });
-        if (
-          !serverConfig.mediaAi.enabled ||
-          !serverConfig.mediaAi.hybridEnabled ||
-          serverConfig.mediaAi.localMode !== "enforce"
-        )
+        if (!localCheckingEnabled())
           throw new TRPCError({
             code: "PRECONDITION_FAILED",
             message: "Local classification must be enabled in enforce mode.",
@@ -436,11 +439,7 @@ export function advanceLocalCheckBatches(database: DB) {
         .orderBy(batches.createdAt, batches.id)
         .get();
       if (!batch) return changed;
-      if (
-        !serverConfig.mediaAi.enabled ||
-        !serverConfig.mediaAi.hybridEnabled ||
-        serverConfig.mediaAi.localMode !== "enforce"
-      ) {
+      if (!localCheckingEnabled()) {
         tx.update(batches)
           .set({ status: "paused" })
           .where(eq(batches.id, batch.id))

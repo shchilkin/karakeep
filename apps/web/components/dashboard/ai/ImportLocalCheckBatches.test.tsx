@@ -54,7 +54,7 @@ test("reviews local-only scope before start, then pauses and resumes through the
                 failed: 0,
                 skipped: 500,
               },
-              skipReasons: { already_checked: 500 },
+              outcomeReasons: { already_checked: 500 },
             };
             value = batch;
           } else if (name === "deferredImport.changeLocalCheckBatch") {

@@ -37,5 +37,5 @@ export interface LocalCheckBatchView {
   createdAt: number;
   total: number;
   counts: Record<LocalCheckItemState, number>;
-  skipReasons: Record<string, number>;
+  outcomeReasons: Record<string, number>;
 }

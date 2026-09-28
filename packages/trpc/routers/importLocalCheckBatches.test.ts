@@ -190,7 +190,7 @@ test("owner reviews a fixed import selection without starting processing", async
     status: "draft",
     total: 3,
     counts: { ready: 2, skipped: 1, complete: 0, failed: 0 },
-    skipReasons: { unsupported: 1 },
+    outcomeReasons: { unsupported: 1 },
   });
   expect(await caller().deferredImport.processing({ id: "one" })).toMatchObject(
     { stage: "preview", generation: 1, state: "complete" },
@@ -234,7 +234,7 @@ test("large selections skip checked, failed and active imports, and stay owner s
   expect(batch).toMatchObject({
     total: 253,
     counts: { ready: 250, skipped: 3 },
-    skipReasons: { already_checked: 1, prior_failure: 1, active: 1 },
+    outcomeReasons: { already_checked: 1, prior_failure: 1, active: 1 },
   });
   await expect(
     caller("other").deferredImport.localCheckBatch({ id: batch.id }),
@@ -285,7 +285,7 @@ test("owner explicitly starts, pauses and resumes one durable batch without rele
   ).toMatchObject({ status: "running" });
 });
 
-test("worker admits one local-check intent, survives restart and drains the in-flight item while paused", async () => {
+test("dispatcher admits one local-check intent across repeated polls and reconciles an in-flight item while paused", async () => {
   seed("one");
   seed("two");
   const api = caller().deferredImport;
@@ -370,7 +370,7 @@ test("failed processing pauses admission and resume never retries the uncertain 
   expect(await api.localCheckBatch({ id: batch.id })).toMatchObject({
     status: "paused",
     counts: { failed: 1, ready: 1 },
-    skipReasons: { analysis_checkpoint_missing: 1 },
+    outcomeReasons: { analysis_checkpoint_missing: 1 },
   });
   const failed = await api.processing({ id: "one" });
   advanceLocalCheckBatches(db);
@@ -438,7 +438,7 @@ test("changed permissions or disabled local checking cannot expand a prepared re
   expect(await api.localCheckBatch({ id: batch.id })).toMatchObject({
     status: "complete",
     counts: { skipped: 3, complete: 0 },
-    skipReasons: { changed: 1, unsupported: 2 },
+    outcomeReasons: { changed: 1, unsupported: 2 },
   });
   expect(await api.processing({ id: "one" })).toMatchObject({
     stage: "search",

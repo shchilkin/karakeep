@@ -206,7 +206,7 @@ function Reasons({ batch }: { batch: LocalCheckBatchView }) {
   const { t } = useTranslation();
   return (
     <ul className="space-y-1 text-xs text-muted-foreground">
-      {Object.entries(batch.skipReasons).map(([reason, count]) => (
+      {Object.entries(batch.outcomeReasons).map(([reason, count]) => (
         <li key={reason}>
           {t(`import_checks.reasons.${reason}`, { defaultValue: reason })}:{" "}
           {count}
