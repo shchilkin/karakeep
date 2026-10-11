@@ -39,23 +39,19 @@ export function getBookmarkMedia(bookmark: ZBookmark): BookmarkMedia[] {
       seen.add(asset.id);
       return true;
     })
-    .map(
-      (asset): BookmarkMedia =>
-        /\.(mp4|webm|mkv)$/i.test(asset.fileName ?? "")
-          ? {
-              ...asset,
-              video: {
-                posterId: bookmark.assets.find(
-                  (poster) =>
-                    poster.fileName ===
-                    asset.fileName?.replace(
-                      /\.(mp4|webm|mkv)$/i,
-                      ".poster.jpg",
-                    ),
-                )?.id,
-              },
-            }
-          : asset,
+    .map((asset): BookmarkMedia =>
+      /\.(mp4|webm|mkv)$/i.test(asset.fileName ?? "")
+        ? {
+            ...asset,
+            video: {
+              posterId: bookmark.assets.find(
+                (poster) =>
+                  poster.fileName ===
+                  asset.fileName?.replace(/\.(mp4|webm|mkv)$/i, ".poster.jpg"),
+              )?.id,
+            },
+          }
+        : asset,
     )
     .sort((a, b) =>
       (a.fileName ?? "").localeCompare(b.fileName ?? "", "en", {

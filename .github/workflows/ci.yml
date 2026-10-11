@@ -102,6 +102,10 @@ jobs:
         working-directory: packages/api
         run: pnpm exec vitest run
 
+      - name: Web Auth Tests
+        working-directory: apps/web
+        run: pnpm exec vitest run server/auth.test.ts
+
       - name: Media UI Tests
         working-directory: apps/web
         run: pnpm exec vitest run components/dashboard/bookmarks/BookmarkCardImage.test.tsx components/dashboard/bookmarks/BookmarkCardVideo.test.tsx components/dashboard/preview/SavedImageGallery.test.tsx lib/mediaPlayback.test.ts components/dashboard/bookmarks/VirtualMasonry.test.tsx components/dashboard/bookmarks/SummarizeBookmarkArea.test.tsx components/dashboard/ai/AiQueueDialog.test.tsx components/dashboard/ai/ImportLocalCheckBatches.test.tsx lib/hooks/useAutoLoadMore.test.ts lib/hooks/useBookmarkKeyboardNavigation.test.ts
@@ -138,7 +142,6 @@ jobs:
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
         with:
           version: v0.37.1
-          driver: docker
 
       - name: Install native module build tools
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential python3
@@ -149,13 +152,17 @@ jobs:
       - name: Docker preflight
         run: docker info && docker compose version && docker buildx version
 
+      - name: Install Playwright Chromium
+        working-directory: packages/e2e_tests
+        run: pnpm exec playwright install --with-deps chromium
+
       - name: E2E Tests
         working-directory: packages/e2e_tests
         run: |
           set -o pipefail
           # Compose's Bake backend does not honor COMPOSE_PARALLEL_LIMIT for
           # builds. Keep the large Go/Rust/Node build graphs in separate calls.
-          for service in minio chrome web; do
+          for service in chrome web; do
             docker compose build "$service" 2>&1 | tee -a setup/e2e-run.log
           done
           pnpm test:no-build 2>&1 | tee -a setup/e2e-run.log

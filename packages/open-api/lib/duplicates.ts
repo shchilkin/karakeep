@@ -104,9 +104,9 @@ registry.registerPath({
 registry.registerComponent("securitySchemes", "OwnerSession", {
   type: "apiKey",
   in: "cookie",
-  name: "next-auth.session-token",
+  name: "better-auth.session_token",
   description:
-    "An authenticated owner web session. Secure deployments use the __Secure-next-auth.session-token cookie.",
+    "An authenticated owner web session. Secure deployments use the __Secure-better-auth.session_token cookie.",
 });
 registry.registerPath({
   operationId: "scanNextDuplicateOriginal",

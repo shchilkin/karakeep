@@ -15,7 +15,7 @@ import { rejectMutationInReadOnlyMode } from "../middlewares/readOnlyMode";
 import { serveAsset } from "../utils/assets";
 import { serveThumbnail } from "../utils/thumbnails";
 import { serveHoverClip } from "../utils/hoverClips";
-import { uploadAsset } from "../utils/upload";
+import { uploadAsset, uploadBodyLimit } from "../utils/upload";
 
 const app = new Hono()
   .use(authMiddleware)
@@ -28,6 +28,7 @@ const app = new Hono()
       windowMs: 60 * 1000,
       maxRequests: 30,
     }),
+    uploadBodyLimit,
     zValidator(
       "form",
       z

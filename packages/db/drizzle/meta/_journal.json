@@ -736,6 +736,13 @@
       "when": 1790593857401,
       "tag": "0104_import_local_check_batches",
       "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "6",
+      "when": 1791710426260,
+      "tag": "0105_migrate_to_better_auth",
+      "breakpoints": true
     }
   ]
 }

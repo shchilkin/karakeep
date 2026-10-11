@@ -42,7 +42,10 @@ vi.mock("@karakeep/trpc/models/assets", () => ({
     }),
   },
 }));
-vi.mock("../utils/upload", () => ({ uploadAsset: vi.fn() }));
+vi.mock("../utils/upload", () => ({
+  uploadAsset: vi.fn(),
+  uploadBodyLimit: (_context: unknown, next: () => Promise<void>) => next(),
+}));
 vi.mock("../utils/assets", () => ({ serveAsset: vi.fn() }));
 import assets from "./assets";
 import {

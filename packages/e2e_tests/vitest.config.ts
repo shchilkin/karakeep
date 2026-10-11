@@ -11,6 +11,9 @@ export default defineConfig({
       "@/*": "./*",
     },
     globalSetup: ["./setup/startContainers.ts", "./setup/seed.ts"],
+    // Every file shares one web/worker stack; bound concurrent password hashing
+    // and browser work instead of scaling it with the host CPU count.
+    maxWorkers: 4,
     teardownTimeout: 30000,
     include: ["tests/**/*.test.ts"],
     testTimeout: 60000,
