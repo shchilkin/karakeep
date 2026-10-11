@@ -27,7 +27,7 @@ import {
   zIncludeContentSearchParamsSchema,
   zStringBool,
 } from "../utils/types";
-import { uploadAsset } from "../utils/upload";
+import { uploadAsset, uploadBodyLimit } from "../utils/upload";
 
 const app = new Hono()
   .use(authMiddleware)
@@ -158,6 +158,7 @@ const app = new Hono()
           .default("skip"),
       }),
     ),
+    uploadBodyLimit,
     zValidator(
       "form",
       z.object({

@@ -21,7 +21,7 @@ import {
   VIDEO_ASSET_TYPES,
 } from "@karakeep/shared-server";
 import { requestMediaCatalog } from "@karakeep/trpc/models/mediaCatalog";
-import { downloadAndStoreFile } from "./assetStorage";
+import { downloadAndStoreFile } from "./downloadAsset";
 
 const extensions: Record<string, string> = {
   "video/mp4": "mp4",
