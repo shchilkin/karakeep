@@ -1,0 +1,69 @@
+{
+  "sha": "c6bd3f15f9597a8429674264c3c0d9014b8ea71e",
+  "imageId": "sha256:3fccef9b169b00e12666e6b487c45135d1c4828ee7b814e89b5318b4ab912318",
+  "adoptionDirectory": "/srv/appdata/karakeep/autodeploy/adoptions/20261011T113400Z-c6bd3f15f959",
+  "ci": {
+    "id": 38131687586,
+    "attempt": 2,
+    "url": "https://github.com/shchilkin/karakeep/actions/runs/38131687586",
+    "conclusion": "success"
+  },
+  "before": {
+    "id": "98b5f6038c6295c1bc7a9de8e5bea8330d656a0b80532093966c37d2e53333e5",
+    "image": "sha256:3fccef9b169b00e12666e6b487c45135d1c4828ee7b814e89b5318b4ab912318",
+    "startedAt": "2026-10-11T11:20:43.327437922Z",
+    "restarts": 0,
+    "health": "healthy"
+  },
+  "probeBefore": {
+    "health": true,
+    "authenticated": true,
+    "anonymousDenied": true
+  },
+  "protectedPaths": [
+    "deploy/",
+    "docker/",
+    "packages/db/drizzle/",
+    "packages/db/migrate.ts"
+  ],
+  "previousProtectedDigest": "f9a9b02123fd7a827a2a27d0653e2e263495add5c3c408b90fa82cd26a3d6872",
+  "approvedProtectedDigest": "6fdd2957a998a775851ebab24df26e0ffca044e0238909f54e11133f808a80bd",
+  "controllerSha256": "45dc282783d7b279152fe4a26aaa98f34e990993e098d8d565f9d1c9e0e200b0",
+  "unitHashes": {
+    "karakeep-fork-autodeploy.timer": "0e6fb212687d91849a201bd4c77988be457603df1312eea74098cfacb95a82a0",
+    "karakeep-fork-autodeploy.service": "f9067d4f9fb1f84a9c87f34b63241fa5c01a6d5b6755da975d7bb86295400ef2"
+  },
+  "rollbackCheckpoint": "/srv/appdata/karakeep/manual-rollouts/20261011T111917Z-deploy-c6bd3f15f959/backup",
+  "utc": "2026-10-11T11:34:00Z",
+  "after": {
+    "id": "98b5f6038c6295c1bc7a9de8e5bea8330d656a0b80532093966c37d2e53333e5",
+    "image": "sha256:3fccef9b169b00e12666e6b487c45135d1c4828ee7b814e89b5318b4ab912318",
+    "startedAt": "2026-10-11T11:20:43.327437922Z",
+    "restarts": 0,
+    "health": "healthy"
+  },
+  "timer": {
+    "ActiveState": "active",
+    "SubState": "waiting",
+    "UnitFileState": "enabled",
+    "NextElapseUSecMonotonic": "3w 4d 18h 29min 12.240331s",
+    "LastTriggerUSec": "Sun 2026-10-11 11:34:01 UTC"
+  },
+  "service": {
+    "ActiveState": "inactive",
+    "SubState": "dead",
+    "Result": "success",
+    "ExecMainStartTimestamp": "Sun 2026-10-11 11:34:01 UTC",
+    "ExecMainExitTimestamp": "Sun 2026-10-11 11:34:01 UTC",
+    "ExecMainStatus": "0"
+  },
+  "probeAfter": {
+    "health": true,
+    "authenticated": true,
+    "anonymousDenied": true
+  },
+  "idleAfter": true,
+  "deployedReceiptPreserved": true,
+  "productionRestarted": false,
+  "enabledAt": "2026-10-11T11:34:01Z"
+}
