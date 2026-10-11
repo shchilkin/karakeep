@@ -1,0 +1,191 @@
+{
+  "sha": "c6bd3f15f9597a8429674264c3c0d9014b8ea71e",
+  "candidate_image": "sha256:3fccef9b169b00e12666e6b487c45135d1c4828ee7b814e89b5318b4ab912318",
+  "old_image": "sha256:1cb9ec1c80d71c8c98cf87361b5b32b244d16c7d0d9c0d8dd95ce78cb572e30f",
+  "release": "/srv/appdata/karakeep/manual-rollouts/20261011T111917Z-deploy-c6bd3f15f959",
+  "events": [
+    {
+      "phase": "stopping_writers",
+      "utc": "2026-10-11T11:19:49.690719+00:00"
+    },
+    {
+      "phase": "writers_stopped",
+      "utc": "2026-10-11T11:19:53.646100+00:00"
+    },
+    {
+      "phase": "fresh_checkpoint_complete",
+      "utc": "2026-10-11T11:19:56.766354+00:00"
+    },
+    {
+      "phase": "fresh_copy_verified",
+      "utc": "2026-10-11T11:20:06.355013+00:00"
+    },
+    {
+      "phase": "production_migration_and_auth_verified",
+      "utc": "2026-10-11T11:20:20.190878+00:00"
+    },
+    {
+      "phase": "workers_and_search_verified",
+      "utc": "2026-10-11T11:20:28.817390+00:00"
+    },
+    {
+      "phase": "public_login_api_assets_verified",
+      "utc": "2026-10-11T11:20:36.654821+00:00"
+    },
+    {
+      "phase": "deployed_verified_autodeploy_disabled",
+      "utc": "2026-10-11T11:20:54.103532+00:00"
+    }
+  ],
+  "backups": {
+    "db.db": {
+      "source": "/home/shchilkin/.local/share/karakeep/data/db.db",
+      "uid": 0,
+      "gid": 0,
+      "mode": 420,
+      "bytes": 239980544,
+      "sha256": "7bb21bdb785481d593b0525242b3e0462e934268577b9505c4164d2bc1ee6405"
+    },
+    "queue.db": {
+      "source": "/home/shchilkin/.local/share/karakeep/data/queue.db",
+      "uid": 0,
+      "gid": 0,
+      "mode": 420,
+      "bytes": 98304,
+      "sha256": "ec03b6dfe3b4e4c380585c60c75775d07d7d3a8bfb789abf27975e39f067500a"
+    },
+    "social-enricher.sqlite3": {
+      "source": "/srv/appdata/karakeep/social-enricher/state/jobs.sqlite3",
+      "uid": 1000,
+      "gid": 1000,
+      "mode": 384,
+      "bytes": 106496,
+      "sha256": "8c9a2b4576d8058d30b357ab17149de01e0075f73d7c24f8c45fe9abce02e917"
+    }
+  },
+  "fresh_copy_migration": {
+    "integrity": "ok",
+    "foreign_keys": "ok",
+    "users": 1,
+    "credential_accounts": 1,
+    "oauth_accounts": 0,
+    "sessions_invalidated": true,
+    "verification_tokens_invalidated": true,
+    "password_reset_table_removed": true,
+    "migration_count_before": 105,
+    "migration_count_after": 106,
+    "migration_sha256": "099d097c2b4e4ce4f4307b876499cf6b6075df89132d75c68b07be3140c75470"
+  },
+  "production_migration": {
+    "integrity": "ok",
+    "foreign_keys": "ok",
+    "users": 1,
+    "credential_accounts": 1,
+    "oauth_accounts": 0,
+    "sessions_invalidated": true,
+    "verification_tokens_invalidated": true,
+    "password_reset_table_removed": true,
+    "migration_count_before": 105,
+    "migration_count_after": 106,
+    "migration_sha256": "099d097c2b4e4ce4f4307b876499cf6b6075df89132d75c68b07be3140c75470"
+  },
+  "unchanged_tables": 47,
+  "unchanged_rows": 419059,
+  "isolated_production_web": {
+    "health": 200,
+    "anonymous": 401,
+    "existing_api_key": 200,
+    "asset_read": {
+      "status": 200,
+      "bytes": 462
+    },
+    "auth": {
+      "login": 200,
+      "session": 200,
+      "wrong_password": 401,
+      "signout": 200,
+      "session_revoked": true
+    }
+  },
+  "maintenance_web": {
+    "health": 200,
+    "anonymous": 401,
+    "existing_api_key": 200,
+    "asset_read": {
+      "status": 200,
+      "bytes": 462
+    },
+    "auth": {
+      "login": 200,
+      "session": 200,
+      "wrong_password": 401,
+      "signout": 200,
+      "session_revoked": true
+    }
+  },
+  "worker_smoke": {
+    "created": 201,
+    "indexed": true,
+    "deleted": 204,
+    "search_removed": true,
+    "bookmark_id": "hb2odt16tj6keictqq1bmaxy"
+  },
+  "public_readonly": {
+    "health": 200,
+    "anonymous": 401,
+    "existing_api_key": 200,
+    "asset_read": {
+      "status": 200,
+      "bytes": 462
+    },
+    "auth": {
+      "login": 200,
+      "session": 200,
+      "wrong_password": 401,
+      "signout": 200,
+      "session_revoked": true
+    },
+    "writes_blocked": 403
+  },
+  "public_final": {
+    "health": 200,
+    "anonymous": 401,
+    "existing_api_key": 200,
+    "asset_read": {
+      "status": 200,
+      "bytes": 462
+    }
+  },
+  "workers_final": {
+    "s6": "up (pid 84 pgid 84) 2 seconds",
+    "health": 200,
+    "version_logged": true,
+    "http_port": 41817
+  },
+  "production_container_id": "98b5f6038c6295c1bc7a9de8e5bea8330d656a0b80532093966c37d2e53333e5",
+  "started_at": "2026-10-11T11:20:43.327437922Z",
+  "sidecar_health": "healthy",
+  "autodeploy": "disabled",
+  "fixture_removed": true,
+  "postcheck": {
+    "verified_at": "2026-10-11T11:21:45.371001+00:00",
+    "healthy": true,
+    "restart_count": 0,
+    "sidecar_healthy": true,
+    "idle": true,
+    "autodeploy": "disabled",
+    "counts": {
+      "user": 1,
+      "apiKey": 5,
+      "account": 1,
+      "bookmarks": 15613,
+      "assets": 33855,
+      "mediaAiRequests": 414,
+      "mediaAiRuns": 4137,
+      "__drizzle_migrations": 106
+    },
+    "backup_hashes_valid": true,
+    "fixture_removed": true,
+    "guard_unchanged": true
+  }
+}

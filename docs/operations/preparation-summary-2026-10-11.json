@@ -1,0 +1,125 @@
+{
+  "target_sha": "c6bd3f15f9597a8429674264c3c0d9014b8ea71e",
+  "started_at": "2026-10-11T10:42:00Z",
+  "migration_seconds": 3.27,
+  "idempotent": true,
+  "queue_unchanged": true,
+  "candidate_web": {
+    "health": 200,
+    "anonymous": 401,
+    "existingApiKey": 200,
+    "bookmarkRead": true,
+    "network": "none",
+    "published_ports": false,
+    "workers_started": false,
+    "production_mounts": false,
+    "image_id": "sha256:3fccef9b169b00e12666e6b487c45135d1c4828ee7b814e89b5318b4ab912318"
+  },
+  "legacy_password_login": {
+    "health": 200,
+    "anonymous": 401,
+    "existingApiKey": 200,
+    "bookmarkRead": true,
+    "logins": [
+      {
+        "kind": "salted-bcrypt",
+        "login": 200,
+        "session": 200,
+        "wrongPassword": 401,
+        "signout": 200,
+        "revoked": true
+      },
+      {
+        "kind": "unsalted-bcrypt",
+        "login": 200,
+        "session": 200,
+        "wrongPassword": 401,
+        "signout": 200,
+        "revoked": true
+      }
+    ],
+    "network": "none",
+    "published_ports": false,
+    "workers_started": false,
+    "production_mounts": false,
+    "image_id": "sha256:3fccef9b169b00e12666e6b487c45135d1c4828ee7b814e89b5318b4ab912318"
+  },
+  "rollback_restored_hashes": {
+    "db.db": "300ee4d7362df4737543428e9a96564ed3321d0cd8a74b3e883c646af19e9a28",
+    "queue.db": "ec03b6dfe3b4e4c380585c60c75775d07d7d3a8bfb789abf27975e39f067500a"
+  },
+  "rollback_web": {
+    "health": 200,
+    "anonymous": 401,
+    "existingApiKey": 200,
+    "bookmarkRead": true,
+    "network": "none",
+    "published_ports": false,
+    "workers_started": false,
+    "production_mounts": false,
+    "image_id": "sha256:1cb9ec1c80d71c8c98cf87361b5b32b244d16c7d0d9c0d8dd95ce78cb572e30f"
+  },
+  "rollback_migration_count": 105,
+  "finished_at": "2026-10-11T10:42:51Z",
+  "migration": {
+    "integrity": "ok",
+    "foreign_keys": "ok",
+    "users": 1,
+    "credential_accounts": 1,
+    "oauth_accounts": 0,
+    "sessions_invalidated": true,
+    "verification_tokens_invalidated": true,
+    "password_reset_table_removed": true,
+    "migration_count_before": 105,
+    "migration_count_after": 106,
+    "migration_sha256": "099d097c2b4e4ce4f4307b876499cf6b6075df89132d75c68b07be3140c75470"
+  },
+  "unchanged_table_count": 47,
+  "unchanged_row_count": 419059,
+  "baseline_counts": {
+    "bookmarks": 15613,
+    "assets": 33855,
+    "user": 1,
+    "apiKey": 5,
+    "tagsOnBookmarks": 198586
+  },
+  "candidate_image_id": "sha256:3fccef9b169b00e12666e6b487c45135d1c4828ee7b814e89b5318b4ab912318",
+  "candidate_revision": "c6bd3f15f9597a8429674264c3c0d9014b8ea71e",
+  "backup_hashes_unchanged": {
+    "db.db": true,
+    "queue.db": true,
+    "social-enricher.sqlite3": true
+  },
+  "production_config_unchanged": true,
+  "production_identity_unchanged": true,
+  "production_health": "healthy",
+  "verified_at": "2026-10-11T10:43:22Z",
+  "test_containers_remaining": "",
+  "auth_environment_preflight": {
+    "public_url_is_https": true,
+    "nextauth_secret_present": true,
+    "nextauth_secret_at_least_32_chars": true,
+    "signups_disabled": true,
+    "oauth_configured": false,
+    "smtp_configured": true,
+    "existing_auth_variable_names_supported": true
+  },
+  "ci": {
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 2,
+    "url": "https://github.com/shchilkin/karakeep/actions/runs/38131687586",
+    "headSha": "c6bd3f15f9597a8429674264c3c0d9014b8ea71e",
+    "checks": {
+      "e2e": "success",
+      "unit-tests": "success",
+      "open-api-spec": "success",
+      "typecheck": "success",
+      "format": "success",
+      "lint": "success",
+      "tests": "success"
+    },
+    "e2e_test_files": 23,
+    "e2e_tests_passed": 161
+  }
+}
